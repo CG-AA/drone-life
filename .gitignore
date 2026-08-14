@@ -1,0 +1,17 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# node
+node_modules/
+web/dist/
+
+# runtime state (scripts, snapshots)
+server/state/
+
+# misc
+.env
+*.log

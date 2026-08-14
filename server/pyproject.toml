@@ -1,0 +1,35 @@
+[project]
+name = "drone-life-server"
+version = "0.1.0"
+description = "Workshop co-op drone game: MAVLink sim, game engine, script runner, web API"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pymavlink>=2.4.40,<2.5",
+    "pydantic-settings>=2.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "e2e: requires podman and a built drone-life-runner image",
+    "load: load smoke tests",
+]
+addopts = "-m 'not e2e and not load'"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
