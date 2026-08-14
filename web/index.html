@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>drone life — sky view</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; background: #0e1116;
+      font-family: "Segoe UI", system-ui, sans-serif; color: #e6e9ef; }
+    #hud { position: fixed; inset: 0; pointer-events: none; }
+    #score-box { position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      text-align: center; }
+    #score { font-size: 56px; font-weight: 800; letter-spacing: 2px;
+      text-shadow: 0 2px 12px rgba(0,0,0,.7); }
+    #mission { font-size: 14px; opacity: .65; text-transform: uppercase; letter-spacing: 3px; }
+    #feed { position: absolute; left: 20px; bottom: 20px; width: 380px;
+      display: flex; flex-direction: column-reverse; gap: 4px; }
+    #feed div { background: rgba(16, 22, 33, .82); border-left: 3px solid #4a9eff;
+      padding: 5px 10px; font-size: 15px; border-radius: 0 6px 6px 0;
+      transition: opacity 1s; }
+    #feed div.score { border-left-color: #ffd23f; }
+    #feed div.crash { border-left-color: #ff5c5c; }
+    #conn { position: absolute; top: 20px; right: 24px; font-size: 13px; opacity: .8; }
+    #conn::before { content: "●"; margin-right: 6px; color: #ff5c5c; }
+    #conn.up::before { color: #4ade80; }
+    #join-overlay { position: fixed; inset: 0; background: #0e1116; display: flex;
+      align-items: center; justify-content: center; z-index: 10; }
+    #join-overlay form { display: flex; flex-direction: column; gap: 12px; width: 280px; }
+    #join-overlay h1 { font-size: 22px; margin-bottom: 8px; }
+    #join-overlay input { padding: 10px 12px; font-size: 16px; border-radius: 8px;
+      border: 1px solid #2c3444; background: #171d29; color: #e6e9ef; }
+    #join-overlay button { padding: 10px; font-size: 16px; border-radius: 8px; border: 0;
+      background: #4a9eff; color: #06101f; font-weight: 700; cursor: pointer; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div id="score-box">
+      <div id="score">0</div>
+      <div id="mission">connecting…</div>
+    </div>
+    <div id="feed"></div>
+    <div id="conn">offline</div>
+  </div>
+  <div id="join-overlay" class="hidden">
+    <form id="code-form">
+      <h1>drone life — sky view</h1>
+      <input id="code-input" placeholder="room code" autocomplete="off" autofocus />
+      <button type="submit">watch the sky</button>
+    </form>
+  </div>
+  <script type="module" src="/src/viewer/main.ts"></script>
+</body>
+</html>
