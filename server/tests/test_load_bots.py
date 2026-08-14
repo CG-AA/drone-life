@@ -6,9 +6,8 @@ import asyncio
 
 import pytest
 
-from app.config import Settings
 from app.service import DroneLifeService
-from tests.conftest import find_port_base
+from tests.conftest import find_port_base, make_settings
 
 pytestmark = pytest.mark.load
 
@@ -25,12 +24,10 @@ class CountingHub:
 
 
 async def test_ten_bots_for_a_minute(tmp_path):
-    settings = Settings(
+    settings = make_settings(
+        tmp_path,
         sim_unthrottled=False,
         mavlink_base_port=find_port_base(12),
-        state_dir=tmp_path / "state",
-        room_code="load",
-        admin_token="load-admin",
         max_students=12,
         sim_seed=3,
     )

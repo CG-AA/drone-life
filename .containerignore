@@ -1,0 +1,4 @@
+# The runner image only needs the dronelife helper — keep the build context tiny
+# (node_modules + .venv would otherwise add ~300 MB to every `make image`).
+*
+!examples/dronelife.py

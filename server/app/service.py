@@ -16,7 +16,7 @@ from pathlib import Path
 from .config import Settings
 from .core import snapshot
 from .core.bus import EventBus
-from .core.registry import Registry, Student
+from .core.registry import Registry, RoomFullError, Student
 from .game.engine import GameEngine
 from .game.mission import MissionConfig
 from .game.missions import MISSIONS
@@ -197,30 +197,44 @@ class DroneLifeService:
 
     async def reset_world(self) -> None:
         await self.runner.stop_all()
+        # bots are session furniture: clear them so `make reset && make bots`
+        # really is a clean slate and bot numbering restarts at 1
+        for student in list(self.registry.students.values()):
+            if student.name.startswith("Bot-"):
+                self.registry.remove(student.id)
+                await self.backend.remove(self.drone_id_for(student))
         self.world.reset()
         self.engine.reset(self.world.t)
+        self._save_snapshot()
 
     # ------------------------------------------------------------------ bots
 
-    async def spawn_bots(self, count: int, script: str, mode: str) -> list[str]:
+    async def spawn_bots(self, count: int, script: str, mode: str) -> dict:
+        """Returns {"started": [ids], "room_full": bool} — partial success is
+        reported, never discarded, so the operator can see what's flying."""
         if script not in BOT_SCRIPTS:
             raise ValueError(f"unknown bot script {script!r}; have {sorted(BOT_SCRIPTS)}")
         script_path = EXAMPLES_DIR / f"{script}.py"
-        started = []
+        code = script_path.read_text() if mode == "container" else None
+        started: list[str] = []
+        room_full = False
         # continue numbering past existing bots so repeat calls grow the fleet
         existing = [s.name for s in self.registry.students.values()
                     if s.name.startswith("Bot-")]
         next_no = max((int(n.split("-")[1]) for n in existing
                        if n.split("-")[1].isdigit()), default=0) + 1
         for i in range(count):
-            student, _ = await self.join(f"Bot-{next_no + i}")
+            try:
+                student, _ = await self.join(f"Bot-{next_no + i}")
+            except RoomFullError:
+                room_full = True
+                break
             if mode == "container":
-                code = script_path.read_text()
                 await self.runner.submit_container(student, code)
             else:
                 await self.runner.submit_local(student, script_path)
             started.append(student.id)
-        return started
+        return {"started": started, "room_full": room_full}
 
     # ------------------------------------------------------------- messages
 

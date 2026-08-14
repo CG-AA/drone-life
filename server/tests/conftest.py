@@ -5,11 +5,13 @@ os.environ["MAVLINK20"] = "1"  # must be set before mavutil is imported anywhere
 import asyncio  # noqa: E402
 import random  # noqa: E402
 import socket  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
 
 import pytest  # noqa: E402
 from pymavlink import mavutil  # noqa: E402
 
 from app.config import Settings  # noqa: E402
+from app.main import create_app  # noqa: E402
 from app.service import DroneLifeService  # noqa: E402
 
 
@@ -32,9 +34,9 @@ def find_port_base(count: int = 8) -> int:
     raise RuntimeError("no free port range found")
 
 
-@pytest.fixture
-async def service(tmp_path):
-    settings = Settings(
+def make_settings(tmp_path, **overrides) -> Settings:
+    """One place for test settings so every suite stays in sync."""
+    base = dict(
         sim_unthrottled=True,
         mavlink_base_port=find_port_base(),
         state_dir=tmp_path / "state",
@@ -43,7 +45,28 @@ async def service(tmp_path):
         max_students=6,
         sim_seed=7,
     )
-    svc = DroneLifeService(settings)
+    base.update(overrides)
+    return Settings(**base)
+
+
+@asynccontextmanager
+async def running_app(settings: Settings):
+    """create_app with the canonical bring-up/teardown order. Shared by the
+    API tests and the (marker-gated) e2e tests so they can't drift apart."""
+    app = create_app(settings)
+    service = app.state.service
+    await service.start()
+    app.state.hub.start()
+    try:
+        yield app
+    finally:
+        await app.state.hub.stop()
+        await service.stop()
+
+
+@pytest.fixture
+async def service(tmp_path):
+    svc = DroneLifeService(make_settings(tmp_path))
     await svc.start()
     yield svc
     await svc.stop()

@@ -45,7 +45,9 @@ async def bots(body: BotsBody, service: DroneLifeService = Depends(get_service))
         raise err(400, "mode", "mode must be 'local' or 'container'")
     count = max(1, min(body.count, service.settings.max_students))
     try:
-        started = await service.spawn_bots(count, body.script, body.mode)
+        result = await service.spawn_bots(count, body.script, body.mode)
     except ValueError as exc:
         raise err(400, "script", str(exc)) from exc
-    return {"started": started}
+    if result["room_full"] and not result["started"]:
+        raise err(409, "room_full", "no free slots for bots")
+    return result
