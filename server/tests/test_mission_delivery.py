@@ -8,7 +8,6 @@ from app.game.missions.delivery import (
     DROP_DWELL,
     PICKUP_DWELL,
     POINTS,
-    Crate,
     DeliveryMission,
 )
 from app.sim.backend import DroneView

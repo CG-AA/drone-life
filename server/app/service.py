@@ -207,8 +207,13 @@ class DroneLifeService:
             raise ValueError(f"unknown bot script {script!r}; have {sorted(BOT_SCRIPTS)}")
         script_path = EXAMPLES_DIR / f"{script}.py"
         started = []
+        # continue numbering past existing bots so repeat calls grow the fleet
+        existing = [s.name for s in self.registry.students.values()
+                    if s.name.startswith("Bot-")]
+        next_no = max((int(n.split("-")[1]) for n in existing
+                       if n.split("-")[1].isdigit()), default=0) + 1
         for i in range(count):
-            student, _ = await self.join(f"Bot-{i + 1}")
+            student, _ = await self.join(f"Bot-{next_no + i}")
             if mode == "container":
                 code = script_path.read_text()
                 await self.runner.submit_container(student, code)

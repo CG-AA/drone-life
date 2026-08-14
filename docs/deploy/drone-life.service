@@ -1,0 +1,19 @@
+[Unit]
+Description=drone-life workshop game server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dronelife
+WorkingDirectory=/opt/drone-life/server
+EnvironmentFile=/etc/drone-life.env
+# uv installed in the service user's home
+ExecStart=/home/dronelife/.local/bin/uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+Restart=on-failure
+RestartSec=3
+# rootless podman needs XDG_RUNTIME_DIR; systemd user lingering provides /run/user/<uid>
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+# Student script sandbox image. Build once at deploy: make image
+FROM docker.io/library/python:3.12-slim
+
+# MAVLINK20: the gateway speaks MAVLink 2 on the wire
+# DISABLE_MAVNATIVE: skip the C extension so no compiler is needed on slim
+ENV MAVLINK20=1 \
+    PYTHONUNBUFFERED=1 \
+    DISABLE_MAVNATIVE=True
+
+RUN pip install --no-cache-dir "pymavlink>=2.4.40,<2.5"
+
+# the dronelife helper is preinstalled so `from dronelife import connect` just works
+COPY examples/dronelife.py /usr/local/lib/python3.12/site-packages/dronelife.py
+
+RUN useradd -m -u 1000 pilot
+USER pilot
+WORKDIR /work

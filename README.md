@@ -1,0 +1,71 @@
+# drone life
+
+A one-day-workshop co-op drone game. Students write **pymavlink** scripts in
+the browser; each script flies a simulated drone in one shared 200×200 m arena,
+rendered live on a projector-friendly **2.5D isometric viewer**. v1 mission:
+co-op crate delivery with a shared team score.
+
+```
+students' browsers ──▶ submit page ──▶ podman sandbox ──▶ MAVLink/TCP ─┐
+                                                                       ▼
+projector ◀── WebSocket ◀── FastAPI ◀── game engine ◀── 20 Hz kinematic sim
+```
+
+- **One Python process** (FastAPI + asyncio) hosts the sim, per-drone MAVLink
+  TCP endpoints (loopback only), the mission engine, the podman script runner,
+  and the web/WS API — all on **one HTTP port** (proxy-friendly).
+- **Scripts are real pymavlink** against ArduPilot GUIDED-mode conventions —
+  the skills transfer to real drones. A preinstalled `dronelife` helper keeps
+  the beginner floor low; its source is the lesson.
+- **Missions are plugins** (`server/app/game/missions/`): implement the small
+  `Mission` interface, register it, done. Physics, networking, and rendering
+  never change. `freefly.py` is the seam proof; `delivery.py` is v1 content.
+
+## Quickstart (dev)
+
+```bash
+cd server && uv sync && cd ..            # Python 3.12 via uv
+cd web && npm install && npm run build && cd ..
+make dev-server                          # http://localhost:8000
+make bots N=5 ADMIN_TOKEN=change-me      # five demo drones on the viewer
+```
+
+Viewer: `http://localhost:8000/` — submit page: `/submit` — room code
+defaults to `classroom` (override with `ROOM_CODE`).
+
+Container pipeline (what students actually use): `make image`, then submit
+from the browser — or `make bots N=3 MODE=container SCRIPT=bot_courier` to
+watch bots play the whole game through real sandboxes.
+
+## Tests
+
+```bash
+make test    # server (pytest, incl. real-mavutil flights) + web (vitest)
+make e2e     # real podman container completes a delivery end-to-end
+make load    # 10 bots, 60 s: tick overruns <1%, world feed ≥9 Hz
+```
+
+## Layout
+
+| path | what |
+|---|---|
+| `server/app/sim/` | kinematic drone sim (NED, mode machine) + `DroneBackend` seam |
+| `server/app/mav/` | MAVLink gateway: TCP per drone, dispatch, telemetry |
+| `server/app/game/` | engine (score/feed services) + mission plugins |
+| `server/app/runner/` | podman-per-student script sandbox + live logs |
+| `server/app/api/` | REST + WebSocket (viewer/student feeds) |
+| `web/src/viewer/` | PixiJS isometric sky view |
+| `web/src/submit/` | CodeMirror editor, run controls, live logs |
+| `examples/` | `dronelife.py` helper, student templates, demo bots |
+| `docs/` | STUDENT_GUIDE (handout), DEPLOY (lab server + OCI proxy) |
+
+## Gotchas we already hit for you
+
+- mavutil is blocking: server-side only the generated dialect parser is used.
+- The wire is MAVLink 2 everywhere (`MAVLINK20=1` baked into every exec path).
+- `recv_match(blocking=True)` without `timeout` hangs forever — templates
+  always pass timeouts.
+- Script liveness = TCP close (mavutil clients don't send heartbeats).
+- Rootless podman: script files must be 0644 through the uid mapping;
+  `--rm` leaks on SIGKILL → the server sweeps by label at startup.
+- STATUSTEXT caps at 50 chars — game messages are designed terse.
