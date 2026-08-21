@@ -40,6 +40,20 @@ over and even **land on top**.
   close a **ring of 6 clay tiles** and a furnace lights for +30.
 - **canyon** — no scoring, just walls in the sky. Practice flying over
   (or through the corridor) without becoming a wreck on the ramparts.
+- **siege** — tower defense. Creep waves march from a gate toward the
+  **Keep at (0, 0)**; every one that arrives costs it hp (and the class
+  points). Three ways to fight back:
+  1. **Zap**: hover low over a creep for **1.5 s** — the game texts you your
+     nearest target (`GAME: creep at N 12 E -40`) every few seconds.
+  2. **Squish**: place a tile right on top of one (same ferry loop as
+     rampart — steel comes from the announced quarry).
+  3. **Watchtower**: stack **3 steel on one cell** (+15) and it auto-fires
+     at everything within 12 m.
+
+  Walls 2 tiles high reroute the creeps into your kill zones — but nothing
+  is forever: a blocked creep **chews** through (watch for `wall chewed`
+  warnings, and rebuild). You get 45 s of peace before wave 1, and 20 s
+  between waves. Waves grow; the Keep pays -25 if it falls, then rebuilds.
 
 Crashing into a wall costs you your tile and 5 s on the ground — the arena
 edges are still soft, but steel is not.
@@ -112,6 +126,8 @@ connection string and the messages are identical.
 | picked up nothing over a crate | too high, or not 2 full seconds | below 3 m altitude, hold still, count to 2 |
 | `DRONE: CRASH: hit a wall` | flew into a tile stack side-on | go over the top (walls max out at 8 m) or around |
 | tile won't place | wrong altitude, wrong cell, or empty hands | hover at the **announced** altitude on the announced spot, carrying |
+| creep won't die under me | too high, or it walked out from under you | stay within ~4 m of it, **below its feet + 3 m**, for a full 1.5 s |
+| my wall is disappearing | a blocked creep is chewing it | that's the `wall chewed` warning — zap the chewer, rebuild the tile |
 
 ## Pro moves
 

@@ -28,6 +28,11 @@ projector ◀── WebSocket ◀── FastAPI ◀── game engine ◀── 
   is pre-placed walls; `rampart.py` is guided wall-building (ferry steel from
   the quarry, `bot_builder` demos it); `forge.py` is free building where a
   closed ring of 6 clay tiles becomes a furnace.
+- **Ground units** (`game/path.py` + `units.py`): creeps walk a chew-aware
+  Dijkstra flow field over the tiles — walls reroute them, and what they
+  can't climb they chew. `siege.py` is the payoff: tower-defense waves march
+  on the Keep while drones zap creeps, squish them under tiles, and stack
+  3 steel into auto-firing watchtowers (`bot_siege` demos the hunt).
 
 ## Quickstart (dev)
 

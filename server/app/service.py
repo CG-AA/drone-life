@@ -30,7 +30,7 @@ from .sim.world import World
 log = logging.getLogger(__name__)
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
-BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder"}
+BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder", "bot_siege"}
 SNAPSHOT_INTERVAL = 30.0
 
 
