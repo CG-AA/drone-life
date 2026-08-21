@@ -6,6 +6,7 @@ from .delivery import DeliveryMission
 from .forge import ForgeMission
 from .freefly import FreeFlyMission
 from .rampart import RampartMission
+from .siege import SiegeMission
 
 MISSIONS: dict[str, type[Mission]] = {
     CanyonMission.name: CanyonMission,
@@ -13,4 +14,5 @@ MISSIONS: dict[str, type[Mission]] = {
     ForgeMission.name: ForgeMission,
     FreeFlyMission.name: FreeFlyMission,
     RampartMission.name: RampartMission,
+    SiegeMission.name: SiegeMission,
 }

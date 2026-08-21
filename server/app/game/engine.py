@@ -41,7 +41,7 @@ class _API:
 
     def add_score(self, points: int, reason: str, student_id: str | None = None) -> int:
         self._engine.score += points
-        self._engine.bus.emit("score", f"+{points}: {reason}", student_id=student_id,
+        self._engine.bus.emit("score", f"{points:+d}: {reason}", student_id=student_id,
                               data={"points": points, "total": self._engine.score}, t=self.now)
         return self._engine.score
 
