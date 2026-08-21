@@ -141,7 +141,9 @@ class SiegeMission(Mission):
         for p in placed:
             self._squish(world, p)
             match = self.blueprints.check(self.tm, p.cell)
-            if match is not None:
+            if match is None:
+                world.send_text(p.drone.id, f"GAME: placed! tile at {fmt_cell(p.cell)}")
+            else:
                 self.towers[match.anchor] = -math.inf  # loaded and ready
                 world.add_score(TOWER_POINTS, f"watchtower at {fmt_cell(match.anchor)}",
                                 student_id=p.drone.student_id)

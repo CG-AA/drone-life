@@ -156,6 +156,7 @@ def test_squish_kill_commits_the_tile():
     assert not m.creeps, "the tile landed on it"
     assert world.score == before + KILL_POINTS
     assert any("squish! creep under tile" in t for t in texts(world))
+    assert any("placed! tile at" in t for t in texts(world))
     assert_grammar(world)
 
 
@@ -175,6 +176,8 @@ def test_tower_builds_fires_and_beam_expires():
     assert cell in m.towers
     assert world.score == before + TOWER_POINTS
     assert any("tower up! +15" in t for t in texts(world))
+    placed = [t for t in texts(world) if "placed! tile at" in t]
+    assert len(placed) == 2, "the tower-completing tile gets the tower text"
 
     creep = add_creep(m, (4, 3))  # two cells out: ~10.4 m, inside range
     tn, te = hex.axial_to_world(cell)
