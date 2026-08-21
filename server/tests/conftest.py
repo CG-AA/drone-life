@@ -177,3 +177,51 @@ async def pilot_factory(service):
     yield make
     for p in pilots:
         p.close()
+
+
+# --------------------------------------------------------------- mission tests
+# Shared harness for testing missions through the WorldAPI seam — no MAVLink,
+# no sim. Import as `from tests.conftest import FakeWorld, view`.
+
+from app.game.mission import MissionConfig  # noqa: E402
+from app.sim.backend import DroneView  # noqa: E402
+
+
+def view(drone_id="d0", n=0.0, e=0.0, alt=1.0, armed=True, crashed=False) -> DroneView:
+    return DroneView(
+        id=drone_id, student_id=f"s-{drone_id}", name=drone_id.upper(), sysid=1,
+        n=n, e=e, alt=alt, vn=0, ve=0, valt=0, yaw=0, mode="GUIDED",
+        armed=armed, on_ground=False, crashed=crashed, connected=True,
+    )
+
+
+class FakeWorld:
+    def __init__(self) -> None:
+        self.rng = random.Random(1)
+        self.config = MissionConfig(arena_half=100, alt_max=60, pads=[(-90.0, -76.0)])
+        self.now = 0.0
+        self.views: list[DroneView] = []
+        self.events: list[tuple[str, str]] = []
+        self.texts: list[tuple[str, str]] = []  # (target, text)
+        self.score = 0
+
+    def drones(self):
+        return self.views
+
+    def emit_event(self, kind, msg, student_id=None, data=None):
+        self.events.append((kind, msg))
+
+    def add_score(self, points, reason, student_id=None):
+        self.score += points
+        return self.score
+
+    def send_text(self, drone_id, text, severity=6):
+        self.texts.append((drone_id, text))
+
+    def broadcast_text(self, text, severity=6):
+        self.texts.append(("*", text))
+
+    def run(self, mission, seconds, dt=0.1):
+        for _ in range(int(seconds / dt)):
+            self.now += dt
+            mission.tick(self, dt)

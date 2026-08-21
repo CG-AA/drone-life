@@ -66,6 +66,18 @@ export interface HelloData {
   epoch: number;
 }
 
+/** One hex cell's stack, bottom-up. Mirrors TileMap.to_wire(). */
+export interface TileCell {
+  q: number;
+  r: number;
+  stack: string[]; // material names
+}
+
+export interface TilesData {
+  geometry: { size: number; tile_height: number };
+  cells: TileCell[];
+}
+
 export interface LogLine {
   ts: number;
   stream: "stdout" | "stderr" | "system";

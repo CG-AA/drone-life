@@ -15,6 +15,7 @@ export class Scene {
   padLayer = new Container();
   trailLayer = new Container();
   shadowLayer = new Container();
+  terrainLayer = new Container(); // hex-tile prisms, event-driven redraw
   spriteLayer = new Container(); // drones + entities, depth-sorted
 
   scale = 3;
@@ -27,7 +28,7 @@ export class Scene {
     document.body.appendChild(this.app.canvas);
     this.spriteLayer.sortableChildren = true;
     this.world.addChild(this.gridLayer, this.gridLabels, this.padLayer, this.trailLayer,
-                        this.shadowLayer, this.spriteLayer);
+                        this.shadowLayer, this.terrainLayer, this.spriteLayer);
     this.app.stage.addChild(this.world);
     window.addEventListener("resize", () => this.layout());
     this.layout();

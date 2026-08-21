@@ -12,9 +12,12 @@ import random
 from abc import ABC
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import ClassVar, Protocol
+from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from ..sim.backend import DroneView
+
+if TYPE_CHECKING:
+    from .tiles import TileMap
 
 SEV_INFO = 6
 SEV_WARNING = 4
@@ -70,6 +73,13 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
 
     def entities(self) -> list[Entity]:
         return []
+
+    def tile_map(self) -> TileMap | None:
+        """Missions with terrain return their TileMap; the service wires it
+        into the sim as Terrain and broadcasts it to viewers. Identity must be
+        stable for the process lifetime — reset() clears and rebuilds the same
+        map, never replaces it."""
+        return None
 
     def reset(self, world: WorldAPI) -> None:  # noqa: B027
         pass

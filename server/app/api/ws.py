@@ -93,6 +93,11 @@ class Hub:
         for client in self.clients:
             client.push_world(msg)
 
+    def broadcast_tiles(self, data: dict) -> None:
+        msg = envelope("tiles", data)
+        for client in self.clients:
+            client.push(msg)
+
     def send_run_state(self, student_id: str, payload: dict) -> None:
         for client in self.by_student.get(student_id, ()):
             client.push(envelope("run_state", payload))
@@ -142,6 +147,8 @@ async def _serve(ws: WebSocket, client: Client) -> None:
     service = ws.app.state.service
     hub.register(client)
     client.push(envelope("hello", service.hello_message()))
+    if service.tilemap is not None:
+        client.push(envelope("tiles", service.tiles_message()))
     for event in list(service.bus.feed)[-20:]:
         client.push(envelope("event", event))
     client.push_world(envelope("world", service.world_message()))

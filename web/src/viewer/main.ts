@@ -1,6 +1,6 @@
 /** Viewer page: connect, buffer world frames, render interpolated at 60 fps. */
 
-import type { DroneState, EntityState, EventData, HelloData, WorldData }
+import type { DroneState, EntityState, EventData, HelloData, TilesData, WorldData }
   from "../shared/protocol";
 import { GameSocket } from "../shared/ws";
 import { DroneRenderer } from "./drones";
@@ -8,6 +8,7 @@ import { EntityRenderer } from "./entities";
 import { Hud } from "./hud";
 import { lerpAngle } from "./iso";
 import { Scene } from "./scene";
+import { TerrainRenderer } from "./terrain";
 
 const CODE_KEY = "dl_room_code";
 
@@ -43,6 +44,7 @@ async function boot(): Promise<void> {
   const hud = new Hud();
   const droneR = new DroneRenderer(scene);
   const entityR = new EntityRenderer(scene);
+  const terrainR = new TerrainRenderer(scene);
 
   let code = localStorage.getItem(CODE_KEY);
   if (!code) {
@@ -69,6 +71,7 @@ async function boot(): Promise<void> {
     hud.setScore(d.score);
     scene.drawPads(d.pads);
   });
+  ws.on<TilesData>("tiles", (d) => terrainR.set(d));
   ws.on<EventData>("event", (ev) => hud.addEvent(ev));
   ws.onStatus = (up) => hud.setConn(up);
   ws.onRejected = () => {
@@ -78,6 +81,7 @@ async function boot(): Promise<void> {
   ws.connect();
 
   scene.app.ticker.add(() => {
+    terrainR.tick(); // cheap scale-key check; tiles redraw only on change
     if (!cur) return;
     const now = performance.now();
     const interval = prev ? Math.max(40, cur.at - prev.at) : 100;

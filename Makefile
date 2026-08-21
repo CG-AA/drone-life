@@ -5,6 +5,7 @@
 
 ROOM_CODE ?= classroom
 ADMIN_TOKEN ?= change-me
+MISSION ?= delivery
 HOST ?= 127.0.0.1:8000
 N ?= 5
 MODE ?= local
@@ -13,7 +14,7 @@ SCRIPT ?= bot_patrol
 .PHONY: dev-server dev-web build image run test test-web e2e load lint fmt bots reset clean
 
 dev-server:
-	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) \
+	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
 		uv run uvicorn app.main:app --reload --port 8000
 
 dev-web:
@@ -26,7 +27,7 @@ image:
 	podman build -f runner/Containerfile -t drone-life-runner:latest .
 
 run:
-	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) \
+	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
 		uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 
 test:

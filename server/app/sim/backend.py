@@ -59,6 +59,3 @@ class DroneBackend(ABC):
 
     @abstractmethod
     def send_text(self, drone_id: str, text: str, severity: int) -> None: ...
-
-    @abstractmethod
-    async def reset(self) -> None: ...
