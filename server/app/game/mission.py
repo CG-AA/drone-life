@@ -4,6 +4,10 @@ A mission sees the world ONLY through WorldAPI and describes itself to the
 viewer ONLY through Entity records. New game content = a new Mission subclass
 registered in missions/__init__.py; physics, networking, and rendering stay
 untouched.
+
+GAME text grammar (STATUSTEXT is 50 chars and students regex it — keep this
+law so a parser written for one mission transfers to the next): positions are
+announced as "<thing> at N <int> E <int>"; confirmations end with "!".
 """
 
 from __future__ import annotations

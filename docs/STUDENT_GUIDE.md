@@ -18,6 +18,32 @@ DRONE: GAME: crate 3 at N 12 E -40
 
 That means: `drone.goto(12, -40, 2)` puts you right on top of it.
 
+## The building games (if your instructor picked one)
+
+Some sessions run a **hex-tile building mission** instead of delivery. Tiles
+stack into real walls — drones **crash into them** from the side, but can fly
+over and even **land on top**.
+
+- **rampart** — ferry steel from the quarry onto the ghost wall. Hover **low
+  (below 3 m)** at the quarry for **2 s** to grab a tile, then hover at the
+  announced spot **at the announced altitude** for **1.5 s** to place it:
+
+  ```
+  DRONE: GAME: quarry at N -30 E 40
+  DRONE: GAME: wall gap at N 10 E -55 hover 4
+  ```
+
+  means `drone.goto(-30, 40, 2)`, wait for `got steel`, then
+  `drone.goto(10, -55, 4)` and hold still. Each block climbs the target
+  altitude by 2 m — the game always tells you the right number.
+- **forge** — same ferry loop from the clay pit, but you build anywhere:
+  close a **ring of 6 clay tiles** and a furnace lights for +30.
+- **canyon** — no scoring, just walls in the sky. Practice flying over
+  (or through the corridor) without becoming a wreck on the ramparts.
+
+Crashing into a wall costs you your tile and 5 s on the ground — the arena
+edges are still soft, but steel is not.
+
 ## The map
 
 - Coordinates are meters. **N** (north) and **E** (east) both run **-100 to 100**.
@@ -84,6 +110,8 @@ connection string and the messages are identical.
 | `syntax error, line N` in red | Python couldn't parse your script | click the banner — the editor jumps to the line |
 | drone stuck somewhere weird | — | press **reset drone**: script stops, drone back on your pad |
 | picked up nothing over a crate | too high, or not 2 full seconds | below 3 m altitude, hold still, count to 2 |
+| `DRONE: CRASH: hit a wall` | flew into a tile stack side-on | go over the top (walls max out at 8 m) or around |
+| tile won't place | wrong altitude, wrong cell, or empty hands | hover at the **announced** altitude on the announced spot, carrying |
 
 ## Pro moves
 

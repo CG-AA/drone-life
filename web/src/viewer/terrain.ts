@@ -11,17 +11,18 @@ import { axialToWorld, hexCorners } from "./hex";
 import { ALT_LIFT, project } from "./iso";
 import type { Scene } from "./scene";
 
-interface MaterialColors {
+export interface MaterialColors {
   top: number;
   side: number;
   sideDark: number;
 }
 
-const MATERIAL_COLORS: Record<string, MaterialColors> = {
+export const MATERIAL_COLORS: Record<string, MaterialColors> = {
   steel: { top: 0xa8b4c4, side: 0x77879c, sideDark: 0x566374 },
   clay: { top: 0xc98d68, side: 0xa9714c, sideDark: 0x8f5a3c },
 };
-const UNKNOWN: MaterialColors = { top: 0x8a8f98, side: 0x6a6f78, sideDark: 0x4e535c };
+export const UNKNOWN_MATERIAL: MaterialColors =
+  { top: 0x8a8f98, side: 0x6a6f78, sideDark: 0x4e535c };
 
 export class TerrainRenderer {
   private g = new Graphics();
@@ -66,7 +67,7 @@ export class TerrainRenderer {
 
       // side faces, one color band per stacked tile (bottom-up)
       for (let level = 0; level < cell.stack.length; level++) {
-        const mat = MATERIAL_COLORS[cell.stack[level]] ?? UNKNOWN;
+        const mat = MATERIAL_COLORS[cell.stack[level]] ?? UNKNOWN_MATERIAL;
         const y0 = level * bandLift;
         const y1 = (level + 1) * bandLift;
         for (let k = 0; k < 6; k++) {
@@ -86,7 +87,7 @@ export class TerrainRenderer {
       }
 
       // top face in the top tile's color
-      const topMat = MATERIAL_COLORS[cell.stack[cell.stack.length - 1]] ?? UNKNOWN;
+      const topMat = MATERIAL_COLORS[cell.stack[cell.stack.length - 1]] ?? UNKNOWN_MATERIAL;
       const topLift = cell.stack.length * bandLift;
       g.poly(corners.flatMap((p) => [p.x, p.y - topLift]))
         .fill({ color: topMat.top })
