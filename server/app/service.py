@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 from collections.abc import Sequence
 from pathlib import Path
 
+from .api import messages
 from .config import Settings
 from .core import snapshot
 from .core.bus import EventBus
@@ -30,7 +30,7 @@ from .sim.world import World
 log = logging.getLogger(__name__)
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
-BOT_SCRIPTS = {"bot_patrol", "bot_courier"}
+BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder"}
 SNAPSHOT_INTERVAL = 30.0
 
 
@@ -58,9 +58,6 @@ class KinematicBackend(DroneBackend):
         if drone:
             drone.say(text, severity)
 
-    async def reset(self) -> None:
-        self.world.reset()
-
 
 class DroneLifeService:
     def __init__(self, settings: Settings) -> None:
@@ -70,6 +67,20 @@ class DroneLifeService:
         self.backend = KinematicBackend(self.world, self.gateway)
         self.bus = EventBus()
         self.registry = Registry(settings.max_students, settings.mavlink_base_port)
+        self._bind_mission(settings)
+        self.runner = RunnerManager(settings, EXAMPLES_DIR, self._on_run_event)
+        self.hub = None  # set by api.ws when the app wires up
+
+        self.ticks = 0
+        self.overruns = 0
+        self._pending_events: list[tuple[DroneView, str]] = []
+        self._tasks: list[asyncio.Task] = []
+        self._snapshot_path = settings.abs_state_dir / "snapshot.json"
+
+    def _bind_mission(self, settings: Settings) -> None:
+        """Instantiate the mission and wire it to the sim and broadcast state.
+        One place, so a future runtime mission-switch is a route, not a
+        rewiring project."""
         mission_cls = MISSIONS.get(settings.mission)
         if mission_cls is None:
             raise ValueError(f"unknown MISSION={settings.mission!r}; have {sorted(MISSIONS)}")
@@ -79,14 +90,10 @@ class DroneLifeService:
             pads=[World.pad_position(i) for i in range(settings.max_students)],
         )
         self.engine = GameEngine(self.backend, self.bus, mission_cls(), config, settings.sim_seed)
-        self.runner = RunnerManager(settings, EXAMPLES_DIR, self._on_run_event)
-        self.hub = None  # set by api.ws when the app wires up
-
-        self.ticks = 0
-        self.overruns = 0
-        self._pending_events: list[tuple[DroneView, str]] = []
-        self._tasks: list[asyncio.Task] = []
-        self._snapshot_path = settings.abs_state_dir / "snapshot.json"
+        self.tilemap = self.engine.mission.tile_map()
+        if self.tilemap is not None:
+            self.world.terrain = self.tilemap
+        self._tiles_sent = -1
 
     # ------------------------------------------------------------- lifecycle
 
@@ -128,6 +135,9 @@ class DroneLifeService:
                 self.engine.tick(self.world.t, 2 * P.DT, pending)
                 if self.hub is not None:
                     self.hub.broadcast_world(self.world_message())
+                    if self.tilemap is not None and self.tilemap.version != self._tiles_sent:
+                        self._tiles_sent = self.tilemap.version
+                        self.hub.broadcast_tiles(self.tiles_message())
             tick += 1
             self.ticks += 1
             next_t += P.DT
@@ -237,44 +247,17 @@ class DroneLifeService:
         return {"started": started, "room_full": room_full}
 
     # ------------------------------------------------------------- messages
+    # Wire shapes live in api/messages.py; these delegates keep the service
+    # as the single facade for callers and tests.
 
     def world_message(self) -> dict:
-        entities = [
-            {"id": e.id, "kind": e.kind, "n": _f(e.n), "e": _f(e.e), "alt": _f(e.alt),
-             "data": e.data}
-            for e in self.engine.entities()
-        ]
-        carrying: dict[str, str] = {}
-        for ent in entities:
-            carrier = ent["data"].get("carried_by")
-            if ent["kind"] == "crate" and carrier:
-                carrying[carrier] = ent["id"]
-        drones = []
-        for view in sorted(self.backend.drones(), key=lambda v: v.sysid):
-            drones.append({
-                "id": view.id, "student_id": view.student_id, "name": view.name,
-                "sysid": view.sysid, "n": _f(view.n), "e": _f(view.e), "alt": _f(view.alt),
-                "vn": _f(view.vn), "ve": _f(view.ve), "yaw": _f(view.yaw),
-                "mode": view.mode, "armed": view.armed, "on_ground": view.on_ground,
-                "crashed": view.crashed, "connected": view.connected,
-                "carrying": carrying.get(view.id),
-            })
-        pads = [
-            {"slot": s.slot, "n": _f(World.pad_position(s.slot)[0]),
-             "e": _f(World.pad_position(s.slot)[1]), "name": s.name}
-            for s in self.registry.students.values()
-        ]
-        return {"epoch": self.world.epoch, "t": round(self.world.t, 2),
-                "score": self.engine.score, "drones": drones, "entities": entities,
-                "pads": pads}
+        return messages.world_message(self)
 
     def hello_message(self) -> dict:
-        return {
-            "proto": 1,
-            "arena": {"half": P.ARENA_HALF, "alt_max": P.ALT_MAX},
-            "mission": self.engine.mission.name,
-            "epoch": self.world.epoch,
-        }
+        return messages.hello_message(self)
+
+    def tiles_message(self) -> dict:
+        return messages.tiles_message(self)
 
     def health(self) -> dict:
         return {"ok": True, "drones": len(self.world.drones), "ticks": self.ticks,
@@ -290,8 +273,3 @@ class DroneLifeService:
             name = student.name if student else student_id
             self.bus.emit("script_exit", f"{name}'s script exited (code {payload['exit_code']})",
                           student_id=student_id, t=self.world.t)
-
-
-def _f(x: float) -> float:
-    """JSON-safe float: finite, 2 decimals. One NaN must never poison the snapshot."""
-    return round(x, 2) if math.isfinite(x) else 0.0

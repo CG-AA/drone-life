@@ -10,6 +10,7 @@ import random
 
 from . import params as P
 from .drone import DroneSim
+from .terrain import FLAT, Terrain
 
 
 class World:
@@ -18,6 +19,7 @@ class World:
         self.epoch = 0  # bumped on reset so viewers clear trails
         self.drones: dict[str, DroneSim] = {}
         self.rng = random.Random(seed)
+        self.terrain: Terrain = FLAT  # a mission's TileMap, wired by the service
 
     @staticmethod
     def pad_position(slot: int) -> tuple[float, float]:
@@ -40,7 +42,7 @@ class World:
         self.t += dt
         events: list[tuple[DroneSim, str]] = []
         for drone in self.drones.values():
-            drone.step(self.t, dt)
+            drone.step(self.t, dt, self.terrain)
             for kind in drone.events:
                 events.append((drone, kind))
             drone.events.clear()

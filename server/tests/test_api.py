@@ -106,3 +106,28 @@ async def test_admin_bots_partial_fill_and_reset_clears_them(client):
 async def test_healthz(client):
     r = await client.get("/healthz")
     assert r.status_code == 200 and r.json()["ok"] is True
+
+
+async def test_rampart_tiles_and_terrain_wiring(tmp_path):
+    """A tile mission wires its TileMap into the sim and the tiles feed."""
+    async with running_app(make_settings(tmp_path, mission="rampart")) as app:
+        service = app.state.service
+        assert service.tilemap is service.engine.mission.tile_map()
+        assert service.world.terrain is service.tilemap
+
+        msg = service.tiles_message()
+        assert msg["geometry"]["size"] > 0 and "cells" in msg
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.get("/api/v1/world", params={"code": "test-room"})
+            assert r.status_code == 200
+            body = r.json()
+            assert body["hello"]["mission"] == "rampart"
+            kinds = {e["kind"] for e in body["world"]["entities"]}
+            assert "tile_source" in kinds and "ghost_tile" in kinds
+
+            version = service.tilemap.version
+            r = await c.post("/api/v1/admin/reset", headers=ADMIN)
+            assert r.status_code == 200
+            assert service.tilemap.version > version, "reset re-signals the tiles feed"

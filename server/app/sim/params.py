@@ -27,6 +27,8 @@ ORPHAN_GRACE = 10.0  # s after script disconnect before auto-RTL
 CRASH_FALL_SPEED = 8.0  # m/s drop when force-disarmed mid-air
 CRASH_DOWN_TIME = 5.0  # s shown crashed on the ground before respawn
 
+TERRAIN_SWEEP_STEP = 0.25  # m between collision samples along one tick's motion
+
 # spawn pads: a row along the south edge
 SPAWN_X = -90.0
 SPAWN_Y0 = -76.0

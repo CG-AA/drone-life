@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from . import params as P
+from .terrain import FLAT, Terrain
 
 SEV_INFO = 6  # MAV_SEVERITY_INFO
 SEV_WARNING = 4  # MAV_SEVERITY_WARNING
@@ -64,6 +65,7 @@ class DroneSim:
     disarm_at: float | None = None
     crash_until: float | None = None
     last_bounds_warn: float = -1e9
+    ground_d: float = 0.0  # d of the surface under the drone (-terrain height)
 
     outbox: list[tuple[int, str]] = field(default_factory=list)  # (severity, text)
     events: list[str] = field(default_factory=list)  # lifecycle events for the engine
@@ -82,7 +84,7 @@ class DroneSim:
     def on_ground(self) -> bool:
         if self.flight == Flight.IDLE:
             return True
-        return self.flight == Flight.CRASHED and self.d >= -0.01
+        return self.flight == Flight.CRASHED and self.d >= self.ground_d - 0.01
 
     @property
     def crashed(self) -> bool:
@@ -156,7 +158,8 @@ class DroneSim:
             return False, "takeoff needs arming first"
         if not self.on_ground or self.flight == Flight.CRASHED:
             return False, "already flying"
-        alt = min(max(alt, 0.5), P.ALT_MAX)
+        # from atop a stack, always climb clear of the roof
+        alt = min(max(alt, -self.ground_d + 0.5), P.ALT_MAX)
         self.tn, self.te, self.td = self.n, self.e, -alt
         self.vel_sp = None
         self.disarm_at = None
@@ -218,6 +221,7 @@ class DroneSim:
         self.vel_sp = None
         self.disarm_at = None
         self.crash_until = None
+        self.ground_d = 0.0  # pads are keep-out for tiles, always flat
 
     def _start_rtl(self, t: float) -> None:
         self.vel_sp = None
@@ -227,7 +231,9 @@ class DroneSim:
 
     # ---------------------------------------------------------------- stepping
 
-    def step(self, t: float, dt: float) -> None:
+    def step(self, t: float, dt: float, terrain: Terrain = FLAT) -> None:
+        self.ground_d = -terrain.height_at(self.n, self.e)
+
         if self.flight == Flight.IDLE:
             if self.armed and self.disarm_at is not None and t >= self.disarm_at:
                 self.armed = False
@@ -239,6 +245,7 @@ class DroneSim:
             self._step_crashed(t, dt)
             return
 
+        pn, pe, pd = self.n, self.e, self.d
         des_vn, des_ve, des_vd = self._desired_velocity(t)
 
         # accel-limit horizontal as a vector, vertical separately
@@ -258,6 +265,8 @@ class DroneSim:
         self.d += self.vd * dt
 
         self._clamp_bounds(t)
+        self._check_terrain(t, pn, pe, pd, terrain)
+        self.ground_d = -terrain.height_at(self.n, self.e)
         self._step_yaw(dt)
         self._check_transitions(t)
 
@@ -297,11 +306,11 @@ class DroneSim:
         return dn / dist * speed, de / dist * speed
 
     def _step_crashed(self, t: float, dt: float) -> None:
-        if self.d < 0:  # still falling
+        if self.d < self.ground_d:  # still falling (wrecks rest on rooftops too)
             self.vd = P.CRASH_FALL_SPEED
-            self.d = min(0.0, self.d + self.vd * dt)
-            if self.d >= 0:
-                self.d = 0.0
+            self.d = min(self.ground_d, self.d + self.vd * dt)
+            if self.d >= self.ground_d:
+                self.d = self.ground_d
                 self.vn = self.ve = self.vd = 0.0
                 self.crash_until = t + P.CRASH_DOWN_TIME
         elif self.crash_until is None:
@@ -332,6 +341,41 @@ class DroneSim:
             self.last_bounds_warn = t
             self.say("bounds: clamped at arena edge", SEV_WARNING)
 
+    def _check_terrain(self, t: float, pn: float, pe: float, pd: float,
+                       terrain: Terrain) -> None:
+        """Swept collision against the terrain along this tick's motion.
+
+        Entering a column from the side crashes; descending onto one from above
+        rides its roof (the same soft semantics as the flat-ground clamp).
+        """
+        if self.flight in (Flight.IDLE, Flight.CRASHED):
+            return
+        seg_n, seg_e, seg_d = self.n - pn, self.e - pe, self.d - pd
+        k = max(1, math.ceil(math.hypot(seg_n, seg_e) / P.TERRAIN_SWEEP_STEP))
+        start_alt = -pd
+        clamp_alt: float | None = None
+        for i in range(1, k + 1):
+            f = i / k
+            sn, se = pn + seg_n * f, pe + seg_e * f
+            s_alt = -(pd + seg_d * f)
+            if clamp_alt is not None:
+                s_alt = max(s_alt, clamp_alt)
+            h = terrain.height_at(sn, se)
+            if s_alt >= h - 1e-6:
+                continue
+            if start_alt >= h - 1e-6:  # came from at-or-above: ride the roof
+                clamp_alt = h if clamp_alt is None else max(clamp_alt, h)
+            else:  # flew into the side: rewind to the last clear sample
+                fb = (i - 1) / k
+                self.n, self.e = pn + seg_n * fb, pe + seg_e * fb
+                self.d = pd + seg_d * fb
+                self.vn = self.ve = 0.0
+                self.crash(t, "hit a wall")
+                return
+        if clamp_alt is not None and self.alt < clamp_alt:
+            self.d = -clamp_alt
+            self.vd = 0.0
+
     def _step_yaw(self, dt: float) -> None:
         if self.target_yaw is not None:
             want = self.target_yaw
@@ -355,8 +399,8 @@ class DroneSim:
             if math.hypot(self.tn - self.n, self.te - self.e) < P.ARRIVE_RADIUS:
                 self.flight = Flight.LAND
         elif self.flight == Flight.LAND:
-            if self.d >= 0.0:
-                self.d = 0.0
+            if self.d >= self.ground_d - 1e-6:
+                self.d = self.ground_d
                 self.vn = self.ve = self.vd = 0.0
                 self.flight = Flight.IDLE
                 self.disarm_at = t + P.DISARM_DELAY

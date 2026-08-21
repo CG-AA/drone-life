@@ -20,6 +20,14 @@ projector ◀── WebSocket ◀── FastAPI ◀── game engine ◀── 
 - **Missions are plugins** (`server/app/game/missions/`): implement the small
   `Mission` interface, register it, done. Physics, networking, and rendering
   never change. `freefly.py` is the seam proof; `delivery.py` is v1 content.
+  Select with `MISSION=<name>` (default `delivery`), e.g.
+  `MISSION=rampart make dev-server`.
+- **Hex-tile building** (`game/hex.py` + `tiles.py` + `building.py` +
+  `blueprints.py`): missions can place material tiles on a hex grid — stacks
+  are real terrain drones crash into, land on, and build with. `canyon.py`
+  is pre-placed walls; `rampart.py` is guided wall-building (ferry steel from
+  the quarry, `bot_builder` demos it); `forge.py` is free building where a
+  closed ring of 6 clay tiles becomes a furnace.
 
 ## Quickstart (dev)
 

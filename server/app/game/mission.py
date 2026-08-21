@@ -4,6 +4,10 @@ A mission sees the world ONLY through WorldAPI and describes itself to the
 viewer ONLY through Entity records. New game content = a new Mission subclass
 registered in missions/__init__.py; physics, networking, and rendering stay
 untouched.
+
+GAME text grammar (STATUSTEXT is 50 chars and students regex it — keep this
+law so a parser written for one mission transfers to the next): positions are
+announced as "<thing> at N <int> E <int>"; confirmations end with "!".
 """
 
 from __future__ import annotations
@@ -12,9 +16,12 @@ import random
 from abc import ABC
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import ClassVar, Protocol
+from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from ..sim.backend import DroneView
+
+if TYPE_CHECKING:
+    from .tiles import TileMap
 
 SEV_INFO = 6
 SEV_WARNING = 4
@@ -37,7 +44,6 @@ class MissionConfig:
     arena_half: float
     alt_max: float
     pads: list[tuple[float, float]]
-    dropoff: tuple[float, float] = (0.0, 0.0)
 
 
 class WorldAPI(Protocol):
@@ -70,6 +76,13 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
 
     def entities(self) -> list[Entity]:
         return []
+
+    def tile_map(self) -> TileMap | None:
+        """Missions with terrain return their TileMap; the service wires it
+        into the sim as Terrain and broadcasts it to viewers. Identity must be
+        stable for the process lifetime — reset() clears and rebuilds the same
+        map, never replaces it."""
+        return None
 
     def reset(self, world: WorldAPI) -> None:  # noqa: B027
         pass
