@@ -1,6 +1,6 @@
 """Co-op delivery: hover low over a crate to grab it, carry it to the dropoff
-pad at (0,0), score for the whole class. All of v1's game content lives here —
-everything else is engine.
+pad at (0,0), score for the whole class. v1's original content, now composed
+from the building.py dwell/carry primitives instead of inlining them.
 """
 
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from ..building import CarrySlots, DwellTracker
 from ..mission import Entity, Mission, WorldAPI
 
 CRATE_COUNT = 3
@@ -20,6 +21,11 @@ POINTS = 10
 ANNOUNCE_EVERY = 20.0  # re-broadcast crate positions for late joiners
 MIN_SPAWN_DIST = 15.0  # from pads, dropoff, other crates
 SPAWN_MARGIN = 15.0  # keep away from arena walls
+DROPOFF = (0.0, 0.0)
+
+
+def _pickup_dwell() -> DwellTracker:
+    return DwellTracker(PICKUP_RADIUS, PICKUP_ALT, PICKUP_DWELL)
 
 
 @dataclass
@@ -28,8 +34,7 @@ class Crate:
     n: float
     e: float
     carried_by: str | None = None  # drone id
-    pickup_dwell: dict[str, float] = field(default_factory=dict)  # drone id -> s
-    drop_dwell: float = 0.0
+    dwell: DwellTracker = field(default_factory=_pickup_dwell)
 
 
 class DeliveryMission(Mission):
@@ -37,6 +42,8 @@ class DeliveryMission(Mission):
 
     def __init__(self) -> None:
         self.crates: dict[str, Crate] = {}
+        self.carry = CarrySlots()  # drone id -> crate id
+        self.drop_dwell = DwellTracker(DROP_RADIUS, PICKUP_ALT, DROP_DWELL)
         self.next_id = 1
         self.last_announce = 0.0
         self._drone_pos: dict[str, tuple[float, float, float]] = {}
@@ -49,12 +56,14 @@ class DeliveryMission(Mission):
 
     def reset(self, world: WorldAPI) -> None:
         self.crates.clear()
+        self.carry.clear()
+        self.drop_dwell.clear()
         self.next_id = 1
         self.setup(world)
 
     def _spawn_crate(self, world: WorldAPI) -> None:
         half = world.config.arena_half - SPAWN_MARGIN
-        keep_away = [world.config.dropoff, *world.config.pads,
+        keep_away = [DROPOFF, *world.config.pads,
                      *[(c.n, c.e) for c in self.crates.values()]]
         n = e = 0.0
         for _ in range(200):
@@ -84,60 +93,44 @@ class DeliveryMission(Mission):
                 if crate.carried_by is None:
                     self._announce(world, crate)
 
-        carrying = {c.carried_by for c in self.crates.values() if c.carried_by}
-        for crate in list(self.crates.values()):
-            if crate.carried_by is None:
-                self._tick_ground_crate(world, crate, drones, carrying, dt)
-            else:
-                self._tick_carried_crate(world, crate, drones, dt)
-
-    def _tick_ground_crate(self, world: WorldAPI, crate: Crate, drones: dict,
-                           carrying: set, dt: float) -> None:
-        in_range: set[str] = set()
-        for d in drones.values():
-            if d.id in carrying or not d.armed or d.crashed or d.alt > PICKUP_ALT:
+        # carrier crashed or vanished before delivering: a fresh crate spawns
+        for drone_id, crate_id in self.carry.sync_losses(drones.values()):
+            crate = self.crates.pop(crate_id, None)
+            if crate is None:
                 continue
-            if math.hypot(d.n - crate.n, d.e - crate.e) <= PICKUP_RADIUS:
-                in_range.add(d.id)
-                dwell = crate.pickup_dwell.get(d.id, 0.0) + dt
-                crate.pickup_dwell[d.id] = dwell
-                if dwell >= PICKUP_DWELL:
-                    crate.carried_by = d.id
-                    crate.pickup_dwell.clear()
-                    world.emit_event("pickup", f"{d.name} picked up crate {crate.id}",
-                                     student_id=d.student_id)
-                    world.send_text(d.id, f"GAME: got crate {crate.id}! drop at N 0 E 0")
-                    world.broadcast_text(f"GAME: crate {crate.id} taken")
-                    return
-        # leaving the circle resets your dwell timer
-        for drone_id in list(crate.pickup_dwell):
-            if drone_id not in in_range:
-                del crate.pickup_dwell[drone_id]
-
-    def _tick_carried_crate(self, world: WorldAPI, crate: Crate, drones: dict,
-                            dt: float) -> None:
-        d = drones.get(crate.carried_by)
-        if d is None or d.crashed or not d.armed:
-            # carrier lost the crate before delivering: fresh one spawns
+            d = drones.get(drone_id)
             reason = "crashed" if (d and d.crashed) else "was lost"
             world.emit_event("crate_lost", f"crate {crate.id} {reason}",
                              student_id=d.student_id if d else None)
-            del self.crates[crate.id]
             self._spawn_crate(world)
-            return
-        dn, de = world.config.dropoff
-        if math.hypot(d.n - dn, d.e - de) <= DROP_RADIUS and d.alt <= PICKUP_ALT:
-            crate.drop_dwell += dt
-            if crate.drop_dwell >= DROP_DWELL:
+
+        # ground crates: hover low + dwell to pick up (one crate per drone)
+        for crate in list(self.crates.values()):
+            if crate.carried_by is not None:
+                continue
+            winner = crate.dwell.update(drones.values(), crate.n, crate.e, dt,
+                                        eligible=lambda d: self.carry.item(d.id) is None)
+            if winner is not None:
+                crate.carried_by = winner.id
+                self.carry.give(winner.id, crate.id)
+                world.emit_event("pickup", f"{winner.name} picked up crate {crate.id}",
+                                 student_id=winner.student_id)
+                world.send_text(winner.id, f"GAME: got crate {crate.id}! drop at N 0 E 0")
+                world.broadcast_text(f"GAME: crate {crate.id} taken")
+
+        # the dropoff runs one dwell for whoever is carrying
+        winner = self.drop_dwell.update(drones.values(), *DROPOFF, dt,
+                                        eligible=lambda d: self.carry.item(d.id) is not None)
+        if winner is not None:
+            crate = self.crates.pop(self.carry.take(winner.id) or "", None)
+            if crate is not None:
                 total = world.add_score(POINTS, f"crate {crate.id} delivered",
-                                        student_id=d.student_id)
-                world.emit_event("delivery", f"{d.name} delivered crate {crate.id}! +{POINTS}",
-                                 student_id=d.student_id, data={"points": POINTS})
-                world.send_text(d.id, f"GAME: delivered! +{POINTS} (team {total})")
-                del self.crates[crate.id]
+                                        student_id=winner.student_id)
+                world.emit_event("delivery",
+                                 f"{winner.name} delivered crate {crate.id}! +{POINTS}",
+                                 student_id=winner.student_id, data={"points": POINTS})
+                world.send_text(winner.id, f"GAME: delivered! +{POINTS} (team {total})")
                 self._spawn_crate(world)
-        else:
-            crate.drop_dwell = 0.0
 
     # -------------------------------------------------------------- viewer
 

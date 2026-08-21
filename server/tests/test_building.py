@@ -36,7 +36,18 @@ def test_dwell_accumulates_and_completes():
     d = view(n=0.0, e=0.0, alt=1.0)
     assert run_dwell(tracker, [d], 0, 0, 0.5) is None
     assert run_dwell(tracker, [d], 0, 0, 0.6) is d
-    assert tracker.acc == {}, "winning clears the accumulators"
+    assert tracker.acc == {}, "winning resets the winner's timer"
+
+
+def test_dwell_second_drone_keeps_its_progress():
+    tracker = DwellTracker(radius=2.0, max_alt=3.0, dwell_s=1.0)
+    a, b = view("d0"), view("d1")
+    # d0 starts 0.3 s ahead; when it wins, d1's progress must survive
+    tracker.update([a], 0, 0, 0.3)
+    winner = run_dwell(tracker, [a, b], 0, 0, 1.0)
+    assert winner is a
+    assert tracker.acc.get("d1", 0) > 0.5, "the runner-up keeps accumulating"
+    assert run_dwell(tracker, [b], 0, 0, 0.4) is b, "and finishes on schedule"
 
 
 def test_dwell_resets_on_exit():

@@ -44,7 +44,6 @@ class MissionConfig:
     arena_half: float
     alt_max: float
     pads: list[tuple[float, float]]
-    dropoff: tuple[float, float] = (0.0, 0.0)
 
 
 class WorldAPI(Protocol):

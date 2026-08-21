@@ -39,8 +39,9 @@ class DwellTracker:
 
     def update(self, drones: Iterable[DroneView], n: float, e: float, dt: float,
                eligible: Callable[[DroneView], bool] | None = None) -> DroneView | None:
-        """Accumulate dwell for drones hovering the point; the first to finish
-        is returned (accumulators reset) — at most one winner per tick."""
+        """Accumulate dwell for drones hovering the point. At most one winner
+        per tick; only the winner's timer resets, so a second drone mid-dwell
+        finishes on its own schedule."""
         in_range: set[str] = set()
         winner: DroneView | None = None
         for d in drones:
@@ -58,7 +59,7 @@ class DwellTracker:
             if drone_id not in in_range:
                 del self.acc[drone_id]
         if winner is not None:
-            self.acc.clear()
+            del self.acc[winner.id]
         return winner
 
     def clear(self) -> None:
