@@ -2,6 +2,7 @@
 
 import { Application, Container, Graphics, Text } from "pixi.js";
 import type { PadState } from "../shared/protocol";
+import { COLORS, FONT_UI } from "../shared/theme";
 import { ALT_LIFT, fitScale, project } from "./iso";
 import { slotColor } from "./colors";
 
@@ -24,7 +25,16 @@ export class Scene {
   private padsKey = "";
 
   async init(): Promise<void> {
-    await this.app.init({ background: 0x0e1116, resizeTo: window, antialias: true });
+    await this.app.init({
+      background: COLORS.bg,
+      resizeTo: window,
+      antialias: true,
+      // sharp on HiDPI/scaled-4K projectors; capped to bound GPU cost
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      autoDensity: true,
+    });
+    this.app.canvas.setAttribute("role", "img");
+    this.app.canvas.setAttribute("aria-label", "live drone arena");
     document.body.appendChild(this.app.canvas);
     this.spriteLayer.sortableChildren = true;
     this.world.addChild(this.gridLayer, this.gridLabels, this.padLayer, this.trailLayer,
@@ -41,8 +51,11 @@ export class Scene {
   }
 
   layout(): void {
-    const w = this.app.renderer.width;
-    const h = this.app.renderer.height;
+    // window dims, not renderer dims: Pixi's ResizePlugin applies the actual
+    // renderer resize on a later rAF, so renderer.width here can be stale
+    // (one F11 toggle would leave the arena fitted to the old viewport).
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     this.scale = fitScale(this.half, this.altMax, w, h);
     // ground diamond is vertically centered; sky headroom sits above it
     this.world.position.set(w / 2, h / 2 + (this.altMax * ALT_LIFT * this.scale) / 2);
@@ -61,7 +74,7 @@ export class Scene {
       project(H, H, 0, s), project(-H, H, 0, s),
       project(-H, -H, 0, s), project(H, -H, 0, s),
     ];
-    g.poly(corners.flatMap((p) => [p.x, p.y])).fill({ color: 0x151b28 });
+    g.poly(corners.flatMap((p) => [p.x, p.y])).fill({ color: COLORS.floor });
 
     for (let v = -H; v <= H; v += GRID_STEP) {
       const a = project(v, -H, 0, s);
@@ -71,25 +84,25 @@ export class Scene {
       const d = project(H, v, 0, s);
       g.moveTo(c.x, c.y).lineTo(d.x, d.y);
     }
-    g.stroke({ width: 1, color: 0x263149, alpha: 0.8 });
-    g.poly(corners.flatMap((p) => [p.x, p.y])).stroke({ width: 2, color: 0x3b4a6b });
+    g.stroke({ width: 1, color: COLORS.grid, alpha: 0.8 });
+    g.poly(corners.flatMap((p) => [p.x, p.y])).stroke({ width: 2, color: COLORS.gridBorder });
 
     // coordinate labels so viewer space maps to script coordinates
     for (let v = -H; v <= H; v += GRID_STEP * 2) {
-      this.addLabel(`${v}`, project(v, -H - 8, 0, s), 0x5b6a88);      // N values, west edge
-      this.addLabel(`${v}`, project(-H - 8, v, 0, s), 0x5b6a88);      // E values, south edge
+      this.addLabel(`${v}`, project(v, -H - 8, 0, s), COLORS.label);  // N values, west edge
+      this.addLabel(`${v}`, project(-H - 8, v, 0, s), COLORS.label);  // E values, south edge
     }
     const nArrow = project(H + 16, -H - 8, 0, s);
     const eArrow = project(-H - 8, H + 16, 0, s);
-    this.addLabel("N ↑", nArrow, 0x7f93bd, 15);
-    this.addLabel("E ↑", eArrow, 0x7f93bd, 15);
+    this.addLabel("N ↑", nArrow, COLORS.labelBright, 15);
+    this.addLabel("E ↑", eArrow, COLORS.labelBright, 15);
   }
 
   private addLabel(text: string, at: { x: number; y: number }, color: number,
                    size = 12): void {
     const label = new Text({
       text,
-      style: { fontFamily: "Segoe UI, system-ui, sans-serif", fontSize: size, fill: color },
+      style: { fontFamily: FONT_UI, fontSize: size, fill: color },
     });
     label.anchor.set(0.5);
     label.position.set(at.x, at.y);
@@ -118,8 +131,7 @@ export class Scene {
       g.position.set(center.x, center.y);
       const label = new Text({
         text: pad.name,
-        style: { fontFamily: "Segoe UI, system-ui, sans-serif", fontSize: 11,
-                 fill: color, fontWeight: "600" },
+        style: { fontFamily: FONT_UI, fontSize: 11, fill: color, fontWeight: "600" },
       });
       label.anchor.set(0.5, 0);
       label.position.set(0, 6);

@@ -3,92 +3,55 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0e1116" />
   <title>drone life — fly your code</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; background: #0e1116; color: #e6e9ef;
-      font-family: "Segoe UI", system-ui, sans-serif; }
-    #layout { display: flex; height: 100vh; }
-    #editor-pane { flex: 1.4; display: flex; flex-direction: column; min-width: 0; }
-    #side-pane { flex: 1; display: flex; flex-direction: column; min-width: 320px;
-      max-width: 560px; border-left: 1px solid #232c3d; }
-    #toolbar { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
-      border-bottom: 1px solid #232c3d; }
-    #toolbar .title { font-weight: 700; margin-right: auto; }
-    #toolbar .title span { color: #4a9eff; }
-    button { padding: 8px 16px; font-size: 14px; font-weight: 700; border: 0;
-      border-radius: 8px; cursor: pointer; background: #263149; color: #e6e9ef; }
-    button:disabled { opacity: .45; cursor: default; }
-    #run-btn { background: #4ade80; color: #052913; }
-    #stop-btn { background: #ff5c5c; color: #2b0707; }
-    #editor { flex: 1; overflow: hidden; }
-    #editor .cm-editor { height: 100%; font-size: 14px; }
-    #status-bar { padding: 8px 12px; border-top: 1px solid #232c3d; display: flex;
-      gap: 14px; align-items: center; font-size: 13px; }
-    .pill { padding: 3px 10px; border-radius: 999px; background: #263149; font-weight: 700; }
-    .pill.running { background: #114a2b; color: #4ade80; }
-    .pill.exited { background: #4a1a11; color: #ffb4a8; }
-    #drone-strip { padding: 8px 12px; font-size: 13px; color: #9fb0cd;
-      border-bottom: 1px solid #232c3d; display: flex; gap: 16px; flex-wrap: wrap; }
-    #drone-strip b { color: #e6e9ef; }
-    #log-pane { flex: 1; overflow-y: auto; padding: 10px 12px;
-      font-family: "Cascadia Code", ui-monospace, monospace; font-size: 12.5px;
-      line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
-    #log-pane .stderr { color: #ff9b8f; }
-    #log-pane .system { color: #7f93bd; font-style: italic; }
-    #banner { display: none; padding: 8px 12px; background: #4a1a11; color: #ffb4a8;
-      font-size: 13px; border-bottom: 1px solid #6b2416; }
-    #banner.show { display: block; }
-    #side-title { padding: 10px 12px; font-size: 12px; letter-spacing: 2px;
-      text-transform: uppercase; color: #66779a; border-bottom: 1px solid #232c3d; }
-    #join-overlay { position: fixed; inset: 0; background: #0e1116ee; display: flex;
-      align-items: center; justify-content: center; z-index: 10; }
-    #join-overlay form { display: flex; flex-direction: column; gap: 12px; width: 300px; }
-    #join-overlay h1 { font-size: 22px; }
-    #join-overlay p { font-size: 13px; color: #9fb0cd; }
-    #join-overlay input { padding: 10px 12px; font-size: 16px; border-radius: 8px;
-      border: 1px solid #2c3444; background: #171d29; color: #e6e9ef; }
-    #join-overlay button { background: #4a9eff; color: #06101f; }
-    #join-error { color: #ff9b8f; font-size: 13px; min-height: 18px; }
-    .hidden { display: none !important; }
-    a { color: #4a9eff; }
-  </style>
+  <link rel="stylesheet" href="./src/shared/theme.css" />
+  <link rel="stylesheet" href="./src/submit/submit.css" />
 </head>
 <body>
   <div id="layout">
     <div id="editor-pane">
       <div id="toolbar">
         <div class="title">drone life — <span id="pilot-name">…</span></div>
+        <label class="visually-hidden" for="template-select">load a starter template</label>
+        <select id="template-select">
+          <option value="" selected disabled>template…</option>
+          <option value="beginner">beginner</option>
+          <option value="pymavlink">pymavlink</option>
+        </select>
         <button id="reset-btn" title="Stop the script and put your drone back on its pad">reset drone</button>
         <button id="stop-btn">stop</button>
         <button id="run-btn">▶ run</button>
       </div>
-      <div id="banner"></div>
+      <div id="banner" role="alert"></div>
       <div id="editor"></div>
       <div id="status-bar">
-        <span class="pill" id="run-pill">idle</span>
+        <span class="pill" id="run-pill" role="status">idle</span>
         <span id="run-hint">edit the code, then press run — watch the sky view!</span>
       </div>
     </div>
     <div id="side-pane">
-      <div id="side-title">your drone</div>
+      <div class="side-title">your drone</div>
       <div id="drone-strip">
         <span>mode <b id="d-mode">—</b></span>
         <span>armed <b id="d-armed">—</b></span>
+        <span id="d-link">link <b>—</b></span>
         <span>N <b id="d-n">—</b></span>
         <span>E <b id="d-e">—</b></span>
         <span>alt <b id="d-alt">—</b></span>
         <span id="d-carrying"></span>
       </div>
-      <div id="side-title">script output</div>
-      <div id="log-pane"></div>
+      <div class="side-title">script output</div>
+      <div id="log-pane" role="log" aria-label="script output"></div>
     </div>
   </div>
   <div id="join-overlay" class="hidden">
     <form id="join-form">
       <h1>drone life</h1>
       <p>Join the sky: pick a name, enter the room code from your instructor.</p>
+      <label class="visually-hidden" for="join-name">your name</label>
       <input id="join-name" placeholder="your name" maxlength="24" autocomplete="off" />
+      <label class="visually-hidden" for="join-code">room code</label>
       <input id="join-code" placeholder="room code" autocomplete="off" />
       <div id="join-error"></div>
       <button type="submit">claim my drone</button>

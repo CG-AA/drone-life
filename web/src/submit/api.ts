@@ -58,7 +58,9 @@ export const submitCode = (code: string) =>
   request<{ run_id: string }>("POST", "/api/v1/submit", { code });
 export const stopRun = () => request<{ stopped: boolean }>("POST", "/api/v1/stop");
 export const resetMine = () => request<{ ok: boolean }>("POST", "/api/v1/reset-mine");
-export const fetchTemplate = async (): Promise<string> => {
-  const res = await fetch("/api/v1/template");
+export const fetchTemplate = async (variant = "beginner"): Promise<string> => {
+  const res = await fetch(`/api/v1/template?variant=${encodeURIComponent(variant)}`);
+  if (!res.ok) throw new ApiFailure(
+    { code: "template", msg: `no ${variant} template (${res.status})` }, res.status);
   return res.text();
 };

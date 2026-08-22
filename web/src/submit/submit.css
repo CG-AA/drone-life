@@ -1,0 +1,123 @@
+/* Submit (student editor) page — two panes on wide screens, stacked below 900px. */
+
+#layout {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+}
+#editor-pane {
+  flex: 1.4;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+#side-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 320px;
+  max-width: 560px;
+  border-left: 1px solid var(--border);
+}
+
+#toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+#toolbar .title { font-weight: 700; margin-right: auto; }
+#toolbar .title span { color: var(--accent); }
+#template-select {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+#run-btn { background: var(--ok); color: var(--ok-bg); }
+#stop-btn { background: var(--danger); color: var(--danger-bg); }
+#reset-btn.confirm { background: var(--warn); color: var(--danger-bg); }
+
+#editor { flex: 1; overflow: hidden; }
+#editor .cm-editor { height: 100%; font-size: 0.875rem; }
+
+#status-bar {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-size: 0.8125rem;
+}
+
+#drone-strip {
+  padding: 8px 12px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+#drone-strip b { color: var(--text); }
+#d-link.down b { color: var(--danger-soft); }
+
+#log-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+#log-pane .stderr { color: var(--danger-soft); }
+#log-pane .system { color: var(--text-faint); font-style: italic; }
+
+#banner {
+  display: none;
+  padding: 8px 12px;
+  background: var(--danger-panel);
+  color: var(--danger-text);
+  font-size: 0.8125rem;
+  border-bottom: 1px solid var(--danger-border);
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#banner.show { display: flex; }
+#banner.info { background: var(--bg-raised); color: var(--text); border-color: var(--border); }
+#banner button { padding: 0.25rem 0.75rem; font-size: 0.8125rem; }
+
+.side-title {
+  padding: 10px 12px;
+  font-size: 0.75rem;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+}
+
+#join-error { color: var(--danger-soft); font-size: 0.8125rem; min-height: 18px; }
+
+@media (max-width: 900px) {
+  #layout { flex-direction: column; }
+  #editor-pane { flex: 3; }
+  #side-pane {
+    flex: 2;
+    min-width: 0;
+    max-width: none;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (pointer: coarse) {
+  button { min-height: 44px; }
+}

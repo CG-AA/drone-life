@@ -7,9 +7,15 @@
 
 import { Container, Graphics, Text } from "pixi.js";
 import type { EntityState } from "../shared/protocol";
+import { COLORS, FONT_UI, REDUCED_MOTION } from "../shared/theme";
 import { ALT_LIFT, project, projectGround } from "./iso";
 import type { Scene } from "./scene";
 import { MATERIAL_COLORS, UNKNOWN_MATERIAL } from "./terrain";
+
+/** Decorative pulse a + b·sin(t/period); a steady midpoint under reduced motion. */
+function pulse(timeMs: number, period: number, base: number, amp: number): number {
+  return REDUCED_MOTION ? base : base + amp * Math.sin(timeMs / period);
+}
 
 export class EntityVis {
   root = new Container();
@@ -27,7 +33,7 @@ export class EntityVis {
   addLabel(text: string, color: number, size = 12, dy = 10): Text {
     this.label = new Text({
       text,
-      style: { fontFamily: "Segoe UI, system-ui, sans-serif", fontSize: size,
+      style: { fontFamily: FONT_UI, fontSize: size,
                fill: color, fontWeight: "700", letterSpacing: 1 },
     });
     this.label.anchor.set(0.5, 0);
@@ -94,18 +100,18 @@ const crate: KindRenderer = {
 const dropoff: KindRenderer = {
   animated: true,
   init(vis) {
-    vis.addLabel("DROPOFF", 0x4ade80, 12, 10);
+    vis.addLabel("DROPOFF", COLORS.ok, 12, 10);
   },
   draw(vis, _ent, _pose, _drawAlt, s, timeMs) {
-    const pulse = 0.75 + 0.25 * Math.sin(timeMs / 400);
+    const breathe = pulse(timeMs, 400, 0.75, 0.25);
     for (const [radius, alpha] of [[4.5, 0.9], [3.0, 0.55], [1.5, 0.35]] as const) {
-      const r = radius * pulse;
+      const r = radius * breathe;
       vis.g.poly([
         project(r, 0, 0, s).x, project(r, 0, 0, s).y,
         project(0, r, 0, s).x, project(0, r, 0, s).y,
         project(-r, 0, 0, s).x, project(-r, 0, 0, s).y,
         project(0, -r, 0, s).x, project(0, -r, 0, s).y,
-      ]).stroke({ width: 2, color: 0x4ade80, alpha });
+      ]).stroke({ width: 2, color: COLORS.ok, alpha });
     }
     vis.root.zIndex = -10_000; // flat marker: always under drones/crates
   },
@@ -143,9 +149,8 @@ const ghostTile: KindRenderer = {
   draw(vis, ent, _pose, _drawAlt, s, timeMs) {
     const mat = MATERIAL_COLORS[String(ent.data.material)] ?? UNKNOWN_MATERIAL;
     const size = Number(ent.data.size ?? 3);
-    const pulse = 0.55 + 0.35 * Math.sin(timeMs / 350);
     vis.g.poly(hexPoly(size * 0.92, s))
-      .stroke({ width: 2, color: mat.top, alpha: pulse });
+      .stroke({ width: 2, color: mat.top, alpha: pulse(timeMs, 350, 0.55, 0.35) });
     if (vis.label) {
       const have = Number(ent.data.have ?? 0);
       const need = Number(ent.data.need ?? 1);
@@ -157,7 +162,7 @@ const ghostTile: KindRenderer = {
 const furnace: KindRenderer = {
   animated: true,
   draw(vis, _ent, _pose, _drawAlt, s, timeMs) {
-    const glow = 0.35 + 0.2 * Math.sin(timeMs / 300);
+    const glow = pulse(timeMs, 300, 0.35, 0.2);
     vis.g.circle(0, 0, Math.max(6, s * 2.6)).fill({ color: 0xff9a3c, alpha: glow * 0.5 });
     // squat clay prism with an ember-lit top
     const base = hexPoly(2.2, s);
@@ -189,8 +194,8 @@ const troop: KindRenderer = {
   draw(vis, ent, pose, drawAlt, s, timeMs) {
     const chewing = Boolean(ent.data.chewing);
     const dir = (Number(ent.data.dir ?? 0) * Math.PI) / 180; // server sends degrees
-    const jitter = chewing ? Math.sin(timeMs / 30) * s * 0.25 : 0;
-    const bob = chewing ? 0 : Math.abs(Math.sin(timeMs / 120)) * s * 0.35;
+    const jitter = chewing && !REDUCED_MOTION ? Math.sin(timeMs / 30) * s * 0.25 : 0;
+    const bob = chewing || REDUCED_MOTION ? 0 : Math.abs(Math.sin(timeMs / 120)) * s * 0.35;
     const r = Math.max(3.5, s * 1.1);
     vis.g.circle(jitter, -bob, r).fill({ color: 0xe14b4b })
       .stroke({ width: 1.5, color: 0x7c1f1f });
@@ -214,20 +219,21 @@ const keep: KindRenderer = {
     const hp = Number(ent.data.hp ?? 0);
     const max = Number(ent.data.max ?? 1);
     const low = hp <= 3;
-    const pulse = low ? 0.5 + 0.5 * Math.sin(timeMs / 180) : 0;
+    // ~2.8 Hz danger flash; a steady bright outline under reduced motion
+    const flash = low ? pulse(timeMs, 180, 0.5, 0.5) : 0;
     const base = hexPoly(2.6, s);
     const lift = 3.0 * ALT_LIFT * s;
     const top: number[] = [];
     for (let i = 0; i < base.length; i += 2) top.push(base[i], base[i + 1] - lift);
     vis.g.poly(base).fill({ color: 0x6f6a8f });
     vis.g.poly(top).fill({ color: 0xa39ac9 })
-      .stroke({ width: 2, color: low ? 0xff5050 : 0x2c2a3d, alpha: low ? 0.4 + pulse * 0.6 : 0.8 });
+      .stroke({ width: 2, color: low ? 0xff5050 : 0x2c2a3d, alpha: low ? 0.4 + flash * 0.6 : 0.8 });
     const w = Math.max(3, s * 0.8); // hp pips, 5 per row above the roof
     for (let i = 0; i < max; i++) {
       const x = ((i % 5) - 2) * (w + 2);
       const y = -lift - w * 2.2 - Math.floor(i / 5) * (w * 1.7);
       vis.g.rect(x - w / 2, y, w, w * 1.4)
-        .fill({ color: i < hp ? 0x4ade80 : 0x333344, alpha: 0.95 });
+        .fill({ color: i < hp ? COLORS.ok : 0x333344, alpha: 0.95 });
     }
   },
 };
@@ -235,7 +241,7 @@ const keep: KindRenderer = {
 const tower: KindRenderer = {
   animated: true,
   draw(vis, ent, pose, _drawAlt, s, timeMs) {
-    const glow = 0.55 + 0.25 * Math.sin(timeMs / 250);
+    const glow = pulse(timeMs, 250, 0.55, 0.25);
     const r = Math.max(4, s * 1.3);
     // glow dome capping the steel stack (the stack itself is terrain)
     vis.g.circle(0, -r * 0.3, r * 1.8).fill({ color: 0x7cc7ff, alpha: glow * 0.2 });
@@ -264,7 +270,8 @@ const beam: KindRenderer = {
                         Number(ent.data.talt ?? 0), s);
     const dx = dst.x - src.x;
     const dy = dst.y - src.y;
-    const flick = 0.6 + 0.4 * Math.sin(timeMs / 40);
+    // ~4 Hz flicker is a photosensitivity risk projected large: steady when reduced
+    const flick = pulse(timeMs, 40, 0.6, 0.4);
     vis.g.moveTo(0, 0).lineTo(dx, dy).stroke({ width: 3, color: 0x9fd8ff, alpha: flick });
     vis.g.moveTo(0, 0).lineTo(dx, dy).stroke({ width: 1, color: 0xffffff, alpha: 0.9 });
     vis.g.circle(dx, dy, Math.max(3, s) * flick).fill({ color: 0xcfeaff, alpha: 0.8 });
