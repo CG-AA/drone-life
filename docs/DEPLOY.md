@@ -86,7 +86,9 @@ make reset HOST=localhost:8000 ADMIN_TOKEN=...      # clean slate between sessio
 
 - Projector: open `https://drones.example.org/`, enter the room code once.
 - Students: `https://drones.example.org/submit` + the room code.
-- A student stuck? Their **reset drone** button, or:
+- Instructor console: `https://drones.example.org/admin` + the admin token —
+  live roster, kill a stuck script, kick a student, reset the world, spawn bots.
+- A student stuck? Their **reset drone** button, the console's **kill script**, or:
   `curl -X POST .../api/v1/admin/kill -H "X-Admin-Token: ..." -d '{"student_id":"s3"}'`
 - Between class sessions: `make reset` (kills all scripts, respawns drones,
   fresh crates + score). `server/state/` keeps the roster across restarts —

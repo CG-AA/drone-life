@@ -88,8 +88,9 @@ drone.wait(2)                    # plain sleep
 ## What's really happening (the pymavlink underneath)
 
 `dronelife` is ~150 lines of ordinary **pymavlink** — the same library that
-flies real ArduPilot drones. Open the `pymavlink` template on the submit page
-(or read `dronelife`'s source) to see exactly what each helper sends:
+flies real ArduPilot drones. Pick **pymavlink** from the template menu in the
+submit-page toolbar (or read `dronelife`'s source) to see exactly what each
+helper sends:
 
 | helper | MAVLink underneath |
 |---|---|
@@ -121,7 +122,7 @@ connection string and the messages are identical.
 | script hangs forever | a `recv_match(blocking=True)` with no `timeout` | always pass `timeout=...` in raw pymavlink |
 | drone stops mid-flight and hovers | your velocity setpoints stopped arriving | that's the 3 s rule — use `move()` or re-send |
 | drone flew home by itself | your script ended (or crashed) | check the log pane for the traceback |
-| `syntax error, line N` in red | Python couldn't parse your script | click the banner — the editor jumps to the line |
+| `syntax error, line N` in red | Python couldn't parse your script | the editor jumps to the line for you |
 | drone stuck somewhere weird | — | press **reset drone**: script stops, drone back on your pad |
 | picked up nothing over a crate | too high, or not 2 full seconds | below 3 m altitude, hold still, count to 2 |
 | `DRONE: CRASH: hit a wall` | flew into a tile stack side-on | go over the top (walls max out at 8 m) or around |
