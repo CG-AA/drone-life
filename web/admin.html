@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0e1116" />
+  <title>drone life — instructor</title>
+  <link rel="stylesheet" href="./src/shared/theme.css" />
+  <link rel="stylesheet" href="./src/admin/admin.css" />
+</head>
+<body>
+  <div id="page">
+    <header id="topbar">
+      <div class="title">drone life — instructor</div>
+      <div id="summary" role="status">connecting…</div>
+      <button id="signout-btn" title="Forget the admin token on this machine">sign out</button>
+    </header>
+
+    <div id="banner" role="alert"></div>
+
+    <section id="controls">
+      <form id="bots-form">
+        <label for="bots-count">bots</label>
+        <input id="bots-count" type="number" min="1" max="20" value="3" />
+        <label class="visually-hidden" for="bots-script">bot script</label>
+        <input id="bots-script" type="text" value="bot_patrol" />
+        <label class="visually-hidden" for="bots-mode">bot mode</label>
+        <select id="bots-mode">
+          <option value="local" selected>local</option>
+          <option value="container">container</option>
+        </select>
+        <button type="submit">spawn</button>
+      </form>
+      <button id="reset-world-btn" class="danger">reset world</button>
+    </section>
+
+    <section id="roster-wrap">
+      <table id="roster">
+        <thead>
+          <tr><th>pilot</th><th>id</th><th>script</th><th>link</th><th class="actions">actions</th></tr>
+        </thead>
+        <tbody id="roster-body">
+          <tr><td colspan="5" class="empty">no students yet</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <div id="join-overlay" class="hidden">
+    <form id="token-form">
+      <h1>drone life — instructor</h1>
+      <p>Enter the admin token (the server's <code>ADMIN_TOKEN</code>).</p>
+      <label class="visually-hidden" for="token-input">admin token</label>
+      <input id="token-input" type="password" placeholder="admin token" autocomplete="off" autofocus />
+      <div id="join-error"></div>
+      <button type="submit">open the console</button>
+    </form>
+  </div>
+  <script type="module" src="/src/admin/main.ts"></script>
+</body>
+</html>

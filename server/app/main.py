@@ -59,6 +59,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async def submit_page() -> FileResponse:
             return FileResponse(dist / "submit.html")
 
+        @app.get("/admin", include_in_schema=False)
+        async def admin_page() -> FileResponse:
+            return FileResponse(dist / "admin.html")
+
         app.mount("/", StaticFiles(directory=dist, html=True), name="static")
 
     return app

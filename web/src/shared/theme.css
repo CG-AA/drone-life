@@ -1,0 +1,134 @@
+/* Design tokens + base styles shared by every page.
+ * The canvas-side mirror of the palette lives in theme.ts — keep them in sync. */
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg: #0e1116;
+  --bg-raised: #171d29;
+  --bg-panel: #151b28;
+  --bg-overlay: rgba(14, 17, 22, 0.93);
+
+  /* text */
+  --text: #e6e9ef;
+  --text-muted: #9fb0cd;
+  --text-faint: #8593ad;
+
+  /* lines */
+  --border: #232c3d;
+  --border-strong: #2c3444;
+
+  /* accents */
+  --accent: #4a9eff;
+  --accent-contrast: #06101f;
+  --ok: #4ade80;
+  --ok-bg: #052913;
+  --ok-panel: #114a2b;
+  --danger: #ff5c5c;
+  --danger-soft: #ff9b8f;
+  --danger-bg: #2b0707;
+  --danger-panel: #4a1a11;
+  --danger-text: #ffb4a8;
+  --danger-border: #6b2416;
+  --gold: #ffd23f;
+  --warn: #ffb347;
+
+  /* typography */
+  --font-ui: system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+
+  /* shape */
+  --radius: 8px;
+  --radius-pill: 999px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.hidden { display: none !important; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-family: inherit;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  background: var(--border-strong);
+  color: var(--text);
+}
+button:disabled { opacity: 0.45; cursor: default; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+a { color: var(--accent); }
+
+.pill {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  font-weight: 700;
+}
+.pill.running { background: var(--ok-panel); color: var(--ok); }
+.pill.exited { background: var(--danger-panel); color: var(--danger-text); }
+
+/* full-screen gate used by every page (room code / join / admin token) */
+#join-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+#join-overlay form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(300px, 90vw);
+}
+#join-overlay h1 { font-size: 1.375rem; }
+#join-overlay p { font-size: 0.8125rem; color: var(--text-muted); }
+#join-overlay input {
+  padding: 10px 12px;
+  font-size: 1rem;
+  font-family: inherit;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+}
+#join-overlay button {
+  padding: 10px;
+  font-size: 1rem;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

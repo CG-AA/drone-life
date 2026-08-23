@@ -43,8 +43,9 @@ make dev-server                          # http://localhost:8000
 make bots N=5 ADMIN_TOKEN=change-me      # five demo drones on the viewer
 ```
 
-Viewer: `http://localhost:8000/` — submit page: `/submit` — room code
-defaults to `classroom` (override with `ROOM_CODE`).
+Viewer: `http://localhost:8000/` — submit page: `/submit` — instructor
+console: `/admin` (needs `ADMIN_TOKEN`) — room code defaults to `classroom`
+(override with `ROOM_CODE`).
 
 Container pipeline (what students actually use): `make image`, then submit
 from the browser — or `make bots N=3 MODE=container SCRIPT=bot_courier` to
@@ -69,6 +70,7 @@ make load    # 10 bots, 60 s: tick overruns <1%, world feed ≥9 Hz
 | `server/app/api/` | REST + WebSocket (viewer/student feeds) |
 | `web/src/viewer/` | PixiJS isometric sky view |
 | `web/src/submit/` | CodeMirror editor, run controls, live logs |
+| `web/src/admin/` | instructor console: roster, kill/kick, reset, bots |
 | `examples/` | `dronelife.py` helper, student templates, demo bots |
 | `docs/` | STUDENT_GUIDE (handout), DEPLOY (lab server + OCI proxy) |
 

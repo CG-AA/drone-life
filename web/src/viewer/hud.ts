@@ -1,9 +1,31 @@
 /** DOM overlay: big team score, event feed ticker, connection dot. */
 
 import type { EventData } from "../shared/protocol";
+import { REDUCED_MOTION } from "../shared/theme";
 
 const FEED_MAX = 8;
 const FEED_TTL_MS = 45_000;
+
+/** Severity class per server event kind (see game/engine.py + missions/).
+ * Unlisted kinds render as the neutral blue default. */
+const EVENT_CLASS: Record<string, string> = {
+  score: "score",
+  delivery: "score",
+  wave_clear: "triumph",
+  wall_complete: "triumph",
+  furnace_lit: "triumph",
+  tower_up: "triumph",
+  crashed: "danger",
+  crate_lost: "danger",
+  tile_lost: "danger",
+  keep_hit: "danger",
+  keep_fell: "danger",
+  tower_down: "danger",
+  wave_start: "warn",
+  orphan_rtl: "warn",
+  script_exit: "warn",
+  stale: "danger", // client-side: protocol version skew, page needs a refresh
+};
 
 export class Hud {
   private score = document.getElementById("score")!;
@@ -16,9 +38,11 @@ export class Hud {
     if (value !== this.lastScore) {
       this.lastScore = value;
       this.score.textContent = String(value);
-      this.score.animate(
-        [{ transform: "scale(1.35)" }, { transform: "scale(1)" }],
-        { duration: 350, easing: "ease-out" });
+      if (!REDUCED_MOTION) {
+        this.score.animate(
+          [{ transform: "scale(1.35)" }, { transform: "scale(1)" }],
+          { duration: 350, easing: "ease-out" });
+      }
     }
   }
 
@@ -29,8 +53,7 @@ export class Hud {
   addEvent(ev: EventData): void {
     const div = document.createElement("div");
     div.textContent = ev.msg;
-    if (ev.kind === "score" || ev.kind === "delivery") div.className = "score";
-    if (ev.kind === "crashed" || ev.kind === "crate_lost") div.className = "crash";
+    div.className = EVENT_CLASS[ev.kind] ?? "";
     this.feed.prepend(div);
     while (this.feed.childElementCount > FEED_MAX) this.feed.lastElementChild?.remove();
     setTimeout(() => {

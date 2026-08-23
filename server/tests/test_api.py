@@ -78,6 +78,20 @@ async def test_admin_reset_and_auth(client):
     assert r.status_code == 200 and r.json()["epoch"] == 1
 
 
+async def test_admin_students_roster(client):
+    r = await client.get("/api/v1/admin/students")
+    assert r.status_code == 403
+    await join(client)
+    r = await client.get("/api/v1/admin/students", headers=ADMIN)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["mission"] and body["score"] == 0
+    (row,) = body["students"]
+    assert row["student_id"] == "s0" and row["name"] == "Zoe"
+    assert row["run"] is None  # nothing submitted yet
+    assert row["connected"] is False and row["crashed"] is False
+
+
 async def test_admin_bots_partial_fill_and_reset_clears_them(client):
     await join(client)  # Zoe takes slot 0 of 4
     # ask for 5: clamped to 4, three fit, then the room is full — partial success

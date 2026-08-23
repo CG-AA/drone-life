@@ -90,10 +90,17 @@ export interface RunState {
   exit_code: number | null;
 }
 
-export function parseEnvelope(raw: string): Envelope | null {
+export function parseEnvelope(raw: string, onSkew?: () => void): Envelope | null {
   try {
     const msg = JSON.parse(raw) as Envelope;
-    return typeof msg === "object" && msg !== null && msg.v === 1 ? msg : null;
+    if (typeof msg !== "object" || msg === null) return null;
+    if (msg.v !== 1) {
+      // a redeployed server speaking a newer protocol: tell the page instead
+      // of silently dropping everything (which looks like a hung UI)
+      onSkew?.();
+      return null;
+    }
+    return msg;
   } catch {
     return null;
   }

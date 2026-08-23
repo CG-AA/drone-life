@@ -11,6 +11,7 @@ const $ = (id: string) => document.getElementById(id)!;
 const editor = new Editor($("editor"));
 let studentId = "";
 let ws: GameSocket | null = null;
+let scriptRunning = false;
 
 // ------------------------------------------------------------------ join flow
 
@@ -56,6 +57,7 @@ function connectWs(): void {
     localStorage.removeItem(TOKEN_KEY);
     showJoin("session expired — join again");
   };
+  ws.onSkew = () => banner("this page is out of date — refresh to reconnect");
   ws.connect();
 }
 
@@ -81,9 +83,36 @@ async function run(): Promise<void> {
   }
 }
 
-function banner(text: string): void {
+/** Disable a button while its request is in flight; surface failures. */
+async function guarded(btn: HTMLButtonElement, action: () => Promise<unknown>,
+                       failMsg: string): Promise<void> {
+  btn.disabled = true;
+  try {
+    await action();
+    banner("");
+  } catch (e) {
+    banner(e instanceof ApiFailure ? `${failMsg}: ${e.error.msg}` : failMsg);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+interface BannerOpts {
+  info?: boolean;
+  actions?: Array<[label: string, onClick: () => void]>;
+}
+
+function banner(text: string, opts: BannerOpts = {}): void {
   const el = $("banner");
   el.textContent = text;
+  el.classList.toggle("info", Boolean(opts.info));
+  for (const [label, onClick] of opts.actions ?? []) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    el.appendChild(b);
+  }
   el.classList.toggle("show", text.length > 0);
 }
 
@@ -95,11 +124,57 @@ function setPill(state: string, extra: string): void {
 }
 
 function setRunState(rs: RunState): void {
+  scriptRunning = rs.state === "starting" || rs.state === "running";
   if (rs.state === "exited") {
     setPill("exited", rs.exit_code === null ? "" : ` (code ${rs.exit_code})`);
   } else {
     setPill(rs.state, "");
   }
+}
+
+// reset kills a running script, so make a running reset a two-step press
+const resetBtn = $("reset-btn") as HTMLButtonElement;
+let resetArmTimer = 0;
+
+function disarmReset(): void {
+  window.clearTimeout(resetArmTimer);
+  resetArmTimer = 0;
+  resetBtn.textContent = "reset drone";
+  resetBtn.classList.remove("confirm");
+}
+
+function onResetClick(): void {
+  if (scriptRunning && resetArmTimer === 0) {
+    resetBtn.textContent = "really reset?";
+    resetBtn.classList.add("confirm");
+    resetArmTimer = window.setTimeout(disarmReset, 3000);
+    return;
+  }
+  disarmReset();
+  void guarded(resetBtn, resetMine, "could not reset your drone");
+}
+
+// ----------------------------------------------------------------- templates
+
+const templateSel = $("template-select") as HTMLSelectElement;
+
+function onTemplatePick(): void {
+  const variant = templateSel.value;
+  templateSel.selectedIndex = 0; // snap back to the placeholder
+  if (!variant) return;
+  const apply = (): void => {
+    void fetchTemplate(variant)
+      .then((code) => { editor.setCode(code); banner(""); })
+      .catch(() => banner(`could not load the ${variant} template`));
+  };
+  if (editor.isEmpty) {
+    apply();
+    return;
+  }
+  banner(`load the ${variant} template? this replaces your current code`, {
+    info: true,
+    actions: [["replace", apply], ["keep mine", () => banner("")]],
+  });
 }
 
 // ---------------------------------------------------------------------- panes
@@ -119,21 +194,39 @@ function appendLogs(lines: LogLine[]): void {
   if (stickToBottom) logPane.scrollTop = logPane.scrollHeight;
 }
 
+const linkEl = $("d-link");
+const carryingEl = $("d-carrying");
+let lastCarrying = false;
+
 function updateStrip(me: DroneState): void {
   $("d-mode").textContent = me.mode;
   $("d-armed").textContent = me.crashed ? "CRASHED" : me.armed ? "yes" : "no";
+  linkEl.classList.toggle("down", !me.connected);
+  linkEl.querySelector("b")!.textContent = me.connected ? "up" : "down";
   $("d-n").textContent = me.n.toFixed(1);
   $("d-e").textContent = me.e.toFixed(1);
   $("d-alt").textContent = `${me.alt.toFixed(1)} m`;
-  $("d-carrying").innerHTML = me.carrying ? "📦 <b>carrying a crate!</b>" : "";
+  const nowCarrying = Boolean(me.carrying);
+  if (nowCarrying !== lastCarrying) {
+    lastCarrying = nowCarrying;
+    carryingEl.textContent = "";
+    if (nowCarrying) {
+      carryingEl.append("📦 ");
+      const b = document.createElement("b");
+      b.textContent = "carrying a crate!";
+      carryingEl.append(b);
+    }
+  }
 }
 
 // ----------------------------------------------------------------------- boot
 
 $("join-form").addEventListener("submit", handleJoin);
 $("run-btn").addEventListener("click", () => void run());
-$("stop-btn").addEventListener("click", () => void stopRun().catch(() => {}));
-$("reset-btn").addEventListener("click", () => void resetMine().catch(() => {}));
+$("stop-btn").addEventListener("click", () => void guarded(
+  $("stop-btn") as HTMLButtonElement, stopRun, "could not stop the script"));
+resetBtn.addEventListener("click", onResetClick);
+templateSel.addEventListener("change", onTemplatePick);
 
 const saved = localStorage.getItem(STUDENT_KEY);
 if (localStorage.getItem(TOKEN_KEY) && saved) {

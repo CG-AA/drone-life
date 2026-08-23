@@ -21,6 +21,24 @@ class BotsBody(BaseModel):
     mode: str = "local"  # "local" (plain subprocess) | "container" (full pipeline)
 
 
+@router.get("/students")
+async def students(service: DroneLifeService = Depends(get_service)) -> dict:
+    """Roster for the admin page: who's in, their run state, their link."""
+    views = {v.student_id: v for v in service.backend.drones()}
+    roster = []
+    for s in sorted(service.registry.students.values(), key=lambda s: s.slot):
+        run = service.runner.run_for(s.id)
+        view = views.get(s.id)
+        roster.append({
+            "student_id": s.id, "name": s.name, "slot": s.slot, "sysid": s.sysid,
+            "run": run.payload() if run else None,
+            "connected": bool(view.connected) if view else False,
+            "crashed": bool(view.crashed) if view else False,
+        })
+    return {"students": roster, "score": service.engine.score,
+            "mission": service.engine.mission.name, "epoch": service.world.epoch}
+
+
 @router.post("/reset")
 async def reset(service: DroneLifeService = Depends(get_service)) -> dict:
     await service.reset_world()

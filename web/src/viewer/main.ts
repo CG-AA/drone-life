@@ -11,6 +11,25 @@ import { Scene } from "./scene";
 import { TerrainRenderer } from "./terrain";
 
 const CODE_KEY = "dl_room_code";
+const CURSOR_IDLE_MS = 3000;
+
+/** Unattended-projector polish: hide the cursor after a few idle seconds,
+ * toggle fullscreen on double-click. */
+function projectorControls(): void {
+  let idleTimer = 0;
+  const wake = (): void => {
+    document.body.classList.remove("cursor-idle");
+    window.clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(
+      () => document.body.classList.add("cursor-idle"), CURSOR_IDLE_MS);
+  };
+  window.addEventListener("pointermove", wake);
+  wake();
+  window.addEventListener("dblclick", () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void document.documentElement.requestFullscreen();
+  });
+}
 
 interface Frame {
   data: WorldData;
@@ -78,7 +97,13 @@ async function boot(): Promise<void> {
     localStorage.removeItem(CODE_KEY);
     location.reload();
   };
+  ws.onSkew = () => {
+    hud.setMission("page out of date — refresh");
+    hud.addEvent({ kind: "stale", msg: "this page is out of date — refresh to reconnect",
+                   student_id: null, data: {}, t: 0 });
+  };
   ws.connect();
+  projectorControls();
 
   scene.app.ticker.add(() => {
     terrainR.tick(); // cheap scale-key check; tiles redraw only on change

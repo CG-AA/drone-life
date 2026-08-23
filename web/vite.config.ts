@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         main: `${root}index.html`,
         submit: `${root}submit.html`,
+        admin: `${root}admin.html`,
       },
     },
   },

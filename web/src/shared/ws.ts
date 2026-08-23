@@ -14,6 +14,9 @@ export class GameSocket {
   onStatus: (up: boolean) => void = () => {};
   /** Called when the server refuses the connection (bad code/token). */
   onRejected: (code: number) => void = () => {};
+  /** Called once if the server speaks a newer protocol version (stale page). */
+  onSkew: () => void = () => {};
+  private skewSeen = false;
 
   constructor(private url: string) {}
 
@@ -33,7 +36,12 @@ export class GameSocket {
         () => this.ws?.send(JSON.stringify({ type: "ping" })), 20000);
     };
     this.ws.onmessage = (ev) => {
-      const msg = parseEnvelope(ev.data as string);
+      const msg = parseEnvelope(ev.data as string, () => {
+        if (!this.skewSeen) {
+          this.skewSeen = true;
+          this.onSkew();
+        }
+      });
       if (!msg) return;
       this.handlers.get(msg.type)?.(msg.data as never, msg.t);
     };

@@ -1,0 +1,65 @@
+/* Viewer (projector) page — fluid HUD over the Pixi canvas. */
+
+html, body { overflow: hidden; }
+
+body.cursor-idle { cursor: none; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; }
+
+#score-box {
+  position: absolute;
+  top: clamp(10px, 2vmin, 28px);
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+#score {
+  font-size: clamp(2.5rem, 7vmin, 6rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
+}
+#mission {
+  font-size: clamp(0.75rem, 1.6vmin, 1.125rem);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+}
+
+#feed {
+  position: absolute;
+  left: clamp(12px, 2vmin, 28px);
+  bottom: clamp(12px, 2vmin, 28px);
+  width: clamp(300px, 26vw, 480px);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+}
+#feed div {
+  background: rgba(16, 22, 33, 0.82);
+  border-left: 3px solid var(--accent);
+  padding: 5px 10px;
+  font-size: clamp(0.85rem, 1.5vmin, 1.15rem);
+  border-radius: 0 6px 6px 0;
+  transition: opacity 1s;
+}
+/* severity is glyph + color, never color alone */
+#feed div::before { margin-right: 6px; }
+#feed div.score { border-left-color: var(--gold); }
+#feed div.score::before { content: "★"; color: var(--gold); }
+#feed div.triumph { border-left-color: var(--ok); }
+#feed div.triumph::before { content: "✔"; color: var(--ok); }
+#feed div.danger { border-left-color: var(--danger); }
+#feed div.danger::before { content: "✖"; color: var(--danger); }
+#feed div.warn { border-left-color: var(--warn); }
+#feed div.warn::before { content: "⚠"; color: var(--warn); }
+
+#conn {
+  position: absolute;
+  top: clamp(12px, 2vmin, 28px);
+  right: clamp(14px, 2vmin, 30px);
+  font-size: clamp(0.75rem, 1.4vmin, 1rem);
+  opacity: 0.85;
+}
+#conn::before { content: "●"; margin-right: 6px; color: var(--danger); }
+#conn.up::before { color: var(--ok); }

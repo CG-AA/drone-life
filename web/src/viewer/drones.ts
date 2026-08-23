@@ -3,6 +3,7 @@
 
 import { Container, Graphics, Text } from "pixi.js";
 import type { DroneState } from "../shared/protocol";
+import { COLORS, FONT_UI } from "../shared/theme";
 import { project, projectGround } from "./iso";
 import { slotColor } from "./colors";
 import type { Scene } from "./scene";
@@ -23,8 +24,7 @@ class DroneVis {
     this.color = slotColor(state.sysid);
     this.tag = new Text({
       text: state.name,
-      style: { fontFamily: "Segoe UI, system-ui, sans-serif", fontSize: 13,
-               fill: this.color, fontWeight: "700" },
+      style: { fontFamily: FONT_UI, fontSize: 13, fill: this.color, fontWeight: "700" },
     });
     this.tag.anchor.set(0.5, 0);
     this.root.addChild(this.body, this.tag);
@@ -52,23 +52,23 @@ class DroneVis {
     const body = this.body;
     body.clear();
     if (d.crashed) {
-      body.circle(0, 0, r).fill({ color: 0x552222 }).stroke({ width: 2, color: 0xff5c5c });
+      body.circle(0, 0, r).fill({ color: 0x552222 }).stroke({ width: 2, color: COLORS.danger });
       body.moveTo(-r * 0.6, -r * 0.6).lineTo(r * 0.6, r * 0.6)
         .moveTo(r * 0.6, -r * 0.6).lineTo(-r * 0.6, r * 0.6)
-        .stroke({ width: 2, color: 0xff5c5c });
+        .stroke({ width: 2, color: COLORS.danger });
     } else {
       // rotor cross behind the hull, rotated by yaw
       const hn = Math.cos(yaw);
       const he = Math.sin(yaw);
       const tip = project(n + hn * 2.2, e + he * 2.2, alt, s);
       body.circle(0, 0, r)
-        .fill({ color: d.armed ? this.color : 0x39445c })
-        .stroke({ width: 1.5, color: 0x0b0e14, alpha: 0.9 });
+        .fill({ color: d.armed ? this.color : COLORS.disarmed })
+        .stroke({ width: 1.5, color: COLORS.ink, alpha: 0.9 });
       body.moveTo(0, 0).lineTo(tip.x - p.x, tip.y - p.y)
-        .stroke({ width: 2.5, color: 0x0b0e14, alpha: 0.85 });
+        .stroke({ width: 2.5, color: COLORS.ink, alpha: 0.85 });
       if (d.carrying) {
         body.rect(-r * 0.45, r * 0.7, r * 0.9, r * 0.7)
-          .fill({ color: 0xffb347 }).stroke({ width: 1, color: 0x7a4a12 });
+          .fill({ color: COLORS.warn }).stroke({ width: 1, color: 0x7a4a12 });
       }
     }
     this.tag.position.set(0, r + (d.carrying ? r * 0.8 : 0) + 3);
