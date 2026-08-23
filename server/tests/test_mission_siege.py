@@ -234,3 +234,15 @@ def test_reset_keeps_tile_map_identity():
     assert m.tile_map() is tm, "same map object, rebuilt"
     assert not list(tm.cells()) and not m.creeps
     assert m.keep_hp == KEEP_HP and m.state == "grace"
+
+
+# ------------------------------------------------------------------- beams
+
+def test_beams_expire_even_in_an_empty_room():
+    world, m = make()
+    freeze_waves(m)
+    m.beams.append(("beam1", world.now + BEAM_S, (0.0, 0.0, 5.0), (1.0, 1.0, 0.0)))
+    world.views = []  # everyone left while a tower was mid-shot
+    world.run(m, BEAM_S + 1.0)
+    assert m.beams == []
+    assert not [e for e in m.entities() if e.kind == "beam"]

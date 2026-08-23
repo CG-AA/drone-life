@@ -160,6 +160,10 @@ class SiegeMission(Mission):
             self._check_towers(world)
             self._reflood()
 
+        # beams are wall-clock cosmetics (world.now keeps advancing), so they
+        # expire even while an empty room holds the siege clocks still below
+        self.beams = [b for b in self.beams if b[1] > world.now]
+
         if not any(d.connected for d in drones):
             return  # empty room: creeps, waves, and clocks all hold still
 
@@ -182,7 +186,6 @@ class SiegeMission(Mission):
         self._zap(world, drones, dt)
         self._wave_machine(world, dt)
 
-        self.beams = [b for b in self.beams if b[1] > world.now]
         if world.now - self.last_announce > ANNOUNCE_EVERY:
             self.last_announce = world.now
             self._announce(world)
