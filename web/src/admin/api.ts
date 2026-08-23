@@ -39,4 +39,4 @@ export const kickStudent = (studentId: string) =>
   admin<{ ok: boolean }>("POST", "/kick", { student_id: studentId });
 export const resetWorld = () => admin<{ ok: boolean; epoch: number }>("POST", "/reset");
 export const spawnBots = (count: number, mode: string, script: string) =>
-  admin<{ started: number; room_full: boolean }>("POST", "/bots", { count, mode, script });
+  admin<{ started: string[]; room_full: boolean }>("POST", "/bots", { count, mode, script });

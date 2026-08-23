@@ -172,7 +172,7 @@ $("bots-form").addEventListener("submit", (ev) => {
   const mode = ($("bots-mode") as HTMLSelectElement).value;
   spawnBots(count, mode, script)
     .then((r) => {
-      if (r.room_full) banner(`room filled up — started ${r.started} bot(s)`);
+      if (r.room_full) banner(`room filled up — started ${r.started.length} bot(s)`);
       return poll();
     })
     .catch((e: unknown) => banner(
