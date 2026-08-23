@@ -32,7 +32,9 @@ def world_message(service: DroneLifeService) -> dict:
         drones.append({
             "id": view.id, "student_id": view.student_id, "name": view.name,
             "sysid": view.sysid, "n": _f(view.n), "e": _f(view.e), "alt": _f(view.alt),
-            "vn": _f(view.vn), "ve": _f(view.ve), "yaw": _f(view.yaw),
+            # velocities let the viewer dead-reckon between 10 Hz frames
+            "vn": _f(view.vn), "ve": _f(view.ve), "valt": _f(view.valt),
+            "yaw": _f(view.yaw),
             "mode": view.mode, "armed": view.armed, "on_ground": view.on_ground,
             "crashed": view.crashed, "connected": view.connected,
             "carrying": carrying.get(view.id),

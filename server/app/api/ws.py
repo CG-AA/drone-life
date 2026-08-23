@@ -4,6 +4,10 @@ Backpressure policy: world frames go in a latest-wins slot (a stalled projector
 tab silently skips frames, never queues them); events/logs go in a bounded FIFO
 that drops oldest on overflow. Every socket gets its own sender task — the
 driver loop never awaits a send.
+
+Frames are serialized once per broadcast, not once per client: clients hold
+the encoded text, so a room of twenty projector tabs costs one json.dumps per
+tick instead of twenty. Hub methods still take plain dicts.
 """
 
 from __future__ import annotations
@@ -26,19 +30,24 @@ def envelope(type_: str, data: dict) -> dict:
     return {"v": 1, "type": type_, "t": round(time.time(), 2), "data": data}
 
 
+def encode(type_: str, data: dict) -> str:
+    """One wire frame, encoded once for every client that will receive it."""
+    return json.dumps(envelope(type_, data))
+
+
 class Client:
     def __init__(self, ws: WebSocket, student_id: str | None = None) -> None:
         self.ws = ws
         self.student_id = student_id
-        self.queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=QUEUE_SIZE)
-        self.world: dict | None = None
+        self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=QUEUE_SIZE)
+        self.world: str | None = None
         self.kick = asyncio.Event()
 
-    def push_world(self, msg: dict) -> None:
+    def push_world(self, msg: str) -> None:
         self.world = msg  # latest wins; stale frames are overwritten, never queued
         self.kick.set()
 
-    def push(self, msg: dict) -> None:
+    def push(self, msg: str) -> None:
         while True:
             try:
                 self.queue.put_nowait(msg)
@@ -57,13 +66,13 @@ class Client:
                 self.kick.clear()
                 if self.world is not None:
                     world, self.world = self.world, None
-                    await self.ws.send_text(json.dumps(world))
+                    await self.ws.send_text(world)
                 while True:
                     try:
                         msg = self.queue.get_nowait()
                     except asyncio.QueueEmpty:
                         break
-                    await self.ws.send_text(json.dumps(msg))
+                    await self.ws.send_text(msg)
         except Exception:
             pass  # socket died; the receive loop cleans up
 
@@ -89,21 +98,25 @@ class Hub:
     # ------------------------------------------------- called by the service
 
     def broadcast_world(self, data: dict) -> None:
-        msg = envelope("world", data)
+        msg = encode("world", data)
         for client in self.clients:
             client.push_world(msg)
 
     def broadcast_tiles(self, data: dict) -> None:
-        msg = envelope("tiles", data)
+        msg = encode("tiles", data)
         for client in self.clients:
             client.push(msg)
 
     def send_run_state(self, student_id: str, payload: dict) -> None:
-        for client in self.by_student.get(student_id, ()):
-            client.push(envelope("run_state", payload))
+        targets = self.by_student.get(student_id)
+        if not targets:
+            return
+        msg = encode("run_state", payload)
+        for client in targets:
+            client.push(msg)
 
     def _on_bus_event(self, event: dict) -> None:
-        msg = envelope("event", event)
+        msg = encode("event", event)
         for client in self.clients:
             client.push(msg)
 
@@ -124,7 +137,7 @@ class Hub:
                 lines = self._log_buffers.pop(student_id, [])
                 targets = self.by_student.get(student_id)
                 if lines and targets:
-                    msg = envelope("log", {"lines": lines})
+                    msg = encode("log", {"lines": lines})
                     for client in targets:
                         client.push(msg)
 
@@ -146,12 +159,12 @@ async def _serve(ws: WebSocket, client: Client) -> None:
     hub: Hub = ws.app.state.hub
     service = ws.app.state.service
     hub.register(client)
-    client.push(envelope("hello", service.hello_message()))
+    client.push(encode("hello", service.hello_message()))
     if service.tilemap is not None:
-        client.push(envelope("tiles", service.tiles_message()))
+        client.push(encode("tiles", service.tiles_message()))
     for event in list(service.bus.feed)[-20:]:
-        client.push(envelope("event", event))
-    client.push_world(envelope("world", service.world_message()))
+        client.push(encode("event", event))
+    client.push_world(encode("world", service.world_message()))
     sender = asyncio.create_task(client.sender())
     try:
         while True:
@@ -161,7 +174,7 @@ async def _serve(ws: WebSocket, client: Client) -> None:
             except json.JSONDecodeError:
                 continue
             if msg.get("type") == "ping":
-                client.push(envelope("pong", {}))
+                client.push(encode("pong", {}))
     except WebSocketDisconnect:
         pass
     finally:
@@ -190,8 +203,8 @@ async def ws_student(ws: WebSocket) -> None:
     client = Client(ws, student_id=student.id)
     run = service.runner.run_for(student.id)
     if run is not None:
-        client.push(envelope("run_state", run.payload()))
+        client.push(encode("run_state", run.payload()))
     tail = service.runner.log_for(student.id).tail(50)
     if tail:
-        client.push(envelope("log", {"lines": tail}))
+        client.push(encode("log", {"lines": tail}))
     await _serve(ws, client)
