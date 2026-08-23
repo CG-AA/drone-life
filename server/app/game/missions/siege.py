@@ -27,12 +27,15 @@ from ..mission import SEV_WARNING, Entity, Mission, WorldAPI
 from ..tiles import TileMap
 from ..units import GroundUnit, step_units
 
-KEEP = (0.0, 0.0)
-KEEP_CELL: Axial = hex.world_to_axial(*KEEP)
+# landmarks are cells; meters are derived so nothing ever sits off-lattice
+KEEP_CELL: Axial = (0, 0)
+KEEP = hex.axial_to_world(KEEP_CELL)
 KEEP_HP = 10
 KEEP_FALL_POINTS = -25
-QUARRY = (-50.0, 45.0)
-GATES = ((85.0, 0.0), (0.0, 85.0), (0.0, -85.0))
+QUARRY_CELL: Axial = (14, -11)  # ~(-50, 44)
+QUARRY = hex.axial_to_world(QUARRY_CELL)
+GATE_CELLS: tuple[Axial, ...] = ((-9, 19), (16, 0), (-16, 0))  # ~N 85, ~E 83, ~E -83
+GATES = tuple(hex.axial_to_world(c) for c in GATE_CELLS)
 
 CLIMB = 1  # 1 tile is a ramp; a 2-stack is a wall
 CHEW_S = 6.0  # s a creep gnaws before a tile pops off
@@ -100,7 +103,7 @@ class SiegeMission(Mission):
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([KEEP, QUARRY, *world.config.pads, *GATES])
+        self.tm.set_keep_out([KEEP, QUARRY, *world.config.pad_positions(), *GATES])
         self._announce(world)
 
     def tile_map(self) -> TileMap:

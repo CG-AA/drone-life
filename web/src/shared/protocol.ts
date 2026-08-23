@@ -63,7 +63,8 @@ export interface EventData {
 
 export interface HelloData {
   proto: number;
-  arena: { half: number; alt_max: number };
+  /** hex_size: the lattice pads and landmarks snap to (m, center-to-corner) */
+  arena: { half: number; alt_max: number; hex_size: number };
   mission: string;
   epoch: number;
 }

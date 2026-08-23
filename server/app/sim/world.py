@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import random
 
-from . import params as P
+from ..game import hex
 from .drone import DroneSim
 from .terrain import FLAT, Terrain
 
@@ -23,7 +23,9 @@ class World:
 
     @staticmethod
     def pad_position(slot: int) -> tuple[float, float]:
-        return P.SPAWN_X, P.SPAWN_Y0 + slot * P.SPAWN_SPACING
+        # the pad row is a lattice row; hex.py is pure math, so this is the
+        # one thing the sim borrows from the game package
+        return hex.pad_position(slot)
 
     def spawn(self, drone_id: str, student_id: str, name: str, slot: int) -> DroneSim:
         n, e = self.pad_position(slot)

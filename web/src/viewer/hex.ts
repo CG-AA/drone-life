@@ -28,3 +28,33 @@ export function hexCorners(q: number, r: number, size: number): WorldPoint[] {
   }
   return corners;
 }
+
+export type Axial = [q: number, r: number];
+
+/** Cube rounding: snap fractional axial coords to the nearest cell. */
+export function axialRound(qf: number, rf: number): Axial {
+  const x = qf;
+  const z = rf;
+  const y = -x - z;
+  let rx = Math.round(x);
+  const ry = Math.round(y);
+  let rz = Math.round(z);
+  const dx = Math.abs(rx - x);
+  const dy = Math.abs(ry - y);
+  const dz = Math.abs(rz - z);
+  if (dx > dy && dx > dz) rx = -ry - rz;
+  else if (dy <= dz) rz = -rx - ry;
+  return [rx, rz];
+}
+
+/** (n, e) in meters -> the cell containing it. Mirrors hex.world_to_axial. */
+export function worldToAxial(n: number, e: number, size: number): Axial {
+  const rf = (2 / 3) * n / size;
+  const qf = (SQRT3 / 3) * e / size - rf / 2;
+  return axialRound(qf, rf);
+}
+
+/** Depth bias that keeps a prism behind anything standing on it: a sprite on
+ * the ground outside the cell is at least 1.27·size farther along (n + e), so
+ * pushing the prism back by 0.6·size never flips a real front/behind case. */
+export const PRISM_DEPTH_BIAS = 0.6;

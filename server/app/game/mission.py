@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from ..sim.backend import DroneView
+from . import hex
+from .hex import Axial
 
 if TYPE_CHECKING:
     from .tiles import TileMap
@@ -43,7 +45,10 @@ class Entity:
 class MissionConfig:
     arena_half: float
     alt_max: float
-    pads: list[tuple[float, float]]
+    pads: list[Axial]  # cells, so a pad can never sit off the lattice
+
+    def pad_positions(self) -> list[tuple[float, float]]:
+        return [hex.axial_to_world(c) for c in self.pads]
 
 
 class WorldAPI(Protocol):

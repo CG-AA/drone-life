@@ -13,7 +13,8 @@ from ..hex import Axial
 from ..mission import Entity, Mission, WorldAPI
 from ..tiles import TileMap
 
-CLAY_PIT = (25.0, -40.0)  # infinite clay pile
+CLAY_PIT_CELL: Axial = (-11, 6)  # infinite clay pile, ~(27, -42)
+CLAY_PIT = hex.axial_to_world(CLAY_PIT_CELL)
 FURNACE = ring_blueprint("furnace", "clay", radius=1)
 PLACE_POINTS = 1
 FURNACE_POINTS = 30
@@ -36,7 +37,7 @@ class ForgeMission(Mission):
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([*world.config.pads, CLAY_PIT])
+        self.tm.set_keep_out([*world.config.pad_positions(), CLAY_PIT])
         self._announce(world)
 
     def tile_map(self) -> TileMap:

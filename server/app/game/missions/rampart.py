@@ -15,10 +15,12 @@ from ..building import (
     hover_alt_hint,
     tick_sources,
 )
+from ..hex import Axial
 from ..mission import Entity, Mission, WorldAPI
 from ..tiles import TileMap
 
-QUARRY = (-30.0, 40.0)  # infinite steel pile
+QUARRY_CELL: Axial = (11, -7)  # infinite steel pile, ~(-31, 39)
+QUARRY = hex.axial_to_world(QUARRY_CELL)
 WALL_FROM, WALL_TO = (10.0, -60.0), (10.0, -10.0)  # ghost wall endpoints (world m)
 WALL_HEIGHT = 2  # tiles per cell -> a 4 m wall
 PLACE_POINTS = 2
@@ -46,7 +48,7 @@ class RampartMission(Mission):
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([*world.config.pads, QUARRY])
+        self.tm.set_keep_out([*world.config.pad_positions(), QUARRY])
         self._announce(world)
 
     def tile_map(self) -> TileMap:

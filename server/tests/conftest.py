@@ -11,6 +11,7 @@ import pytest  # noqa: E402
 from pymavlink import mavutil  # noqa: E402
 
 from app.config import Settings  # noqa: E402
+from app.game import hex  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.service import DroneLifeService  # noqa: E402
 
@@ -198,7 +199,7 @@ def view(drone_id="d0", n=0.0, e=0.0, alt=1.0, armed=True, crashed=False) -> Dro
 class FakeWorld:
     def __init__(self) -> None:
         self.rng = random.Random(1)
-        self.config = MissionConfig(arena_half=100, alt_max=60, pads=[(-90.0, -76.0)])
+        self.config = MissionConfig(arena_half=100, alt_max=60, pads=[hex.pad_cell(0)])
         self.now = 0.0
         self.views: list[DroneView] = []
         self.events: list[tuple[str, str]] = []

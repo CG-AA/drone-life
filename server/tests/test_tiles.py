@@ -41,7 +41,7 @@ def test_rejections():
 
 def test_keep_out_rejects_near_pads():
     tm = TileMap()
-    pad = (-90.0, -76.0)
+    pad = hex.pad_position(0)
     tm.set_keep_out([pad], radius=6.0)
     near = hex.world_to_axial(*pad)
     assert tm.place(near, "steel") == (False, "too close to a pad")

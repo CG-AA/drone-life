@@ -82,6 +82,7 @@ async function boot(): Promise<void> {
   const ws = new GameSocket(`/ws/viewer?code=${encodeURIComponent(code)}`);
   ws.on<HelloData>("hello", (d) => {
     scene.setArena(d.arena.half, d.arena.alt_max);
+    scene.setHexGeometry(d.arena.hex_size);
     hud.setMission(`mission: ${d.mission}`);
   });
   ws.on<WorldData>("world", (d) => {

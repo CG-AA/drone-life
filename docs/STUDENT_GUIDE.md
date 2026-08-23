@@ -61,7 +61,7 @@ edges are still soft, but steel is not.
 ## The map
 
 - Coordinates are meters. **N** (north) and **E** (east) both run **-100 to 100**.
-- The center (0, 0) is the dropoff. Your pad is on the south edge.
+- The center (0, 0) is the dropoff. Your pad is on the south edge (N −90).
 - Max altitude 60 m. Max speed 10 m/s. The walls are soft — you just stop.
 
 ## Your toolkit (the `dronelife` helper)
