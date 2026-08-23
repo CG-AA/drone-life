@@ -12,6 +12,7 @@ from __future__ import annotations
 import random
 
 from app.game import hex
+from app.game.events import EVENT_KINDS
 from app.game.mission import Mission, MissionConfig
 from app.sim.backend import DroneView
 
@@ -46,6 +47,8 @@ class FakeWorld:
         return self.views
 
     def emit_event(self, kind, msg, student_id=None, data=None):
+        assert kind in EVENT_KINDS, \
+            f"unregistered event kind {kind!r} — add it to app/game/events.py"
         self.events.append({"kind": kind, "msg": msg, "student_id": student_id,
                             "data": data or {}, "t": round(self.now, 2)})
 
