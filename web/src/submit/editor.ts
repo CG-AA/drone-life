@@ -19,7 +19,11 @@ export class Editor {
         oneDark,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            localStorage.setItem(DRAFT_KEY, update.state.doc.toString());
+            try {
+              localStorage.setItem(DRAFT_KEY, update.state.doc.toString());
+            } catch {
+              // quota/private mode: drafts stop persisting, typing must not break
+            }
           }
         }),
       ],
