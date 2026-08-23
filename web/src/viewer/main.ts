@@ -77,6 +77,7 @@ async function boot(): Promise<void> {
   const dronePoses = new Map<string, Pose>();
   const entityPoses = new Map<string, Pose>();
   let lastTick = performance.now();
+  controls.setPoseSource(() => dronePoses);
 
   const ws = new GameSocket(`/ws/viewer?code=${encodeURIComponent(code)}`);
   ws.on<HelloData>("hello", (d) => {
@@ -111,8 +112,26 @@ async function boot(): Promise<void> {
   };
   ws.connect();
   projectorControls();
-  window.setTimeout(
-    () => document.getElementById("nav-hint")?.classList.add("gone"), HINT_MS);
+  const hint = document.getElementById("nav-hint");
+  const hintText = hint?.textContent ?? "";
+  window.setTimeout(() => hint?.classList.add("gone"), HINT_MS);
+  let shownFollow: string | null = null;
+
+  /** Surface who we are following, and get out of the way once we stop. */
+  const updateHint = (): void => {
+    const id = controls.following;
+    if (id === shownFollow) return;
+    shownFollow = id;
+    if (!hint) return;
+    if (id) {
+      const name = cur?.data.drones.find((d) => d.id === id)?.name ?? id;
+      hint.textContent = `following ${name} — click empty space to stop`;
+      hint.classList.remove("gone");
+    } else {
+      hint.textContent = hintText;
+      hint.classList.add("gone");
+    }
+  };
 
   scene.app.ticker.add(() => {
     const now = performance.now();
@@ -120,6 +139,7 @@ async function boot(): Promise<void> {
     const dtMs = Math.min(now - lastTick, 100);
     lastTick = now;
     controls.update(dtMs); // moves the camera before terrain reads the scale
+    updateHint();
     terrainR.tick(); // cheap scale-key check; tiles redraw only on change
     if (!cur) return;
     const age = now - cur.at;

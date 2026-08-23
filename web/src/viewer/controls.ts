@@ -6,9 +6,9 @@
  * easing a direct manipulation just feels like lag.
  */
 
-import { type Camera, clampCamera, defaultCamera, maxScale, panBy, screenToWorld,
-         solveCenter, zoomAt } from "./camera";
-import { expBlend } from "./interp";
+import { type Camera, clampCamera, defaultCamera, followCenter, maxScale, panBy,
+         screenToWorld, solveCenter, worldToScreen, zoomAt } from "./camera";
+import { expBlend, type Pose } from "./interp";
 import { fitScale } from "./iso";
 import type { Scene } from "./scene";
 
@@ -22,6 +22,8 @@ const KEY_ZOOM_STEP = 1.25;
 const KEY_PAN_PX = 80;
 /** Pointer travel that turns a tap into a drag. */
 const DRAG_SLOP_PX = 5;
+/** Tap this close to a drone to follow it. Grows with the drone's drawn size. */
+const TAP_PICK_PX = 28;
 
 export class CameraController {
   private target: Camera;
@@ -37,6 +39,9 @@ export class CameraController {
   private settled = true;
   /** A reset is easing home; clear userAdjusted once it lands. */
   private resetting = false;
+  /** Drone the camera is tracking, if any. */
+  private followId: string | null = null;
+  private poses: (() => Map<string, Pose>) | null = null;
 
   constructor(private scene: Scene) {
     this.target = { ...scene.camera };
@@ -51,6 +56,16 @@ export class CameraController {
     // Safari fires its own pinch gestures alongside wheel events
     canvas.addEventListener("gesturestart", preventDefault);
     canvas.addEventListener("gesturechange", preventDefault);
+  }
+
+  /** Where to read the smoothed render poses from (main.ts owns them). */
+  setPoseSource(fn: () => Map<string, Pose>): void {
+    this.poses = fn;
+  }
+
+  /** Id of the drone being followed, or null. */
+  get following(): string | null {
+    return this.followId;
   }
 
   private get vw(): number { return window.innerWidth; }
@@ -71,6 +86,16 @@ export class CameraController {
   private zoom(factor: number, sx: number, sy: number, immediate = false): void {
     const min = fitScale(this.scene.half, this.scene.altMax, this.vw, this.vh);
     const max = maxScale(this.scene.half, this.scene.altMax, this.vw, this.vh);
+    if (this.followId) {
+      // follow owns the centre; anchoring to the cursor would drag the camera
+      // off the drone only for the next frame to snap it back
+      const scale = Math.min(Math.max(this.target.scale * factor, min), max);
+      if (scale === this.target.scale) return;
+      this.target = { ...this.target, scale };
+      this.scene.userAdjusted = true;
+      this.settled = false;
+      return;
+    }
     const next = zoomAt(this.target, this.vw, this.vh, sx, sy, factor, min, max);
     if (next === this.target) return;
     this.scene.userAdjusted = true;
@@ -94,6 +119,7 @@ export class CameraController {
     this.anchor = null;
     this.scene.userAdjusted = true;
     this.resetting = false;
+    this.followId = null; // taking the view by hand stops following
     if (immediate) {
       this.settled = true;
       this.commit(this.target);
@@ -149,10 +175,35 @@ export class CameraController {
   };
 
   private onPointerUp = (ev: PointerEvent): void => {
+    const wasTap = this.dragging && this.pointers.size === 1
+      && this.moved <= DRAG_SLOP_PX;
     this.pointers.delete(ev.pointerId);
     if (this.pointers.size < 2) this.pinchDist = 0;
     if (this.pointers.size === 0) this.dragging = false;
+    // a tap picks a drone to follow; a tap on empty sky stops following
+    if (wasTap) this.followId = this.droneAt(ev.clientX, ev.clientY);
   };
+
+  /** Nearest drone drawn within picking distance of a screen point. */
+  private droneAt(sx: number, sy: number): string | null {
+    const poses = this.poses?.();
+    if (!poses) return null;
+    // matches the drawn body radius in drones.ts, so the target grows with zoom
+    const radius = Math.max(5, this.scene.camera.scale * 1.7);
+    const pick = Math.max(TAP_PICK_PX, radius * 1.5);
+    let best: string | null = null;
+    let bestD = pick;
+    for (const [id, pose] of poses) {
+      const p = worldToScreen(this.scene.camera, this.vw, this.vh,
+                              pose.n, pose.e, pose.alt);
+      const d = Math.hypot(p.x - sx, p.y - sy);
+      if (d < bestD) {
+        bestD = d;
+        best = id;
+      }
+    }
+    return best;
+  }
 
   private spread(): number {
     const [a, b] = [...this.pointers.values()];
@@ -181,6 +232,7 @@ export class CameraController {
         this.anchor = null;
         this.settled = false;
         this.resetting = true; // userAdjusted clears once we get there
+        this.followId = null;
         break;
       default: return;
     }
@@ -196,7 +248,20 @@ export class CameraController {
       this.anchor = null;
       this.settled = true;
       this.resetting = false;
-      return;
+      return; // followId survives: a resize should not stop following
+    }
+
+    if (this.followId) {
+      const pose = this.poses?.().get(this.followId);
+      if (!pose) {
+        this.followId = null; // drone left the roster, or the epoch reset
+      } else {
+        // re-aim every frame; the ease below turns that into smooth tracking
+        const c = followCenter(pose.n, pose.e, pose.alt);
+        this.target = { ...this.target, cN: c.cN, cE: c.cE };
+        this.anchor = null;
+        this.settled = false;
+      }
     }
     if (this.settled) return;
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  clampCamera, clampResolution, defaultCamera, maxScale, panBy, screenToWorld,
-  solveCenter, worldOffset, zoomAt, PAN_MARGIN_M,
+  clampCamera, clampResolution, defaultCamera, followCenter, maxScale, panBy,
+  screenToWorld, solveCenter, worldOffset, worldToScreen, zoomAt, PAN_MARGIN_M,
 } from "./camera";
 import { ALT_LIFT, fitScale } from "./iso";
 
@@ -99,8 +99,66 @@ describe("clampCamera", () => {
   });
 
   it("keeps the center within the arena plus its margin", () => {
+    // the limit also allows followCenter's altitude lift (altMax * ALT_LIFT)
+    const lim = 100 + PAN_MARGIN_M + 60 * ALT_LIFT;
     const c = clampCamera({ scale: 8, cN: 500, cE: -500 }, 100, 60, 1600, 900);
-    expect(c.cN).toBeCloseTo(100 + PAN_MARGIN_M);
-    expect(c.cE).toBeCloseTo(-(100 + PAN_MARGIN_M));
+    expect(c.cN).toBeCloseTo(lim);
+    expect(c.cE).toBeCloseTo(-lim);
+  });
+});
+
+describe("worldToScreen", () => {
+  it("round-trips with screenToWorld at ground level", () => {
+    const [w, h] = [1440, 900];
+    const cam = { scale: 5.5, cN: 12, cE: -30 };
+    for (const [n, e] of [[0, 0], [40, 40], [-80, 15]]) {
+      const p = worldToScreen(cam, w, h, n, e, 0);
+      const back = screenToWorld(cam, w, h, p.x, p.y);
+      expect(back.n).toBeCloseTo(n);
+      expect(back.e).toBeCloseTo(e);
+    }
+  });
+
+  it("draws the camera centre at the middle of the viewport", () => {
+    const [w, h] = [1440, 900];
+    const cam = { scale: 5.5, cN: 12, cE: -30 };
+    const p = worldToScreen(cam, w, h, cam.cN, cam.cE, 0);
+    expect(p.x).toBeCloseTo(w / 2);
+    expect(p.y).toBeCloseTo(h / 2);
+  });
+
+  it("lifts an airborne drone above its ground position", () => {
+    const cam = { scale: 4, cN: 0, cE: 0 };
+    const ground = worldToScreen(cam, 1280, 720, 10, 10, 0);
+    const air = worldToScreen(cam, 1280, 720, 10, 10, 25);
+    expect(air.x).toBeCloseTo(ground.x);
+    expect(air.y).toBeLessThan(ground.y);
+  });
+});
+
+describe("followCenter", () => {
+  it("draws the followed drone at the middle of the viewport, at any altitude", () => {
+    const [w, h] = [1280, 720];
+    for (const alt of [0, 12, 60]) {
+      for (const [n, e] of [[0, 0], [-40, 65], [90, -90]]) {
+        const c = followCenter(n, e, alt);
+        const cam = { scale: 9, cN: c.cN, cE: c.cE };
+        const p = worldToScreen(cam, w, h, n, e, alt);
+        expect(p.x).toBeCloseTo(w / 2);
+        expect(p.y).toBeCloseTo(h / 2);
+      }
+    }
+  });
+
+  it("is a no-op on the ground", () => {
+    expect(followCenter(10, -20, 0)).toEqual({ cN: 10, cE: -20 });
+  });
+
+  it("survives the clamp for a high drone in a corner", () => {
+    // the whole point of widening the pan limit by the altitude lift
+    const c = followCenter(100, 100, 60);
+    const cam = clampCamera({ scale: 20, ...c }, 100, 60, 1280, 720);
+    expect(cam.cN).toBeCloseTo(c.cN);
+    expect(cam.cE).toBeCloseTo(c.cE);
   });
 });

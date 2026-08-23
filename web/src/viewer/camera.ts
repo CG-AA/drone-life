@@ -97,10 +97,34 @@ export function clampCamera(cam: Camera, half: number, altMax: number,
                             w: number, h: number): Camera {
   const minS = fitScale(half, altMax, w, h);
   const maxS = maxScale(half, altMax, w, h);
-  const lim = half + PAN_MARGIN_M;
+  // room for followCenter's lift as well as the manual pan margin, so
+  // following a high drone near a corner is not clamped off-centre
+  const lim = half + PAN_MARGIN_M + altMax * ALT_LIFT;
   return {
     scale: Math.min(Math.max(cam.scale, minS), maxS),
     cN: Math.min(Math.max(cam.cN, -lim), lim),
     cE: Math.min(Math.max(cam.cE, -lim), lim),
   };
+}
+
+/** Camera centre that puts an airborne point in the middle of the viewport.
+ *
+ * The centre is a ground point but altitude lifts a sprite straight up, so
+ * aiming at a drone's ground position parks it above centre — by a whole
+ * screen height when zoomed in on a high flight. Solving
+ * project(cN,cE,0) == project(n,e,alt) gives an equal shift along both axes,
+ * since moving north-east is what "up the screen" means in this projection. */
+export function followCenter(n: number, e: number, alt: number): { cN: number; cE: number } {
+  const lift = alt * ALT_LIFT;
+  return { cN: n + lift, cE: e + lift };
+}
+
+/** World meters -> screen pixel (viewport coords). The inverse of
+ * screenToWorld, but for any altitude: used to hit-test a tap against the
+ * drones as they are actually drawn. */
+export function worldToScreen(cam: Camera, w: number, h: number,
+                              n: number, e: number, alt: number): { x: number; y: number } {
+  const off = worldOffset(cam, w, h);
+  const p = project(n, e, alt, cam.scale);
+  return { x: p.x + off.x, y: p.y + off.y };
 }
