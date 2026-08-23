@@ -47,7 +47,7 @@ class RampartMission(Mission):
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([*world.config.pad_positions(), QUARRY])
+        self.tm.set_keep_out([QUARRY])  # pads are engine-protected already
         self._announce(world)
 
     def tile_map(self) -> TileMap:

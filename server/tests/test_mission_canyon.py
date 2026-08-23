@@ -7,7 +7,7 @@ from tests.support.harness import FakeWorld
 def make() -> tuple[CanyonMission, FakeWorld]:
     world = FakeWorld()
     mission = CanyonMission()
-    mission.setup(world)
+    world.start(mission)
     return mission, world
 
 

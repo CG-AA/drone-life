@@ -102,7 +102,7 @@ class SiegeMission(Mission):
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([KEEP, QUARRY, *world.config.pad_positions(), *GATES])
+        self.tm.set_keep_out([KEEP, QUARRY, *GATES])  # pads are engine-protected already
         self._announce(world)
 
     def tile_map(self) -> TileMap:

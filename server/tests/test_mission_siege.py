@@ -19,7 +19,7 @@ from tests.support.harness import FakeWorld, assert_grammar, view
 def make():
     world = FakeWorld()
     mission = SiegeMission()
-    mission.setup(world)
+    world.start(mission)
     return world, mission
 
 

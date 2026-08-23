@@ -36,7 +36,7 @@ class ForgeMission(Mission):
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([*world.config.pad_positions(), CLAY_PIT])
+        self.tm.set_keep_out([CLAY_PIT])  # pads are engine-protected already
         self._announce(world)
 
     def tile_map(self) -> TileMap:

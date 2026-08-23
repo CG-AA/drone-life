@@ -17,7 +17,7 @@ from tests.support.harness import FakeWorld, view
 def make() -> tuple[RampartMission, FakeWorld]:
     world = FakeWorld()
     mission = RampartMission()
-    mission.setup(world)
+    world.start(mission)
     return mission, world
 
 

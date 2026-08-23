@@ -14,7 +14,7 @@ from tests.support.harness import FakeWorld, view
 def make() -> tuple[DeliveryMission, FakeWorld]:
     world = FakeWorld()
     mission = DeliveryMission()
-    mission.setup(world)
+    world.start(mission)
     return mission, world
 
 

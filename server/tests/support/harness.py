@@ -65,7 +65,11 @@ class FakeWorld:
     # --------------------------------------------- engine-shaped drivers
 
     def start(self, mission: Mission) -> None:
-        """Mirror GameEngine.start: current views are visible to setup()."""
+        """Mirror GameEngine.start: pads get protected, then setup() runs with
+        the current views visible."""
+        tm = mission.tile_map()
+        if tm is not None:
+            tm.protect_pads(self.config.pad_positions())
         mission.setup(self)
 
     def drone_event(self, mission: Mission, drone: DroneView, kind: str) -> None:

@@ -80,6 +80,9 @@ class GameEngine:
     def start(self, now: float) -> None:
         self.api.now = now
         self.api._views = self.backend.drones()
+        tm = self.mission.tile_map()
+        if tm is not None:  # pads are unbuildable in every mission, by default
+            tm.protect_pads(self.config.pad_positions())
         try:
             self.mission.setup(self.api)
         except Exception:

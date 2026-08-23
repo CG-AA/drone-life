@@ -14,7 +14,7 @@ from tests.support.harness import FakeWorld, view
 def make() -> tuple[ForgeMission, FakeWorld]:
     world = FakeWorld()
     mission = ForgeMission()
-    mission.setup(world)
+    world.start(mission)
     return mission, world
 
 
