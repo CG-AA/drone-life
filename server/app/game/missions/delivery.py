@@ -49,7 +49,6 @@ class DeliveryMission(Mission):
         self.drop_dwell = DwellTracker(DROP_RADIUS, PICKUP_ALT, DROP_DWELL)
         self.next_id = 1
         self.last_announce = 0.0
-        self._drone_pos: dict[str, tuple[float, float, float]] = {}
 
     # ------------------------------------------------------------- lifecycle
 
@@ -88,7 +87,6 @@ class DeliveryMission(Mission):
 
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = {d.id: d for d in world.drones()}
-        self._drone_pos = {d.id: (d.n, d.e, d.alt) for d in drones.values()}
 
         if world.now - self.last_announce > ANNOUNCE_EVERY:
             self.last_announce = world.now
@@ -137,12 +135,14 @@ class DeliveryMission(Mission):
 
     # -------------------------------------------------------------- viewer
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
+        pos = {d.id: d for d in world.drones()}
         out = [Entity(id="dropoff", kind="dropoff", n=0.0, e=0.0, alt=0.0)]
         for crate in self.crates.values():
-            if crate.carried_by and crate.carried_by in self._drone_pos:
-                n, e, alt = self._drone_pos[crate.carried_by]
-                out.append(Entity(id=f"crate{crate.id}", kind="crate", n=n, e=e, alt=alt,
+            carrier = pos.get(crate.carried_by or "")
+            if carrier is not None:
+                out.append(Entity(id=f"crate{crate.id}", kind="crate",
+                                  n=carrier.n, e=carrier.e, alt=carrier.alt,
                                   data={"carried_by": crate.carried_by}))
             else:
                 out.append(Entity(id=f"crate{crate.id}", kind="crate",

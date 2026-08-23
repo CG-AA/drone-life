@@ -85,7 +85,9 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
     def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:  # noqa: B027
         """kind is one of DRONE_EVENT_KINDS; delivered before tick() each step."""
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
+        """Called at 10 Hz after tick() — and on WS connect, possibly before
+        the first tick — so read live state from `world`, don't stash it."""
         return []
 
     def tile_map(self) -> TileMap | None:

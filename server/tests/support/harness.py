@@ -76,4 +76,4 @@ class FakeWorld:
         for _ in range(int(seconds / dt)):
             self.now += dt
             mission.tick(self, dt)
-            mission.entities()  # the driver serializes after every tick
+            mission.entities(self)  # the driver serializes after every tick

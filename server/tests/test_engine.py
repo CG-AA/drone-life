@@ -32,7 +32,7 @@ class BrokenMission(Mission):
     def on_drone_event(self, world, drone, kind):
         raise ValueError("event boom")
 
-    def entities(self):
+    def entities(self, world):
         raise IndexError("entities boom")
 
     def reset(self, world):
@@ -75,7 +75,7 @@ def test_healthy_mission_scores_through_the_api():
         def tick(self, world, dt):
             world.add_score(10, "test")
 
-        def entities(self):
+        def entities(self, world):
             return [Entity(id="x", kind="crate", n=0.0, e=0.0, alt=0.0)]
 
     engine = make_engine(Scorer())

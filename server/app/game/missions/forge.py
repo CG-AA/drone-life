@@ -32,7 +32,6 @@ class ForgeMission(Mission):
         self.blueprints = BlueprintTracker([FURNACE])
         self.furnaces: list[Axial] = []  # lit furnace ring centers
         self.last_announce = 0.0
-        self._views = []
 
     # ------------------------------------------------------------- lifecycle
 
@@ -61,7 +60,6 @@ class ForgeMission(Mission):
 
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
-        self._views = drones
 
         for _drone_id, _ in self.carry.sync_losses(drones):
             world.emit_event("tile_lost", "a clay tile was lost")
@@ -93,10 +91,10 @@ class ForgeMission(Mission):
 
     # -------------------------------------------------------------- viewer
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
         out = [self.pit.entity()]
         for i, center in enumerate(self.furnaces):
             n, e = hex.axial_to_world(center)
             out.append(Entity(id=f"furnace{i}", kind="furnace", n=n, e=e, alt=0.0))
-        out.extend(self.carry.entities(self._views))
+        out.extend(self.carry.entities(world.drones()))
         return out

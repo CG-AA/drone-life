@@ -103,7 +103,7 @@ class GameEngine:
 
     def entities(self) -> list:
         try:
-            return self.mission.entities()
+            return self.mission.entities(self.api)
         except Exception:
             self._mission_error("entities")
             return []

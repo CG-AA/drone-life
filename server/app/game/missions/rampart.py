@@ -43,7 +43,6 @@ class RampartMission(Mission):
         self.total = len(self.targets) * WALL_HEIGHT
         self.done = False
         self.last_announce = 0.0
-        self._views = []
 
     # ------------------------------------------------------------- lifecycle
 
@@ -77,7 +76,6 @@ class RampartMission(Mission):
 
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
-        self._views = drones
 
         for _drone_id, _ in self.carry.sync_losses(drones):
             world.emit_event("tile_lost", "a steel tile was lost")
@@ -111,7 +109,7 @@ class RampartMission(Mission):
 
     # -------------------------------------------------------------- viewer
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
         out = [self.quarry.entity()]
         for cell in self.targets:
             have = self.tm.height(cell)
@@ -122,5 +120,5 @@ class RampartMission(Mission):
                               n=n, e=e, alt=self.tm.top_alt(cell),
                               data={"material": "steel", "need": WALL_HEIGHT,
                                     "have": have, "size": hex.HEX_SIZE}))
-        out.extend(self.carry.entities(self._views))
+        out.extend(self.carry.entities(world.drones()))
         return out

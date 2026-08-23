@@ -45,7 +45,7 @@ def test_lifecycle_contract(name):
     tm = mission.tile_map()  # the service reads this before setup runs
 
     world.start(mission)
-    mission.entities()  # WS connect can serialize before the first tick
+    mission.entities(world)  # WS connect can serialize before the first tick
 
     world.views = [view()]
     for kind in DRONE_EVENT_KINDS:  # every documented event, with a live drone
@@ -59,6 +59,6 @@ def test_lifecycle_contract(name):
     mission.reset(world)
     assert mission.tile_map() is tm, "reset() rebuilds the same map, never replaces it"
 
-    ids = [ent.id for ent in mission.entities()]
+    ids = [ent.id for ent in mission.entities(world)]
     assert len(ids) == len(set(ids)), "entity ids must be unique"
     assert_grammar(world)

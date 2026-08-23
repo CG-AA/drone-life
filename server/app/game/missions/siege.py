@@ -98,7 +98,6 @@ class SiegeMission(Mission):
         self._hint = 0
         self.last_announce = 0.0
         self.last_target = 0.0
-        self._views: list[DroneView] = []
 
     # ------------------------------------------------------------- lifecycle
 
@@ -130,7 +129,6 @@ class SiegeMission(Mission):
 
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
-        self._views = drones
 
         for _drone_id, _ in self.carry.sync_losses(drones):
             world.emit_event("tile_lost", "a steel tile was lost")
@@ -308,7 +306,7 @@ class SiegeMission(Mission):
 
     # ----------------------------------------------------------------- viewer
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
         out = [Entity(id="keep", kind="keep", n=KEEP[0], e=KEEP[1], alt=0.0,
                       data={"hp": self.keep_hp, "max": KEEP_HP}),
                self.quarry.entity()]
@@ -323,5 +321,5 @@ class SiegeMission(Mission):
         for beam_id, _expiry, (n, e, alt), (tn, te, talt) in self.beams:
             out.append(Entity(id=beam_id, kind="beam", n=n, e=e, alt=alt,
                               data={"tn": tn, "te": te, "talt": talt}))
-        out.extend(self.carry.entities(self._views))
+        out.extend(self.carry.entities(world.drones()))
         return out

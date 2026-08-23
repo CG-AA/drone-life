@@ -37,7 +37,7 @@ def test_setup_announces_quarry_and_gap():
     assert any("quarry at N -32 E 39" in t for target, t in world.texts if target == "*")
     assert any("wall gap at" in t and "hover 4" in t
                for target, t in world.texts if target == "*")
-    kinds = [e.kind for e in mission.entities()]
+    kinds = [e.kind for e in mission.entities(world)]
     assert kinds.count("tile_source") == 1
     assert kinds.count("ghost_tile") == len(mission.targets)
 
@@ -86,7 +86,7 @@ def test_completing_the_wall_pays_the_bonus():
     assert world.score == mission.total * PLACE_POINTS + WALL_BONUS
     assert mission.done
     assert any("rampart complete" in t for target, t in world.texts if target == "*")
-    kinds = [e.kind for e in mission.entities()]
+    kinds = [e.kind for e in mission.entities(world)]
     assert kinds.count("ghost_tile") == 0, "no gaps left to show"
 
 

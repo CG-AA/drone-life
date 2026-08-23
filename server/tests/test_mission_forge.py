@@ -47,7 +47,7 @@ def test_sixth_tile_lights_the_furnace():
     assert mission.furnaces == [(0, 0)], "the furnace sits at the ring center"
     assert world.score == 6 * PLACE_POINTS + FURNACE_POINTS
     assert any("furnace lit" in t for target, t in world.texts if target == "*")
-    kinds = [e.kind for e in mission.entities()]
+    kinds = [e.kind for e in mission.entities(world)]
     assert kinds.count("furnace") == 1
     assert kinds.count("tile_source") == 1
 

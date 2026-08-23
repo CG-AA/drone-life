@@ -56,9 +56,9 @@ def texts(world):
 
 def test_setup_entities_and_announcements():
     world, m = make()
-    kinds = {e.kind for e in m.entities()}
+    kinds = {e.kind for e in m.entities(world)}
     assert {"keep", "tile_source"} <= kinds
-    keep = next(e for e in m.entities() if e.kind == "keep")
+    keep = next(e for e in m.entities(world) if e.kind == "keep")
     assert keep.data == {"hp": KEEP_HP, "max": KEEP_HP}
     assert any("keep at N 0 E 0" in t for t in texts(world))
     assert any("quarry at N -50 E 44" in t for t in texts(world))
@@ -178,10 +178,10 @@ def test_tower_builds_fires_and_beam_expires():
     assert ((creep.n - tn) ** 2 + (creep.e - te) ** 2) ** 0.5 <= 12.0
     world.run(m, 0.3)
     assert not m.creeps, "the tower shot it"
-    beams = [e for e in m.entities() if e.kind == "beam"]
+    beams = [e for e in m.entities(world) if e.kind == "beam"]
     assert len(beams) == 1 and beams[0].data["talt"] == creep.alt
     world.run(m, BEAM_S + 0.2)
-    assert not [e for e in m.entities() if e.kind == "beam"], "beam expired"
+    assert not [e for e in m.entities(world) if e.kind == "beam"], "beam expired"
     assert_grammar(world)
 
 
@@ -239,4 +239,4 @@ def test_beams_expire_even_in_an_empty_room():
     world.views = []  # everyone left while a tower was mid-shot
     world.run(m, BEAM_S + 1.0)
     assert m.beams == []
-    assert not [e for e in m.entities() if e.kind == "beam"]
+    assert not [e for e in m.entities(world) if e.kind == "beam"]
