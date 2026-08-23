@@ -65,6 +65,16 @@ function connectWs(): void {
     showJoin("session expired — join again");
   };
   ws.onSkew = () => banner("this page is out of date — refresh to reconnect");
+  let wasDown = false;
+  ws.onStatus = (up) => {
+    if (!up) {
+      wasDown = true;
+      banner("connection lost — reconnecting…");
+    } else if (wasDown) {
+      wasDown = false;
+      banner("");
+    }
+  };
   ws.connect();
 }
 
