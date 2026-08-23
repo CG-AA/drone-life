@@ -91,6 +91,8 @@ class DroneLifeService:
             pads=[hex.pad_cell(i) for i in range(settings.max_students)],
         )
         self.engine = GameEngine(self.backend, self.bus, mission_cls(), config, settings.sim_seed)
+        # deliberately unguarded: a broken tile_map() should fail the boot loudly
+        # before a workshop, not surface as a mid-session mission_error
         self.tilemap = self.engine.mission.tile_map()
         if self.tilemap is not None:
             self.world.terrain = self.tilemap
