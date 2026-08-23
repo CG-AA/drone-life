@@ -116,6 +116,8 @@ class RunnerManager:
         run.state = "running"
         ring.append("system", f"run {run_id} started ({mode})")
         self._emit(run)
+        assert run.proc.stdout is not None  # both PIPEd above
+        assert run.proc.stderr is not None
         # retained: an unreferenced task can be GC'd mid-flight and its
         # exception would vanish until collection
         run.tasks = [

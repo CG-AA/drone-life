@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 from ..core.bus import EventBus
 from ..sim.backend import DroneBackend, DroneView
-from .mission import SEV_INFO, Mission, MissionConfig
+from .mission import SEV_INFO, Entity, Mission, MissionConfig
 
 log = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class GameEngine:
         except Exception:
             self._mission_error("tick")
 
-    def entities(self) -> list:
+    def entities(self) -> list[Entity]:
         try:
             return self.mission.entities(self.api)
         except Exception:

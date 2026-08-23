@@ -11,6 +11,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .api import messages
 from .config import Settings
@@ -27,6 +28,9 @@ from .sim import params as P
 from .sim.backend import DroneBackend, DroneView
 from .sim.drone import SEV_INFO
 from .sim.world import World
+
+if TYPE_CHECKING:
+    from .api.ws import Hub
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +75,7 @@ class DroneLifeService:
         self.registry = Registry(settings.max_students, settings.mavlink_base_port)
         self._bind_mission(settings)
         self.runner = RunnerManager(settings, EXAMPLES_DIR, self._on_run_event)
-        self.hub = None  # set by api.ws when the app wires up
+        self.hub: Hub | None = None  # set by api.ws when the app wires up
 
         self.ticks = 0
         self.overruns = 0
@@ -247,6 +251,7 @@ class DroneLifeService:
                 room_full = True
                 break
             if mode == "container":
+                assert code is not None  # read above, exactly for this mode
                 await self.runner.submit_container(student, code)
             else:
                 await self.runner.submit_local(student, script_path)

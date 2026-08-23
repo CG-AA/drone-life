@@ -96,12 +96,12 @@ class DeliveryMission(Mission):
 
         # carrier crashed or vanished before delivering: a fresh crate spawns
         for drone_id, crate_id in self.carry.sync_losses(drones.values()):
-            crate = self.crates.pop(crate_id, None)
-            if crate is None:
+            lost = self.crates.pop(crate_id, None)
+            if lost is None:
                 continue
             d = drones.get(drone_id)
             reason = "crashed" if (d and d.crashed) else "was lost"
-            world.emit_event("crate_lost", f"crate {crate.id} {reason}",
+            world.emit_event("crate_lost", f"crate {lost.id} {reason}",
                              student_id=d.student_id if d else None)
             self._spawn_crate(world)
 
@@ -123,12 +123,12 @@ class DeliveryMission(Mission):
         winner = self.drop_dwell.update(drones.values(), *DROPOFF, dt,
                                         eligible=lambda d: self.carry.item(d.id) is not None)
         if winner is not None:
-            crate = self.crates.pop(self.carry.take(winner.id) or "", None)
-            if crate is not None:
-                total = world.add_score(POINTS, f"crate {crate.id} delivered",
+            delivered = self.crates.pop(self.carry.take(winner.id) or "", None)
+            if delivered is not None:
+                total = world.add_score(POINTS, f"crate {delivered.id} delivered",
                                         student_id=winner.student_id)
                 world.emit_event("delivery",
-                                 f"{winner.name} delivered crate {crate.id}! +{POINTS}",
+                                 f"{winner.name} delivered crate {delivered.id}! +{POINTS}",
                                  student_id=winner.student_id, data={"points": POINTS})
                 world.send_text(winner.id, f"GAME: delivered! +{POINTS} (team {total})")
                 self._spawn_crate(world)

@@ -50,6 +50,7 @@ test-web:
 
 typecheck:
 	cd web && npm run typecheck
+	cd server && uv run mypy app
 
 e2e:
 	cd server && uv run pytest -q -m e2e
