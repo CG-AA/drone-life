@@ -34,7 +34,7 @@ def place_at(mission, world, cell):
 
 def test_setup_announces_quarry_and_gap():
     mission, world = make()
-    assert any("quarry at N -30 E 40" in t for target, t in world.texts if target == "*")
+    assert any("quarry at N -32 E 39" in t for target, t in world.texts if target == "*")
     assert any("wall gap at" in t and "hover 4" in t
                for target, t in world.texts if target == "*")
     kinds = [e.kind for e in mission.entities()]
@@ -93,7 +93,7 @@ def test_completing_the_wall_pays_the_bonus():
 def test_quarry_and_pads_are_unbuildable():
     mission, _world = make()
     assert mission.tm.can_place(hex.world_to_axial(*QUARRY), "steel")[0] is False
-    assert mission.tm.can_place(hex.world_to_axial(-90.0, -76.0), "steel")[0] is False
+    assert mission.tm.can_place(hex.pad_cell(0), "steel")[0] is False
 
 
 def test_reset_rebuilds_the_same_map_object():

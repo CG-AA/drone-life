@@ -135,7 +135,7 @@ def test_rtl_clears_max_legal_walls():
     world = World()
     # an 8 m wall (MAX_STACK * TILE_HEIGHT) across the whole route home
     world.terrain = BoxTerrain([(-60, -40, -100, 100, 8.0)])
-    drone = spawn_at(world, 0.0, -76.0)  # spawn pad is at (-90, -76)
+    drone = spawn_at(world, 0.0, -76.0)  # spawn pad 0 is at (-90, -52)
     fly(world, drone, 2)
     drone.set_mode(P.MODE_RTL, world.t)
     events = run(world, 60)

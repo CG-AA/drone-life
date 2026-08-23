@@ -52,7 +52,8 @@ def world_message(service: DroneLifeService) -> dict:
 def hello_message(service: DroneLifeService) -> dict:
     return {
         "proto": 1,
-        "arena": {"half": P.ARENA_HALF, "alt_max": P.ALT_MAX},
+        "arena": {"half": P.ARENA_HALF, "alt_max": P.ALT_MAX,
+                  "hex_size": service.hex_size()},
         "mission": service.engine.mission.name,
         "epoch": service.world.epoch,
     }

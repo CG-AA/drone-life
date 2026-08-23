@@ -67,7 +67,7 @@ def test_setup_entities_and_announcements():
     keep = next(e for e in m.entities() if e.kind == "keep")
     assert keep.data == {"hp": KEEP_HP, "max": KEEP_HP}
     assert any("keep at N 0 E 0" in t for t in texts(world))
-    assert any("quarry at N -50 E 45" in t for t in texts(world))
+    assert any("quarry at N -50 E 44" in t for t in texts(world))
     assert_grammar(world)
 
 

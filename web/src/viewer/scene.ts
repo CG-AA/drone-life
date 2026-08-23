@@ -1,4 +1,10 @@
-/** Pixi stage: layers, arena grid with coordinate labels, spawn pads.
+/** Pixi stage: layers, arena floor (hex lattice) with coordinate labels,
+ * spawn pads.
+ *
+ * Paint order, bottom-up: floor grid → pads → trails → ground decals (flat
+ * rings) → the single depth-sorted layer holding tile prisms, shadows, drones
+ * and entities. Anything with a footprint in the world goes in that last layer
+ * with a depth zIndex, so near things cover far things regardless of kind.
  *
  * The scene owns a Camera; CameraController drives it from input. Zoom changes
  * `scale`, which every layer already keys its redraw on, so the vector art is
@@ -9,11 +15,20 @@
 import { Application, Container, Graphics, Text } from "pixi.js";
 import type { PadState } from "../shared/protocol";
 import { COLORS, FONT_UI } from "../shared/theme";
-import { project } from "./iso";
+import { axialToWorld, hexCorners, worldToAxial } from "./hex";
+import { project, type Projected } from "./iso";
 import { type Camera, clampCamera, clampResolution, defaultCamera, worldOffset } from "./camera";
 import { slotColor } from "./colors";
 
 const GRID_STEP = 20;
+
+/** Where a shadow (or anything resting on the ground) sits at a world point:
+ * the altitude of the surface and the zIndex that paints it just above the
+ * tile it rests on. */
+export interface Ground {
+  alt: number;
+  zIndex: number;
+}
 
 export class Scene {
   app = new Application();
@@ -22,9 +37,13 @@ export class Scene {
   gridLabels = new Container();
   padLayer = new Container();
   trailLayer = new Container();
-  shadowLayer = new Container();
-  terrainLayer = new Container(); // hex-tile prisms, event-driven redraw
-  spriteLayer = new Container(); // drones + entities, depth-sorted
+  decalLayer = new Container(); // flat ground rings, never occlude anything
+  spriteLayer = new Container(); // tiles + shadows + drones + entities, depth-sorted
+  /** Hex lattice size from hello (and the tiles message); null until one arrives. */
+  hexSize: number | null = null;
+  /** Overridden by the terrain renderer once tiles exist. */
+  groundAt: (n: number, e: number) => Ground = (n, e) =>
+    ({ alt: 0, zIndex: project(n, e, 0, 1).depth });
 
   camera: Camera = { scale: 3, cN: 0, cE: 0 };
   half = 100;
@@ -59,7 +78,7 @@ export class Scene {
     document.body.appendChild(this.app.canvas);
     this.spriteLayer.sortableChildren = true;
     this.world.addChild(this.gridLayer, this.gridLabels, this.padLayer, this.trailLayer,
-                        this.shadowLayer, this.terrainLayer, this.spriteLayer);
+                        this.decalLayer, this.spriteLayer);
     this.app.stage.addChild(this.world);
     window.addEventListener("resize", () => {
       this.applyResolution();
@@ -102,6 +121,16 @@ export class Scene {
     this.altMax = altMax;
     this.userAdjusted = false; // a new arena deserves a fresh fit
     this.layout();
+  }
+
+  /** The tile lattice the floor is drawn with (from the tiles message, so it
+   * can never drift from the server's hex size). */
+  setHexGeometry(size: number): void {
+    if (this.hexSize === size) return;
+    this.hexSize = size;
+    this.drawGrid();
+    this.padsKey = "";
+    this.drawPads(this.lastPads);
   }
 
   /** Back to the fitted projector view. */
@@ -151,18 +180,12 @@ export class Scene {
       project(H, H, 0, s), project(-H, H, 0, s),
       project(-H, -H, 0, s), project(H, -H, 0, s),
     ];
-    g.poly(corners.flatMap((p) => [p.x, p.y])).fill({ color: COLORS.floor });
+    const diamond = corners.flatMap((p) => [p.x, p.y]);
+    g.poly(diamond).fill({ color: COLORS.floor });
 
-    for (let v = -H; v <= H; v += GRID_STEP) {
-      const a = project(v, -H, 0, s);
-      const b = project(v, H, 0, s);
-      g.moveTo(a.x, a.y).lineTo(b.x, b.y);
-      const c = project(-H, v, 0, s);
-      const d = project(H, v, 0, s);
-      g.moveTo(c.x, c.y).lineTo(d.x, d.y);
-    }
-    g.stroke({ width: 1, color: COLORS.grid, alpha: 0.8 });
-    g.poly(corners.flatMap((p) => [p.x, p.y])).stroke({ width: 2, color: COLORS.gridBorder });
+    if (this.hexSize !== null) this.drawHexLattice(this.hexSize, s);
+    else this.drawSquareGrid(s);
+    g.poly(diamond).stroke({ width: 2, color: COLORS.gridBorder });
 
     // coordinate labels so viewer space maps to script coordinates
     for (let v = -H; v <= H; v += GRID_STEP * 2) {
@@ -173,6 +196,54 @@ export class Scene {
     const eArrow = project(-H - 8, H + 16, 0, s);
     this.addLabel("N ↑", nArrow, COLORS.labelBright, 15);
     this.addLabel("E ↑", eArrow, COLORS.labelBright, 15);
+  }
+
+  /** Pre-tiles fallback: the old 20 m square grid. */
+  private drawSquareGrid(s: number): void {
+    const g = this.gridLayer;
+    const H = this.half;
+    for (let v = -H; v <= H; v += GRID_STEP) {
+      const a = project(v, -H, 0, s);
+      const b = project(v, H, 0, s);
+      g.moveTo(a.x, a.y).lineTo(b.x, b.y);
+      const c = project(-H, v, 0, s);
+      const d = project(H, v, 0, s);
+      g.moveTo(c.x, c.y).lineTo(d.x, d.y);
+    }
+    g.stroke({ width: 1, color: COLORS.grid, alpha: 0.8 });
+  }
+
+  /** The real cell lattice, so placed tiles visibly sit in the grid they snap
+   * to. Each cell strokes three of its six edges (the other three belong to
+   * its neighbors); cells straddling the border are clipped by the arena
+   * diamond (Pixi mask), so the lattice runs right up to the edge without
+   * poking out. */
+  private drawHexLattice(size: number, s: number): void {
+    const g = this.gridLayer;
+    const H = this.half;
+    const reach = H + size; // include cells whose center is just outside
+    const rMax = Math.ceil(reach / (1.5 * size));
+    for (let r = -rMax; r <= rMax; r++) {
+      const qMax = Math.ceil(reach / (Math.sqrt(3) * size)) + Math.ceil(Math.abs(r) / 2) + 1;
+      for (let q = -qMax; q <= qMax; q++) {
+        const c = axialToWorld(q, r, size);
+        if (Math.abs(c.n) > reach || Math.abs(c.e) > reach) continue;
+        const pts: Projected[] = hexCorners(q, r, size).map((w) => project(w.n, w.e, 0, s));
+        g.moveTo(pts[0].x, pts[0].y);
+        for (let k = 1; k <= 3; k++) g.lineTo(pts[k].x, pts[k].y);
+      }
+    }
+    g.stroke({ width: 1, color: COLORS.grid, alpha: 0.8 });
+    const mask = new Graphics();
+    const corners = [
+      project(H, H, 0, s), project(-H, H, 0, s),
+      project(-H, -H, 0, s), project(H, -H, 0, s),
+    ];
+    mask.poly(corners.flatMap((p) => [p.x, p.y])).fill({ color: 0xffffff });
+    const old = this.gridLayer.mask as Graphics | null;
+    this.gridLayer.mask = mask;
+    this.gridLayer.addChild(mask);
+    old?.destroy();
   }
 
   private addLabel(text: string, at: { x: number; y: number }, color: number,
@@ -190,19 +261,22 @@ export class Scene {
   /** Redraw spawn pads when the roster changes (cheap key comparison). */
   drawPads(pads: PadState[]): void {
     this.lastPads = pads;
-    const key = pads.map((p) => `${p.slot}:${p.name}`).join("|") + this.scale.toFixed(3);
+    const key = pads.map((p) => `${p.slot}:${p.name}`).join("|")
+      + `@${this.scale.toFixed(3)}/${this.hexSize}`;
     if (key === this.padsKey) return;
     this.padsKey = key;
     this.padLayer.removeChildren();
     const s = this.scale;
-    const r = 3.2; // pad radius, meters
+    // a pad IS a lattice cell (server: hex.pad_cell), so draw that cell's own
+    // hex rather than a free-floating marker — it fills its grid hex exactly
+    const size = this.hexSize;
+    if (size === null) return; // hello carries hex_size; pads follow it
     for (const pad of pads) {
       const g = new Graphics();
-      const corners = [
-        project(pad.n + r, pad.e, 0, s), project(pad.n, pad.e + r, 0, s),
-        project(pad.n - r, pad.e, 0, s), project(pad.n, pad.e - r, 0, s),
-      ];
-      const center = project(pad.n, pad.e, 0, s);
+      const [q, r] = worldToAxial(pad.n, pad.e, size);
+      const corners: Projected[] = hexCorners(q, r, size).map((w) => project(w.n, w.e, 0, s));
+      const c = axialToWorld(q, r, size);
+      const center = project(c.n, c.e, 0, s);
       const color = slotColor(pad.slot + 1);
       g.poly(corners.flatMap((p) => [p.x - center.x, p.y - center.y]))
         .fill({ color, alpha: 0.16 })

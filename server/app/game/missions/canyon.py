@@ -22,7 +22,7 @@ class CanyonMission(Mission):
         self.tm = TileMap()
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out(world.config.pads)
+        self.tm.set_keep_out(world.config.pad_positions())
         for e0 in WALL_E:
             for cell in hex.cells_along((WALL_N[0], e0), (WALL_N[1], e0)):
                 for _ in range(WALL_HEIGHT):

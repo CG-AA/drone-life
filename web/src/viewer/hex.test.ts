@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { axialToWorld, hexCorners } from "./hex";
+import { axialToWorld, hexCorners, worldToAxial } from "./hex";
 
 // Golden values generated from server/app/game/hex.py — pins the two
 // implementations to each other so they cannot drift.
@@ -46,5 +46,25 @@ describe("hexCorners", () => {
     const mid = { n: (corners[0].n + corners[1].n) / 2, e: (corners[0].e + corners[1].e) / 2 };
     expect(mid.n).toBeCloseTo((a.n + b.n) / 2, 9);
     expect(mid.e).toBeCloseTo((a.e + b.e) / 2, 9);
+  });
+});
+
+describe("worldToAxial", () => {
+  it("matches the Python implementation", () => {
+    // golden values from hex.world_to_axial(n, e, 3.0)
+    const cases: Array<[number, number, number, number]> = [
+      [0, 0, 0, 0], [2.5, 2.5, 0, 1], [13.5, 18.19, 2, 3],
+      [-7.9, 3.2, 2, -2], [4.4, -20.1, -4, 1], [1.5, 2.598, 0, 0],
+    ];
+    for (const [n, e, q, r] of cases) expect(worldToAxial(n, e, 3.0)).toEqual([q, r]);
+  });
+
+  it("inverts axialToWorld at every cell center", () => {
+    for (let q = -5; q <= 5; q++) {
+      for (let r = -5; r <= 5; r++) {
+        const c = axialToWorld(q, r, 3.0);
+        expect(worldToAxial(c.n, c.e, 3.0)).toEqual([q, r]);
+      }
+    }
   });
 });

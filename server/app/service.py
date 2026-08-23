@@ -17,6 +17,7 @@ from .config import Settings
 from .core import snapshot
 from .core.bus import EventBus
 from .core.registry import Registry, RoomFullError, Student
+from .game import hex
 from .game.engine import GameEngine
 from .game.mission import MissionConfig
 from .game.missions import MISSIONS
@@ -87,7 +88,7 @@ class DroneLifeService:
         config = MissionConfig(
             arena_half=P.ARENA_HALF,
             alt_max=P.ALT_MAX,
-            pads=[World.pad_position(i) for i in range(settings.max_students)],
+            pads=[hex.pad_cell(i) for i in range(settings.max_students)],
         )
         self.engine = GameEngine(self.backend, self.bus, mission_cls(), config, settings.sim_seed)
         self.tilemap = self.engine.mission.tile_map()
@@ -258,6 +259,11 @@ class DroneLifeService:
 
     def tiles_message(self) -> dict:
         return messages.tiles_message(self)
+
+    def hex_size(self) -> float:
+        """The lattice pads and landmarks sit on — the tile map's if the
+        mission has one, so the viewer draws the same grid either way."""
+        return self.tilemap.size if self.tilemap is not None else hex.HEX_SIZE
 
     def health(self) -> dict:
         return {"ok": True, "drones": len(self.world.drones), "ticks": self.ticks,

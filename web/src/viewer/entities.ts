@@ -20,14 +20,18 @@ function pulse(timeMs: number, period: number, base: number, amp: number): numbe
 export class EntityVis {
   root = new Container();
   g = new Graphics();
+  /** depth-sorted with tiles; rests on the surface under the entity */
   shadow = new Graphics();
+  /** flat ground marking (range rings) that must never occlude anything */
+  decal = new Graphics();
   label: Text | null = null;
   drawKey = "";
 
   constructor(public kind: string, private scene: Scene) {
     this.root.addChild(this.g);
     scene.spriteLayer.addChild(this.root);
-    scene.shadowLayer.addChild(this.shadow);
+    scene.spriteLayer.addChild(this.shadow);
+    scene.decalLayer.addChild(this.decal);
   }
 
   addLabel(text: string, color: number, size = 12, dy = 10): Text {
@@ -46,6 +50,7 @@ export class EntityVis {
   destroy(): void {
     this.root.destroy({ children: true });
     this.shadow.destroy();
+    this.decal.destroy();
   }
 }
 
@@ -53,6 +58,8 @@ interface Pose {
   n: number;
   e: number;
   alt: number;
+  /** altitude of the surface below (tile stack top, or 0 on bare floor) */
+  groundAlt: number;
 }
 
 interface KindRenderer {
@@ -90,8 +97,8 @@ const crate: KindRenderer = {
       .fill({ color: 0xdd9c44 });
     g.poly([0, -u, u * 0.87, -u * 0.5, 0, 0, -u * 0.87, -u * 0.5])
       .stroke({ width: 1, color: 0x6b4415 });
-    if (drawAlt > 0.3) {
-      const ground = projectGround(pose.n, pose.e, s);
+    if (drawAlt - pose.groundAlt > 0.3) {
+      const ground = project(pose.n, pose.e, pose.groundAlt, s);
       vis.shadow.ellipse(ground.x, ground.y, u, u * 0.5)
         .fill({ color: 0x000000, alpha: 0.3 });
     }
@@ -182,8 +189,8 @@ const tileCarried: KindRenderer = {
     const mat = MATERIAL_COLORS[String(ent.data.material)] ?? UNKNOWN_MATERIAL;
     vis.g.poly(hexPoly(1.4, s)).fill({ color: mat.top })
       .stroke({ width: 1, color: mat.sideDark });
-    if (drawAlt > 0.3) {
-      const ground = projectGround(pose.n, pose.e, s);
+    if (drawAlt - pose.groundAlt > 0.3) {
+      const ground = project(pose.n, pose.e, pose.groundAlt, s);
       vis.shadow.ellipse(ground.x, ground.y, Math.max(4, s * 1.2), Math.max(2, s * 0.6))
         .fill({ color: 0x000000, alpha: 0.3 });
     }
@@ -203,8 +210,8 @@ const troop: KindRenderer = {
     const tip = project(Math.cos(dir) * 1.8, Math.sin(dir) * 1.8, 0, s);
     vis.g.moveTo(jitter, -bob).lineTo(jitter + tip.x, -bob + tip.y)
       .stroke({ width: 2, color: 0xffd0d0 });
-    if (drawAlt > 0.3) { // marching over a wall: shadow stays on the ground
-      const ground = projectGround(pose.n, pose.e, s);
+    if (drawAlt - pose.groundAlt > 0.3) { // airborne (e.g. knocked off a wall)
+      const ground = project(pose.n, pose.e, pose.groundAlt, s);
       vis.shadow.ellipse(ground.x, ground.y, r, r * 0.5)
         .fill({ color: 0x000000, alpha: 0.3 });
     }
@@ -257,7 +264,7 @@ const tower: KindRenderer = {
                                 pose.e + range * Math.sin(a), s);
         ring.push(p.x, p.y);
       }
-      vis.shadow.poly(ring).stroke({ width: 1.5, color: 0x7cc7ff, alpha: 0.22 });
+      vis.decal.poly(ring).stroke({ width: 1.5, color: 0x7cc7ff, alpha: 0.22 });
     }
   },
 };
@@ -322,18 +329,22 @@ export class EntityRenderer {
       if (vis.label && vis.label.resolution !== this.scene.textResolution) {
         vis.label.resolution = this.scene.textResolution;
       }
-      const pose = interp.get(ent.id) ?? ent;
+      const ip = interp.get(ent.id) ?? ent;
+      const surface = this.scene.groundAt(ip.n, ip.e);
+      const pose: Pose = { n: ip.n, e: ip.e, alt: ip.alt, groundAlt: surface.alt };
       const drawAlt = renderer.poseAlt ? renderer.poseAlt(ent, pose.alt) : pose.alt;
       const p = project(pose.n, pose.e, drawAlt, s);
       vis.root.position.set(p.x, p.y);
       vis.root.zIndex = p.depth - 0.1; // just behind a drone at the same spot
+      vis.shadow.zIndex = surface.zIndex;
 
       const key = `${pose.n.toFixed(2)}|${pose.e.toFixed(2)}|${drawAlt.toFixed(2)}|` +
-        `${s.toFixed(4)}|${JSON.stringify(ent.data)}`;
+        `${surface.alt}|${s.toFixed(4)}|${JSON.stringify(ent.data)}`;
       if (!renderer.animated && key === vis.drawKey) continue; // static & unchanged
       vis.drawKey = key;
       vis.g.clear();
       vis.shadow.clear();
+      vis.decal.clear();
       renderer.draw(vis, ent, pose, drawAlt, s, timeMs);
     }
     for (const [id, vis] of this.map) {

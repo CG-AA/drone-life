@@ -75,3 +75,18 @@ def test_rotate60_six_times_is_identity():
 def test_distance_symmetric():
     assert hex.distance((0, 0), (3, -1)) == hex.distance((3, -1), (0, 0)) == 3
     assert hex.distance((2, 2), (2, 2)) == 0
+
+
+def test_pads_are_lattice_cells_inside_the_arena():
+    from app.game.tiles import TileMap
+
+    tm = TileMap()
+    seen = set()
+    for slot in range(20):
+        cell = hex.pad_cell(slot)
+        assert cell not in seen
+        seen.add(cell)
+        assert tm.in_bounds(cell)
+        n, e = hex.pad_position(slot)
+        assert hex.world_to_axial(n, e) == cell
+        assert hex.axial_to_world(cell) == (n, e)

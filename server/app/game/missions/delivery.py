@@ -8,7 +8,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from .. import hex
 from ..building import CarrySlots, DwellTracker
+from ..hex import Axial
 from ..mission import Entity, Mission, WorldAPI
 
 CRATE_COUNT = 3
@@ -21,7 +23,8 @@ POINTS = 10
 ANNOUNCE_EVERY = 20.0  # re-broadcast crate positions for late joiners
 MIN_SPAWN_DIST = 15.0  # from pads, dropoff, other crates
 SPAWN_MARGIN = 15.0  # keep away from arena walls
-DROPOFF = (0.0, 0.0)
+DROPOFF_CELL: Axial = (0, 0)
+DROPOFF = hex.axial_to_world(DROPOFF_CELL)
 
 
 def _pickup_dwell() -> DwellTracker:
@@ -63,7 +66,7 @@ class DeliveryMission(Mission):
 
     def _spawn_crate(self, world: WorldAPI) -> None:
         half = world.config.arena_half - SPAWN_MARGIN
-        keep_away = [DROPOFF, *world.config.pads,
+        keep_away = [DROPOFF, *world.config.pad_positions(),
                      *[(c.n, c.e) for c in self.crates.values()]]
         n = e = 0.0
         for _ in range(200):

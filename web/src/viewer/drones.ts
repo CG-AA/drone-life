@@ -1,10 +1,14 @@
 /** Drone sprites: body with heading tick, name tag, altitude stem + ground
- * shadow (the 2.5D cue), fading trail. One DroneVis per drone id. */
+ * shadow (the 2.5D cue), fading trail. One DroneVis per drone id.
+ *
+ * The shadow rests on whatever is under the drone — bare floor or the top of
+ * a tile stack — and is depth-sorted with the tiles, so a drone hovering
+ * over a wall casts onto the wall instead of vanishing beneath it. */
 
 import { Container, Graphics, Text } from "pixi.js";
 import type { DroneState } from "../shared/protocol";
 import { COLORS, FONT_UI } from "../shared/theme";
-import { project, projectGround } from "./iso";
+import { project } from "./iso";
 import { slotColor } from "./colors";
 import type { Scene } from "./scene";
 
@@ -30,7 +34,7 @@ class DroneVis {
     this.tag.anchor.set(0.5, 0);
     this.root.addChild(this.body, this.tag);
     scene.spriteLayer.addChild(this.root);
-    scene.shadowLayer.addChild(this.shadow);
+    scene.spriteLayer.addChild(this.shadow);
     scene.trailLayer.addChild(this.trail);
   }
 
@@ -40,15 +44,18 @@ class DroneVis {
     this.trail.destroy();
   }
 
-  update(d: DroneState, n: number, e: number, alt: number, yaw: number, s: number,
-         textRes: number): void {
+  update(d: DroneState, n: number, e: number, alt: number, yaw: number, scene: Scene): void {
+    const s = scene.scale;
+    const textRes = scene.textResolution;
     // the tag is rasterized once at creation; re-point it when the display
     // density changes or it stays soft
     if (this.tag.resolution !== textRes) this.tag.resolution = textRes;
     const p = project(n, e, alt, s);
-    const ground = projectGround(n, e, s);
+    const surface = scene.groundAt(n, e);
+    const ground = project(n, e, surface.alt, s);
     this.root.position.set(p.x, p.y);
     this.root.zIndex = p.depth;
+    this.shadow.zIndex = surface.zIndex;
 
     const r = Math.max(5, s * 1.7);
     const dim = !d.connected && !d.crashed;
@@ -81,8 +88,9 @@ class DroneVis {
     // shadow + altitude stem
     const sh = this.shadow;
     sh.clear();
-    if (alt > 0.15) {
-      const shrink = Math.max(0.45, 1 - alt / 90);
+    const above = alt - surface.alt;
+    if (above > 0.15) {
+      const shrink = Math.max(0.45, 1 - above / 90);
       sh.ellipse(ground.x, ground.y, r * shrink, r * shrink * 0.5)
         .fill({ color: 0x000000, alpha: 0.35 });
       sh.moveTo(ground.x, ground.y).lineTo(p.x, p.y)
@@ -130,8 +138,7 @@ export class DroneRenderer {
         this.map.set(d.id, vis);
       }
       const pose = interp.get(d.id) ?? { n: d.n, e: d.e, alt: d.alt, yaw: d.yaw };
-      vis.update(d, pose.n, pose.e, pose.alt, pose.yaw, this.scene.scale,
-                 this.scene.textResolution);
+      vis.update(d, pose.n, pose.e, pose.alt, pose.yaw, this.scene);
     }
     for (const [id, vis] of this.map) {
       if (!seen.has(id)) {

@@ -21,6 +21,12 @@ SQRT3 = math.sqrt(3.0)
 # axial direction ring, counter-clockwise starting east
 DIRECTIONS: tuple[Axial, ...] = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 
+# Spawn pads: one row of adjacent cells along the south edge (r = -20 is
+# n = -90 at HEX_SIZE 3). Pads are cells, never free meters, so every pad
+# marker fills exactly one lattice hex. 20 slots span e = -52..47.
+PAD_ROW_R = -20
+PAD_Q0 = 0
+
 
 def axial_to_world(cell: Axial, size: float = HEX_SIZE) -> tuple[float, float]:
     """Cell -> (n, e) center in meters."""
@@ -46,6 +52,15 @@ def axial_round(qf: float, rf: float) -> Axial:
     elif dy <= dz:
         rz = -rx - ry
     return int(rx), int(rz)
+
+
+def pad_cell(slot: int) -> Axial:
+    return PAD_Q0 + slot, PAD_ROW_R
+
+
+def pad_position(slot: int) -> tuple[float, float]:
+    """Pad center in meters: where a drone spawns and flies home to."""
+    return axial_to_world(pad_cell(slot))
 
 
 def add(a: Axial, b: Axial) -> Axial:
