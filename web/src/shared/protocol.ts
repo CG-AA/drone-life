@@ -17,6 +17,8 @@ export interface DroneState {
   alt: number;
   vn: number;
   ve: number;
+  /** optional: a server older than the viewer won't send it */
+  valt?: number;
   yaw: number;
   mode: string;
   armed: boolean;

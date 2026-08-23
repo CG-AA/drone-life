@@ -29,6 +29,15 @@ export function projectGround(n: number, e: number, scale: number): Projected {
   return project(n, e, 0, scale);
 }
 
+/** Inverse of project() at altitude 0: screen offset (in world-container
+ * space) back to NED meters. Used to anchor zoom under the cursor and to turn
+ * a pixel drag into a pan. */
+export function unproject(x: number, y: number, scale: number): { n: number; e: number } {
+  const diff = x / (COS30 * scale); // e - n
+  const sum = -y / (SIN30 * scale); // e + n
+  return { n: (sum - diff) / 2, e: (sum + diff) / 2 };
+}
+
 /** Scale so the whole arena (half-size `half`, tallest flight `altMax`) fits WxH. */
 export function fitScale(half: number, altMax: number, w: number, h: number): number {
   const margin = 0.9;

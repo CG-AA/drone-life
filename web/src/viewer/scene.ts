@@ -1,9 +1,16 @@
-/** Pixi stage: layers, arena grid with coordinate labels, spawn pads. */
+/** Pixi stage: layers, arena grid with coordinate labels, spawn pads.
+ *
+ * The scene owns a Camera; CameraController drives it from input. Zoom changes
+ * `scale`, which every layer already keys its redraw on, so the vector art is
+ * re-emitted crisp at the new zoom rather than being a scaled-up bitmap. Pan
+ * is a pure container translation and redraws nothing.
+ */
 
 import { Application, Container, Graphics, Text } from "pixi.js";
 import type { PadState } from "../shared/protocol";
 import { COLORS, FONT_UI } from "../shared/theme";
-import { ALT_LIFT, fitScale, project } from "./iso";
+import { project } from "./iso";
+import { type Camera, clampCamera, clampResolution, defaultCamera, worldOffset } from "./camera";
 import { slotColor } from "./colors";
 
 const GRID_STEP = 20;
@@ -19,20 +26,34 @@ export class Scene {
   terrainLayer = new Container(); // hex-tile prisms, event-driven redraw
   spriteLayer = new Container(); // drones + entities, depth-sorted
 
-  scale = 3;
+  camera: Camera = { scale: 3, cN: 0, cE: 0 };
   half = 100;
   altMax = 60;
+  /** Resolution Text objects must rasterize at; changes with the display. */
+  textResolution = 1;
+  /** True once the viewer has panned or zoomed: a window resize then keeps
+   * their view instead of yanking it back to the fitted default. */
+  userAdjusted = false;
   private padsKey = "";
+  private lastPads: PadState[] = [];
+  private appliedScale = 0;
+
+  /** px per meter. Layers read this to redraw at the current zoom. */
+  get scale(): number {
+    return this.camera.scale;
+  }
 
   async init(): Promise<void> {
     await this.app.init({
       background: COLORS.bg,
       resizeTo: window,
       antialias: true,
-      // sharp on HiDPI/scaled-4K projectors; capped to bound GPU cost
-      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      // sharp on HiDPI/scaled-4K projectors; area-capped to bound GPU cost
+      resolution: clampResolution(window.devicePixelRatio, window.innerWidth,
+                                  window.innerHeight),
       autoDensity: true,
     });
+    this.textResolution = this.app.renderer.resolution;
     this.app.canvas.setAttribute("role", "img");
     this.app.canvas.setAttribute("aria-label", "live drone arena");
     document.body.appendChild(this.app.canvas);
@@ -40,13 +61,52 @@ export class Scene {
     this.world.addChild(this.gridLayer, this.gridLabels, this.padLayer, this.trailLayer,
                         this.shadowLayer, this.terrainLayer, this.spriteLayer);
     this.app.stage.addChild(this.world);
-    window.addEventListener("resize", () => this.layout());
+    window.addEventListener("resize", () => {
+      this.applyResolution();
+      this.layout();
+    });
+    this.watchDpr();
     this.layout();
+  }
+
+  /** Browser zoom, OS display scaling, and dragging the window to a monitor of
+   * a different DPI all change devicePixelRatio without firing anything Pixi
+   * listens to — the framebuffer would stay at its page-load size and the
+   * compositor would upscale it (blurry). Re-arm a one-shot dppx query after
+   * every change, since the query itself is ratio-specific. */
+  private watchDpr(): void {
+    const onChange = (): void => {
+      this.applyResolution();
+      this.layout();
+      arm();
+    };
+    const arm = (): void => {
+      matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+        .addEventListener("change", onChange, { once: true });
+    };
+    arm();
+  }
+
+  /** Re-point the renderer at the current device pixel density. Idempotent:
+   * the resize and dppx paths both call it and the second one is a no-op. */
+  applyResolution(): void {
+    const res = clampResolution(window.devicePixelRatio, window.innerWidth,
+                                window.innerHeight);
+    if (Math.abs(res - this.app.renderer.resolution) < 1e-6) return;
+    this.app.renderer.resize(window.innerWidth, window.innerHeight, res);
+    this.textResolution = res;
   }
 
   setArena(half: number, altMax: number): void {
     this.half = half;
     this.altMax = altMax;
+    this.userAdjusted = false; // a new arena deserves a fresh fit
+    this.layout();
+  }
+
+  /** Back to the fitted projector view. */
+  resetCamera(): void {
+    this.userAdjusted = false;
     this.layout();
   }
 
@@ -56,11 +116,28 @@ export class Scene {
     // (one F11 toggle would leave the arena fitted to the old viewport).
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.scale = fitScale(this.half, this.altMax, w, h);
-    // ground diamond is vertically centered; sky headroom sits above it
-    this.world.position.set(w / 2, h / 2 + (this.altMax * ALT_LIFT * this.scale) / 2);
-    this.drawGrid();
-    this.padsKey = ""; // force pad redraw at the new scale
+    this.camera = this.userAdjusted
+      ? clampCamera(this.camera, this.half, this.altMax, w, h)
+      : defaultCamera(this.half, this.altMax, w, h);
+    this.applyCamera();
+  }
+
+  /** Move the world to where the camera looks, redrawing scale-dependent
+   * layers only when the zoom actually changed. */
+  applyCamera(): void {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const off = worldOffset(this.camera, w, h);
+    // Snap to the device-pixel grid: 1 px hairlines (grid, tile outlines,
+    // altitude stems) smear into grey when they straddle two device pixels.
+    const r = this.app.renderer.resolution;
+    this.world.position.set(Math.round(off.x * r) / r, Math.round(off.y * r) / r);
+    if (this.camera.scale !== this.appliedScale) {
+      this.appliedScale = this.camera.scale;
+      this.drawGrid();
+      this.padsKey = ""; // force pad redraw at the new scale
+      this.drawPads(this.lastPads);
+    }
   }
 
   private drawGrid(): void {
@@ -103,6 +180,7 @@ export class Scene {
     const label = new Text({
       text,
       style: { fontFamily: FONT_UI, fontSize: size, fill: color },
+      resolution: this.textResolution,
     });
     label.anchor.set(0.5);
     label.position.set(at.x, at.y);
@@ -111,6 +189,7 @@ export class Scene {
 
   /** Redraw spawn pads when the roster changes (cheap key comparison). */
   drawPads(pads: PadState[]): void {
+    this.lastPads = pads;
     const key = pads.map((p) => `${p.slot}:${p.name}`).join("|") + this.scale.toFixed(3);
     if (key === this.padsKey) return;
     this.padsKey = key;
@@ -132,6 +211,7 @@ export class Scene {
       const label = new Text({
         text: pad.name,
         style: { fontFamily: FONT_UI, fontSize: 11, fill: color, fontWeight: "600" },
+        resolution: this.textResolution,
       });
       label.anchor.set(0.5, 0);
       label.position.set(0, 6);

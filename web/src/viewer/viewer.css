@@ -4,6 +4,10 @@ html, body { overflow: hidden; }
 
 body.cursor-idle { cursor: none; }
 
+/* the canvas handles its own drag and pinch; the browser must not also
+   scroll or zoom the page underneath them */
+canvas { touch-action: none; }
+
 #hud { position: fixed; inset: 0; pointer-events: none; }
 
 #score-box {
@@ -63,3 +67,15 @@ body.cursor-idle { cursor: none; }
 }
 #conn::before { content: "●"; margin-right: 6px; color: var(--danger); }
 #conn.up::before { color: var(--ok); }
+
+/* navigation hint: shown briefly, then out of the projector's way for good */
+#nav-hint {
+  position: absolute;
+  right: clamp(14px, 2vmin, 30px);
+  bottom: clamp(12px, 2vmin, 28px);
+  font-size: clamp(0.7rem, 1.3vmin, 0.95rem);
+  color: var(--text-muted);
+  opacity: 0.7;
+  transition: opacity 1s;
+}
+#nav-hint.gone { opacity: 0; }
