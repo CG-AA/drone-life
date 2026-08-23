@@ -11,7 +11,7 @@ N ?= 5
 MODE ?= local
 SCRIPT ?= bot_patrol
 
-.PHONY: dev-server dev-web build image run test test-web e2e load lint fmt bots reset clean
+.PHONY: dev-server dev-web build image run kill-dev kill-prod test test-web e2e load lint fmt bots reset clean
 
 dev-server:
 	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
@@ -29,6 +29,16 @@ image:
 run:
 	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
 		uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+
+# kill every dev instance: uvicorn --reload servers and vite dev servers
+kill-dev:
+	-pkill -f 'uvicorn app.main:app --reload'
+	-pkill -f 'vite'
+
+# kill every prod instance: uvicorn servers (non-reload) plus any bot containers
+kill-prod:
+	-pkill -f 'uvicorn app.main:app --host'
+	-podman ps -aq --filter label=drone-life=1 | xargs -r podman rm -f -t 0
 
 test:
 	cd server && uv run pytest -q
