@@ -28,6 +28,13 @@ if TYPE_CHECKING:
 SEV_INFO = 6
 SEV_WARNING = 4
 
+# every kind on_drone_event can receive; producers: the sim (armed…respawned),
+# the gateway (connected/disconnected/orphan_rtl), the service (joined)
+DRONE_EVENT_KINDS: tuple[str, ...] = (
+    "joined", "connected", "disconnected", "armed", "disarmed",
+    "takeoff", "landed", "crashed", "respawned", "orphan_rtl",
+)
+
 
 @dataclass(frozen=True)
 class Entity:
@@ -76,8 +83,7 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
         """Called at 10 Hz."""
 
     def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:  # noqa: B027
-        """kind: joined|connected|disconnected|armed|disarmed|takeoff|landed|
-        crashed|respawned|orphan_rtl"""
+        """kind is one of DRONE_EVENT_KINDS; delivered before tick() each step."""
 
     def entities(self) -> list[Entity]:
         return []
