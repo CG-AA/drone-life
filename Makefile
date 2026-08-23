@@ -60,6 +60,7 @@ load:
 
 lint:
 	cd server && uv run ruff check app tests
+	cd web && npm run lint
 
 lint-fix:
 	cd server && uv run ruff check --fix app tests
