@@ -155,6 +155,9 @@ class DroneLifeService:
                     self.overruns += 1
                     if delay < -1.0:  # fell far behind (laptop slept?): resync
                         next_t = loop.time()
+                    # nothing above is guaranteed to suspend, so a sustained
+                    # overrun would otherwise starve HTTP/WS/runner tasks
+                    await asyncio.sleep(0)
 
     async def _snapshotter(self) -> None:
         while True:
