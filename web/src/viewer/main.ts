@@ -3,6 +3,7 @@
 import type { EntityState, EventData, HelloData, TilesData, WorldData }
   from "../shared/protocol";
 import { GameSocket } from "../shared/ws";
+import { CameraController } from "./controls";
 import { DroneRenderer } from "./drones";
 import { EntityRenderer } from "./entities";
 import { Hud } from "./hud";
@@ -12,6 +13,7 @@ import { TerrainRenderer } from "./terrain";
 
 const CODE_KEY = "dl_room_code";
 const CURSOR_IDLE_MS = 3000;
+const HINT_MS = 8000;
 
 /** Unattended-projector polish: hide the cursor after a few idle seconds,
  * toggle fullscreen on double-click. */
@@ -56,6 +58,7 @@ async function askRoomCode(): Promise<string> {
 async function boot(): Promise<void> {
   const scene = new Scene();
   await scene.init();
+  const controls = new CameraController(scene);
   const hud = new Hud();
   const droneR = new DroneRenderer(scene);
   const entityR = new EntityRenderer(scene);
@@ -108,13 +111,16 @@ async function boot(): Promise<void> {
   };
   ws.connect();
   projectorControls();
+  window.setTimeout(
+    () => document.getElementById("nav-hint")?.classList.add("gone"), HINT_MS);
 
   scene.app.ticker.add(() => {
-    terrainR.tick(); // cheap scale-key check; tiles redraw only on change
     const now = performance.now();
     // clamped so a backgrounded tab's first frame back doesn't ease for seconds
     const dtMs = Math.min(now - lastTick, 100);
     lastTick = now;
+    controls.update(dtMs); // moves the camera before terrain reads the scale
+    terrainR.tick(); // cheap scale-key check; tiles redraw only on change
     if (!cur) return;
     const age = now - cur.at;
 

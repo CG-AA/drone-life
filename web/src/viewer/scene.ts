@@ -1,10 +1,16 @@
-/** Pixi stage: layers, arena grid with coordinate labels, spawn pads. */
+/** Pixi stage: layers, arena grid with coordinate labels, spawn pads.
+ *
+ * The scene owns a Camera; CameraController drives it from input. Zoom changes
+ * `scale`, which every layer already keys its redraw on, so the vector art is
+ * re-emitted crisp at the new zoom rather than being a scaled-up bitmap. Pan
+ * is a pure container translation and redraws nothing.
+ */
 
 import { Application, Container, Graphics, Text } from "pixi.js";
 import type { PadState } from "../shared/protocol";
 import { COLORS, FONT_UI } from "../shared/theme";
-import { ALT_LIFT, fitScale, project } from "./iso";
-import { clampResolution } from "./camera";
+import { project } from "./iso";
+import { type Camera, clampCamera, clampResolution, defaultCamera, worldOffset } from "./camera";
 import { slotColor } from "./colors";
 
 const GRID_STEP = 20;
@@ -20,13 +26,22 @@ export class Scene {
   terrainLayer = new Container(); // hex-tile prisms, event-driven redraw
   spriteLayer = new Container(); // drones + entities, depth-sorted
 
-  scale = 3;
+  camera: Camera = { scale: 3, cN: 0, cE: 0 };
   half = 100;
   altMax = 60;
   /** Resolution Text objects must rasterize at; changes with the display. */
   textResolution = 1;
+  /** True once the viewer has panned or zoomed: a window resize then keeps
+   * their view instead of yanking it back to the fitted default. */
+  userAdjusted = false;
   private padsKey = "";
   private lastPads: PadState[] = [];
+  private appliedScale = 0;
+
+  /** px per meter. Layers read this to redraw at the current zoom. */
+  get scale(): number {
+    return this.camera.scale;
+  }
 
   async init(): Promise<void> {
     await this.app.init({
@@ -85,6 +100,13 @@ export class Scene {
   setArena(half: number, altMax: number): void {
     this.half = half;
     this.altMax = altMax;
+    this.userAdjusted = false; // a new arena deserves a fresh fit
+    this.layout();
+  }
+
+  /** Back to the fitted projector view. */
+  resetCamera(): void {
+    this.userAdjusted = false;
     this.layout();
   }
 
@@ -94,19 +116,28 @@ export class Scene {
     // (one F11 toggle would leave the arena fitted to the old viewport).
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.scale = fitScale(this.half, this.altMax, w, h);
-    // ground diamond is vertically centered; sky headroom sits above it
-    this.setWorldPosition(w / 2, h / 2 + (this.altMax * ALT_LIFT * this.scale) / 2);
-    this.drawGrid();
-    this.padsKey = ""; // force pad redraw at the new scale
-    this.drawPads(this.lastPads);
+    this.camera = this.userAdjusted
+      ? clampCamera(this.camera, this.half, this.altMax, w, h)
+      : defaultCamera(this.half, this.altMax, w, h);
+    this.applyCamera();
   }
 
-  /** Snap to the device-pixel grid: 1 px hairlines (grid, tile outlines,
-   * altitude stems) smear into grey when they straddle two device pixels. */
-  private setWorldPosition(x: number, y: number): void {
+  /** Move the world to where the camera looks, redrawing scale-dependent
+   * layers only when the zoom actually changed. */
+  applyCamera(): void {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const off = worldOffset(this.camera, w, h);
+    // Snap to the device-pixel grid: 1 px hairlines (grid, tile outlines,
+    // altitude stems) smear into grey when they straddle two device pixels.
     const r = this.app.renderer.resolution;
-    this.world.position.set(Math.round(x * r) / r, Math.round(y * r) / r);
+    this.world.position.set(Math.round(off.x * r) / r, Math.round(off.y * r) / r);
+    if (this.camera.scale !== this.appliedScale) {
+      this.appliedScale = this.camera.scale;
+      this.drawGrid();
+      this.padsKey = ""; // force pad redraw at the new scale
+      this.drawPads(this.lastPads);
+    }
   }
 
   private drawGrid(): void {
