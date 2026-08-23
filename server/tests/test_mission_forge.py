@@ -8,7 +8,7 @@ from app.game.missions.forge import (
     PLACE_POINTS,
     ForgeMission,
 )
-from tests.conftest import FakeWorld, view
+from tests.support.harness import FakeWorld, view
 
 
 def make() -> tuple[ForgeMission, FakeWorld]:

@@ -1,7 +1,7 @@
 """Canyon mission: pre-placed walls through the WorldAPI seam."""
 
 from app.game.missions.canyon import WALL_E, WALL_HEIGHT, CanyonMission
-from tests.conftest import FakeWorld
+from tests.support.harness import FakeWorld
 
 
 def make() -> tuple[CanyonMission, FakeWorld]:

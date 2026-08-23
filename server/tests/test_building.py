@@ -18,7 +18,7 @@ from app.game.building import (
     tick_sources,
 )
 from app.game.tiles import TILE_HEIGHT, TileMap
-from tests.conftest import view
+from tests.support.harness import view
 
 
 def run_dwell(tracker, drones, n, e, seconds, dt=0.1, eligible=None):

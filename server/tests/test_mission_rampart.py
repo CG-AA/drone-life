@@ -11,7 +11,7 @@ from app.game.missions.rampart import (
     WALL_HEIGHT,
     RampartMission,
 )
-from tests.conftest import FakeWorld, view
+from tests.support.harness import FakeWorld, view
 
 
 def make() -> tuple[RampartMission, FakeWorld]:

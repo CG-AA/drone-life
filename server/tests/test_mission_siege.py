@@ -13,7 +13,7 @@ from app.game.missions.siege import (
     SiegeMission,
 )
 from app.game.units import GroundUnit
-from tests.conftest import FakeWorld, view
+from tests.support.harness import FakeWorld, assert_grammar, view
 
 
 def make():
@@ -50,12 +50,6 @@ def place_tile(world, m, cell, drone_id="d0"):
 
 def texts(world):
     return [text for _target, text in world.texts]
-
-
-def assert_grammar(world):
-    for text in texts(world):
-        assert text.startswith("GAME: "), text
-        assert len(text) <= 50, text
 
 
 # ------------------------------------------------------------ setup & waves
