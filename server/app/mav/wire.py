@@ -44,5 +44,7 @@ class Link:
     def buffered(self) -> int:
         try:
             return self.writer.transport.get_write_buffer_size()
-        except Exception:
+        except (AttributeError, RuntimeError):
+            # closed/absent transport: report "no backpressure" — safe because
+            # write() already drops frames once the writer is closing
             return 0

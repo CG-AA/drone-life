@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 from dataclasses import asdict, dataclass
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -64,7 +67,7 @@ class Registry:
                 s = Student(**row)
                 self.students[s.id] = s
             except TypeError:
-                continue  # snapshot from an older schema: skip
+                log.warning("snapshot row skipped (old schema): %r", row)
 
 
 def _norm(name: str) -> str:
