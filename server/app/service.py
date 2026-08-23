@@ -33,6 +33,7 @@ log = logging.getLogger(__name__)
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
 BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder", "bot_siege"}
 SNAPSHOT_INTERVAL = 30.0
+MISSION_EVERY = P.TICK_HZ // P.MISSION_HZ  # mission + WS run every Nth sim tick
 
 
 class KinematicBackend(DroneBackend):
@@ -63,7 +64,7 @@ class KinematicBackend(DroneBackend):
 class DroneLifeService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.world = World(seed=settings.sim_seed)
+        self.world = World()
         self.gateway = Gateway(self.world, settings.mavlink_host, settings.mavlink_base_port)
         self.backend = KinematicBackend(self.world, self.gateway)
         self.bus = EventBus()
@@ -133,9 +134,9 @@ class DroneLifeService:
             events = self.world.step(P.DT)
             self._pending_events.extend((DroneView.of(d), kind) for d, kind in events)
             await self.gateway.telemetry_tick(tick)
-            if tick % 2 == 0:  # 10 Hz: mission + WS
+            if tick % MISSION_EVERY == 0:  # MISSION_HZ: mission + WS
                 pending, self._pending_events = self._pending_events, []
-                self.engine.tick(self.world.t, 2 * P.DT, pending)
+                self.engine.tick(self.world.t, MISSION_EVERY * P.DT, pending)
                 if self.hub is not None:
                     self.hub.broadcast_world(self.world_message())
                     if self.tilemap is not None and self.tilemap.version != self._tiles_sent:
