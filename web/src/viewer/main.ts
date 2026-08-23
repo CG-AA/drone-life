@@ -156,7 +156,7 @@ async function boot(): Promise<void> {
       const target: Pose = {
         n: predict(d.n, still ? 0 : d.vn, age),
         e: predict(d.e, still ? 0 : d.ve, age),
-        alt: predict(d.alt, still ? 0 : (d.valt ?? 0), age),
+        alt: predict(d.alt, still ? 0 : d.valt, age),
         yaw: d.yaw,
       };
       dronePoses.set(d.id, smoothPose(dronePoses.get(d.id), target, dtMs));

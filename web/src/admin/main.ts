@@ -2,13 +2,12 @@
  * Pure REST over the existing admin endpoints; no WebSocket, no state beyond
  * the sessionStorage token. */
 
+import type { BotsResult, RosterStudent } from "../shared/protocol";
+import { $, actionButton, armedConfirm, banner, guarded, runPill } from "../shared/ui";
 import { ApiFailure, clearToken, fetchRoster, getToken, kickStudent, killScript,
   resetWorld, setToken, spawnBots } from "./api";
-import type { RosterStudent } from "./api";
 
 const POLL_MS = 3000;
-
-const $ = (id: string) => document.getElementById(id)!;
 
 let pollTimer = 0;
 
@@ -80,17 +79,7 @@ function renderRoster(students: RosterStudent[]): void {
 
     const run = tr.insertCell();
     const pill = document.createElement("span");
-    pill.className = "pill";
-    if (s.run?.state === "running" || s.run?.state === "starting") {
-      pill.classList.add("running");
-      pill.textContent = s.run.state;
-    } else if (s.run?.state === "exited") {
-      pill.classList.add("exited");
-      pill.textContent = s.run.exit_code === null
-        ? "exited" : `exited (${s.run.exit_code})`;
-    } else {
-      pill.textContent = "idle";
-    }
+    runPill(pill, s.run);
     run.appendChild(pill);
 
     const link = tr.insertCell();
@@ -103,81 +92,36 @@ function renderRoster(students: RosterStudent[]): void {
     actions.className = "actions";
     actions.append(
       actionButton("kill script", () => killScript(s.student_id),
-        `could not stop ${s.name}'s script`),
+        `could not stop ${s.name}'s script`, () => void poll()),
       actionButton("kick", () => kickStudent(s.student_id),
-        `could not kick ${s.name}`),
+        `could not kick ${s.name}`, () => void poll()),
     );
 
     body.appendChild(tr);
   }
 }
 
-function actionButton(label: string, action: () => Promise<unknown>,
-                      failMsg: string): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.textContent = label;
-  b.addEventListener("click", () => {
-    b.disabled = true;
-    action()
-      .then(() => poll())
-      .catch((e: unknown) => banner(
-        e instanceof ApiFailure ? `${failMsg}: ${e.error.msg}` : failMsg))
-      .finally(() => { b.disabled = false; });
-  });
-  return b;
-}
-
-function banner(text: string): void {
-  const el = $("banner");
-  el.textContent = text;
-  el.classList.toggle("show", text.length > 0);
-}
-
 // -------------------------------------------------------------------- controls
 
 // reset wipes the whole class's world, so make it a two-step press
 const resetBtn = $("reset-world-btn") as HTMLButtonElement;
-let resetArmTimer = 0;
-
-function disarmReset(): void {
-  window.clearTimeout(resetArmTimer);
-  resetArmTimer = 0;
-  resetBtn.textContent = "reset world";
-  resetBtn.classList.remove("confirm");
-}
-
-resetBtn.addEventListener("click", () => {
-  if (resetArmTimer === 0) {
-    resetBtn.textContent = "really reset everyone?";
-    resetBtn.classList.add("confirm");
-    resetArmTimer = window.setTimeout(disarmReset, 3000);
-    return;
-  }
-  disarmReset();
-  resetBtn.disabled = true;
-  resetWorld()
-    .then(() => poll())
-    .catch((e: unknown) => banner(
-      e instanceof ApiFailure ? `reset failed: ${e.error.msg}` : "reset failed"))
-    .finally(() => { resetBtn.disabled = false; });
-});
+armedConfirm(resetBtn, "really reset everyone?", () =>
+  void guarded(resetBtn, resetWorld, "reset failed", () => void poll()));
 
 $("bots-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const btn = $("bots-form").querySelector("button")!;
-  btn.disabled = true;
   const count = Number(($("bots-count") as HTMLInputElement).value) || 1;
   const script = ($("bots-script") as HTMLInputElement).value.trim() || "bot_patrol";
   const mode = ($("bots-mode") as HTMLSelectElement).value;
-  spawnBots(count, mode, script)
-    .then((r) => {
-      if (r.room_full) banner(`room filled up — started ${r.started.length} bot(s)`);
-      return poll();
-    })
-    .catch((e: unknown) => banner(
-      e instanceof ApiFailure ? `could not spawn bots: ${e.error.msg}` : "could not spawn bots"))
-    .finally(() => { btn.disabled = false; });
+  let r: BotsResult | null = null;
+  void guarded(btn, async () => {
+    r = await spawnBots(count, mode, script);
+    await poll();
+  }, "could not spawn bots", () => {
+    // onSuccess runs after guarded clears the banner, so this one sticks
+    if (r?.room_full) banner(`room filled up — started ${r.started.length} bot(s)`);
+  });
 });
 
 $("signout-btn").addEventListener("click", () => {
