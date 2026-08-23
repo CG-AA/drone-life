@@ -24,7 +24,7 @@ export class EntityVis {
   label: Text | null = null;
   drawKey = "";
 
-  constructor(public kind: string, scene: Scene) {
+  constructor(public kind: string, private scene: Scene) {
     this.root.addChild(this.g);
     scene.spriteLayer.addChild(this.root);
     scene.shadowLayer.addChild(this.shadow);
@@ -35,6 +35,7 @@ export class EntityVis {
       text,
       style: { fontFamily: FONT_UI, fontSize: size,
                fill: color, fontWeight: "700", letterSpacing: 1 },
+      resolution: this.scene.textResolution,
     });
     this.label.anchor.set(0.5, 0);
     this.label.position.set(0, dy);
@@ -316,6 +317,10 @@ export class EntityRenderer {
         vis = new EntityVis(ent.kind, this.scene);
         this.map.set(ent.id, vis);
         renderer.init?.(vis, ent);
+      }
+      // labels rasterize once; re-point them when the display density changes
+      if (vis.label && vis.label.resolution !== this.scene.textResolution) {
+        vis.label.resolution = this.scene.textResolution;
       }
       const pose = interp.get(ent.id) ?? ent;
       const drawAlt = renderer.poseAlt ? renderer.poseAlt(ent, pose.alt) : pose.alt;

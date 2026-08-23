@@ -25,6 +25,7 @@ class DroneVis {
     this.tag = new Text({
       text: state.name,
       style: { fontFamily: FONT_UI, fontSize: 13, fill: this.color, fontWeight: "700" },
+      resolution: scene.textResolution,
     });
     this.tag.anchor.set(0.5, 0);
     this.root.addChild(this.body, this.tag);
@@ -39,7 +40,11 @@ class DroneVis {
     this.trail.destroy();
   }
 
-  update(d: DroneState, n: number, e: number, alt: number, yaw: number, s: number): void {
+  update(d: DroneState, n: number, e: number, alt: number, yaw: number, s: number,
+         textRes: number): void {
+    // the tag is rasterized once at creation; re-point it when the display
+    // density changes or it stays soft
+    if (this.tag.resolution !== textRes) this.tag.resolution = textRes;
     const p = project(n, e, alt, s);
     const ground = projectGround(n, e, s);
     this.root.position.set(p.x, p.y);
@@ -125,7 +130,8 @@ export class DroneRenderer {
         this.map.set(d.id, vis);
       }
       const pose = interp.get(d.id) ?? { n: d.n, e: d.e, alt: d.alt, yaw: d.yaw };
-      vis.update(d, pose.n, pose.e, pose.alt, pose.yaw, this.scene.scale);
+      vis.update(d, pose.n, pose.e, pose.alt, pose.yaw, this.scene.scale,
+                 this.scene.textResolution);
     }
     for (const [id, vis] of this.map) {
       if (!seen.has(id)) {

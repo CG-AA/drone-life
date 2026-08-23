@@ -4,6 +4,7 @@ import { Application, Container, Graphics, Text } from "pixi.js";
 import type { PadState } from "../shared/protocol";
 import { COLORS, FONT_UI } from "../shared/theme";
 import { ALT_LIFT, fitScale, project } from "./iso";
+import { clampResolution } from "./camera";
 import { slotColor } from "./colors";
 
 const GRID_STEP = 20;
@@ -22,17 +23,22 @@ export class Scene {
   scale = 3;
   half = 100;
   altMax = 60;
+  /** Resolution Text objects must rasterize at; changes with the display. */
+  textResolution = 1;
   private padsKey = "";
+  private lastPads: PadState[] = [];
 
   async init(): Promise<void> {
     await this.app.init({
       background: COLORS.bg,
       resizeTo: window,
       antialias: true,
-      // sharp on HiDPI/scaled-4K projectors; capped to bound GPU cost
-      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      // sharp on HiDPI/scaled-4K projectors; area-capped to bound GPU cost
+      resolution: clampResolution(window.devicePixelRatio, window.innerWidth,
+                                  window.innerHeight),
       autoDensity: true,
     });
+    this.textResolution = this.app.renderer.resolution;
     this.app.canvas.setAttribute("role", "img");
     this.app.canvas.setAttribute("aria-label", "live drone arena");
     document.body.appendChild(this.app.canvas);
@@ -40,8 +46,40 @@ export class Scene {
     this.world.addChild(this.gridLayer, this.gridLabels, this.padLayer, this.trailLayer,
                         this.shadowLayer, this.terrainLayer, this.spriteLayer);
     this.app.stage.addChild(this.world);
-    window.addEventListener("resize", () => this.layout());
+    window.addEventListener("resize", () => {
+      this.applyResolution();
+      this.layout();
+    });
+    this.watchDpr();
     this.layout();
+  }
+
+  /** Browser zoom, OS display scaling, and dragging the window to a monitor of
+   * a different DPI all change devicePixelRatio without firing anything Pixi
+   * listens to — the framebuffer would stay at its page-load size and the
+   * compositor would upscale it (blurry). Re-arm a one-shot dppx query after
+   * every change, since the query itself is ratio-specific. */
+  private watchDpr(): void {
+    const onChange = (): void => {
+      this.applyResolution();
+      this.layout();
+      arm();
+    };
+    const arm = (): void => {
+      matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+        .addEventListener("change", onChange, { once: true });
+    };
+    arm();
+  }
+
+  /** Re-point the renderer at the current device pixel density. Idempotent:
+   * the resize and dppx paths both call it and the second one is a no-op. */
+  applyResolution(): void {
+    const res = clampResolution(window.devicePixelRatio, window.innerWidth,
+                                window.innerHeight);
+    if (Math.abs(res - this.app.renderer.resolution) < 1e-6) return;
+    this.app.renderer.resize(window.innerWidth, window.innerHeight, res);
+    this.textResolution = res;
   }
 
   setArena(half: number, altMax: number): void {
@@ -58,9 +96,17 @@ export class Scene {
     const h = window.innerHeight;
     this.scale = fitScale(this.half, this.altMax, w, h);
     // ground diamond is vertically centered; sky headroom sits above it
-    this.world.position.set(w / 2, h / 2 + (this.altMax * ALT_LIFT * this.scale) / 2);
+    this.setWorldPosition(w / 2, h / 2 + (this.altMax * ALT_LIFT * this.scale) / 2);
     this.drawGrid();
     this.padsKey = ""; // force pad redraw at the new scale
+    this.drawPads(this.lastPads);
+  }
+
+  /** Snap to the device-pixel grid: 1 px hairlines (grid, tile outlines,
+   * altitude stems) smear into grey when they straddle two device pixels. */
+  private setWorldPosition(x: number, y: number): void {
+    const r = this.app.renderer.resolution;
+    this.world.position.set(Math.round(x * r) / r, Math.round(y * r) / r);
   }
 
   private drawGrid(): void {
@@ -103,6 +149,7 @@ export class Scene {
     const label = new Text({
       text,
       style: { fontFamily: FONT_UI, fontSize: size, fill: color },
+      resolution: this.textResolution,
     });
     label.anchor.set(0.5);
     label.position.set(at.x, at.y);
@@ -111,6 +158,7 @@ export class Scene {
 
   /** Redraw spawn pads when the roster changes (cheap key comparison). */
   drawPads(pads: PadState[]): void {
+    this.lastPads = pads;
     const key = pads.map((p) => `${p.slot}:${p.name}`).join("|") + this.scale.toFixed(3);
     if (key === this.padsKey) return;
     this.padsKey = key;
@@ -132,6 +180,7 @@ export class Scene {
       const label = new Text({
         text: pad.name,
         style: { fontFamily: FONT_UI, fontSize: 11, fill: color, fontWeight: "600" },
+        resolution: this.textResolution,
       });
       label.anchor.set(0.5, 0);
       label.position.set(0, 6);
