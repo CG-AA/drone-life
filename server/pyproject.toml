@@ -14,22 +14,44 @@ dependencies = [
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "pytest-timeout>=2.3",
     "httpx>=0.27",
     "ruff>=0.6",
+    "mypy>=1.11",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 markers = [
     "e2e: requires podman and a built drone-life-runner image",
     "load: load smoke tests",
 ]
-addopts = "-m 'not e2e and not load'"
+# timeout covers the e2e suite's 120 s waits when run locally with -m e2e
+addopts = "-m 'not e2e and not load' --strict-markers --timeout=300"
 
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT"]
 ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
+
+[tool.ruff.lint.per-file-ignores]
+# MAVLINK20 must be set before mavutil is imported anywhere
+"tests/conftest.py" = ["E402"]
+# tests poll sim/process state on purpose (ASYNC109/110) and the suite's
+# `assert x and y, "story"` style predates PT018 — not worth 30 files of churn
+"tests/*" = ["PT018", "ASYNC109", "ASYNC110"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "pymavlink.*"
+ignore_missing_imports = true

@@ -9,14 +9,14 @@ import math
 from dataclasses import dataclass, field
 
 from .. import hex
-from ..building import CarrySlots, DwellTracker
+from ..building import PICKUP_ALT, PICKUP_DWELL, CarrySlots, DwellTracker
 from ..hex import Axial
-from ..mission import Entity, Mission, WorldAPI
+from ..mission import Entity, Mission, WorldAPI, fmt_world
 
 CRATE_COUNT = 3
+# deliberately tighter than building.PICKUP_RADIUS (2.5): a crate is a precise
+# grab, a quarry is a generous pile
 PICKUP_RADIUS = 2.0  # m horizontal
-PICKUP_ALT = 3.0  # must be below this altitude
-PICKUP_DWELL = 2.0  # s hovering in range
 DROP_RADIUS = 3.0
 DROP_DWELL = 1.0
 POINTS = 10
@@ -49,7 +49,6 @@ class DeliveryMission(Mission):
         self.drop_dwell = DwellTracker(DROP_RADIUS, PICKUP_ALT, DROP_DWELL)
         self.next_id = 1
         self.last_announce = 0.0
-        self._drone_pos: dict[str, tuple[float, float, float]] = {}
 
     # ------------------------------------------------------------- lifecycle
 
@@ -82,13 +81,12 @@ class DeliveryMission(Mission):
         self._announce(world, crate)
 
     def _announce(self, world: WorldAPI, crate: Crate) -> None:
-        world.broadcast_text(f"GAME: crate {crate.id} at N {round(crate.n)} E {round(crate.e)}")
+        world.broadcast_text(f"GAME: crate {crate.id} at {fmt_world(crate.n, crate.e)}")
 
     # ------------------------------------------------------------------ tick
 
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = {d.id: d for d in world.drones()}
-        self._drone_pos = {d.id: (d.n, d.e, d.alt) for d in drones.values()}
 
         if world.now - self.last_announce > ANNOUNCE_EVERY:
             self.last_announce = world.now
@@ -98,12 +96,12 @@ class DeliveryMission(Mission):
 
         # carrier crashed or vanished before delivering: a fresh crate spawns
         for drone_id, crate_id in self.carry.sync_losses(drones.values()):
-            crate = self.crates.pop(crate_id, None)
-            if crate is None:
+            lost = self.crates.pop(crate_id, None)
+            if lost is None:
                 continue
             d = drones.get(drone_id)
             reason = "crashed" if (d and d.crashed) else "was lost"
-            world.emit_event("crate_lost", f"crate {crate.id} {reason}",
+            world.emit_event("crate_lost", f"crate {lost.id} {reason}",
                              student_id=d.student_id if d else None)
             self._spawn_crate(world)
 
@@ -125,24 +123,26 @@ class DeliveryMission(Mission):
         winner = self.drop_dwell.update(drones.values(), *DROPOFF, dt,
                                         eligible=lambda d: self.carry.item(d.id) is not None)
         if winner is not None:
-            crate = self.crates.pop(self.carry.take(winner.id) or "", None)
-            if crate is not None:
-                total = world.add_score(POINTS, f"crate {crate.id} delivered",
+            delivered = self.crates.pop(self.carry.take(winner.id) or "", None)
+            if delivered is not None:
+                total = world.add_score(POINTS, f"crate {delivered.id} delivered",
                                         student_id=winner.student_id)
                 world.emit_event("delivery",
-                                 f"{winner.name} delivered crate {crate.id}! +{POINTS}",
+                                 f"{winner.name} delivered crate {delivered.id}! +{POINTS}",
                                  student_id=winner.student_id, data={"points": POINTS})
                 world.send_text(winner.id, f"GAME: delivered! +{POINTS} (team {total})")
                 self._spawn_crate(world)
 
     # -------------------------------------------------------------- viewer
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
+        pos = {d.id: d for d in world.drones()}
         out = [Entity(id="dropoff", kind="dropoff", n=0.0, e=0.0, alt=0.0)]
         for crate in self.crates.values():
-            if crate.carried_by and crate.carried_by in self._drone_pos:
-                n, e, alt = self._drone_pos[crate.carried_by]
-                out.append(Entity(id=f"crate{crate.id}", kind="crate", n=n, e=e, alt=alt,
+            carrier = pos.get(crate.carried_by or "")
+            if carrier is not None:
+                out.append(Entity(id=f"crate{crate.id}", kind="crate",
+                                  n=carrier.n, e=carrier.e, alt=carrier.alt,
                                   data={"carried_by": crate.carried_by}))
             else:
                 out.append(Entity(id=f"crate{crate.id}", kind="crate",

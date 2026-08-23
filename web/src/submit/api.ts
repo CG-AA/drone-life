@@ -1,6 +1,7 @@
 /** REST helpers for the submit page. Token lives in localStorage. */
 
 import { ApiFailure, request } from "../shared/http";
+import type { JoinInfo } from "../shared/protocol";
 
 export { ApiFailure } from "../shared/http";
 
@@ -10,16 +11,6 @@ export const STUDENT_KEY = "dl_student";
 function authed<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = localStorage.getItem(TOKEN_KEY);
   return request<T>(method, path, token ? { Authorization: `Bearer ${token}` } : {}, body);
-}
-
-export interface JoinInfo {
-  token: string;
-  student_id: string;
-  name: string;
-  slot: number;
-  sysid: number;
-  spawn: { n: number; e: number };
-  rejoined: boolean;
 }
 
 export async function join(roomCode: string, name: string): Promise<JoinInfo> {

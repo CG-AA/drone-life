@@ -21,9 +21,17 @@ import math
 from ...sim.backend import DroneView
 from .. import hex, path
 from ..blueprints import Blueprint, BlueprintTracker, Requirement
-from ..building import CarrySlots, DwellTracker, PlaceTracker, TileSource, fmt_cell, tick_sources
+from ..building import (
+    CarrySlots,
+    DwellTracker,
+    FerryTexts,
+    PlaceTracker,
+    TileSource,
+    fmt_cell,
+    tick_ferry,
+)
 from ..hex import Axial
-from ..mission import SEV_WARNING, Entity, Mission, WorldAPI
+from ..mission import SEV_WARNING, Entity, Mission, WorldAPI, fmt_world
 from ..tiles import TileMap
 from ..units import GroundUnit, step_units
 
@@ -58,6 +66,8 @@ ZAP_DWELL = 1.5
 
 TARGET_EVERY = 3.0  # per-drone nearest-creep hint
 ANNOUNCE_EVERY = 20.0
+FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
+                   "GAME: got steel, wall or tower it")
 
 _HINTS = ("GAME: stack 3 steel = watchtower",
           "GAME: hover low on a creep to zap it")
@@ -98,12 +108,11 @@ class SiegeMission(Mission):
         self._hint = 0
         self.last_announce = 0.0
         self.last_target = 0.0
-        self._views: list[DroneView] = []
 
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([KEEP, QUARRY, *world.config.pad_positions(), *GATES])
+        self.tm.set_keep_out([KEEP, QUARRY, *GATES])  # pads are engine-protected already
         self._announce(world)
 
     def tile_map(self) -> TileMap:
@@ -130,16 +139,8 @@ class SiegeMission(Mission):
 
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
-        self._views = drones
 
-        for _drone_id, _ in self.carry.sync_losses(drones):
-            world.emit_event("tile_lost", "a steel tile was lost")
-            world.broadcast_text("GAME: steel lost, grab another")
-
-        for d, _source in tick_sources(drones, [self.quarry], self.carry, dt):
-            world.emit_event("pickup", f"{d.name} picked up steel", student_id=d.student_id)
-            world.send_text(d.id, "GAME: got steel, wall or tower it")
-
+        tick_ferry(world, drones, self.carry, [self.quarry], dt, FERRY)
         placed, refused = self.tracker.tick(drones, dt)
         for p in placed:
             self._squish(world, p)
@@ -159,6 +160,10 @@ class SiegeMission(Mission):
         if self.tm.version != self._flow_version:
             self._check_towers(world)
             self._reflood()
+
+        # beams are wall-clock cosmetics (world.now keeps advancing), so they
+        # expire even while an empty room holds the siege clocks still below
+        self.beams = [b for b in self.beams if b[1] > world.now]
 
         if not any(d.connected for d in drones):
             return  # empty room: creeps, waves, and clocks all hold still
@@ -182,7 +187,6 @@ class SiegeMission(Mission):
         self._zap(world, drones, dt)
         self._wave_machine(world, dt)
 
-        self.beams = [b for b in self.beams if b[1] > world.now]
         if world.now - self.last_announce > ANNOUNCE_EVERY:
             self.last_announce = world.now
             self._announce(world)
@@ -264,8 +268,7 @@ class SiegeMission(Mission):
         self.spawn_timer = 0.0
         world.emit_event("wave_start", f"wave {wave}: {self.pending} creeps")
         world.broadcast_text(
-            f"GAME: wave {wave} at N {round(self.gate[0])} E {round(self.gate[1])},"
-            f" {self.pending} creeps")
+            f"GAME: wave {wave} at {fmt_world(*self.gate)}, {self.pending} creeps")
 
     def _spawn_creep(self) -> None:
         self._uid += 1
@@ -289,9 +292,8 @@ class SiegeMission(Mission):
     # ---------------------------------------------------------- announcements
 
     def _announce(self, world: WorldAPI) -> None:
-        world.broadcast_text(f"GAME: keep at N {round(KEEP[0])} E {round(KEEP[1])},"
-                             " protect it!")
-        world.broadcast_text(f"GAME: quarry at N {round(QUARRY[0])} E {round(QUARRY[1])}")
+        world.broadcast_text(f"GAME: keep at {fmt_world(*KEEP)}, protect it!")
+        world.broadcast_text(f"GAME: quarry at {fmt_world(*QUARRY)}")
         world.broadcast_text(_HINTS[self._hint])
         self._hint = (self._hint + 1) % len(_HINTS)
 
@@ -301,11 +303,11 @@ class SiegeMission(Mission):
                 continue
             u = min(self.creeps.values(),
                     key=lambda u: math.hypot(u.n - d.n, u.e - d.e))
-            world.send_text(d.id, f"GAME: creep at N {round(u.n)} E {round(u.e)}")
+            world.send_text(d.id, f"GAME: creep at {fmt_world(u.n, u.e)}")
 
     # ----------------------------------------------------------------- viewer
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
         out = [Entity(id="keep", kind="keep", n=KEEP[0], e=KEEP[1], alt=0.0,
                       data={"hp": self.keep_hp, "max": KEEP_HP}),
                self.quarry.entity()]
@@ -320,5 +322,5 @@ class SiegeMission(Mission):
         for beam_id, _expiry, (n, e, alt), (tn, te, talt) in self.beams:
             out.append(Entity(id=beam_id, kind="beam", n=n, e=e, alt=alt,
                               data={"tn": tn, "te": te, "talt": talt}))
-        out.extend(self.carry.entities(self._views))
+        out.extend(self.carry.entities(world.drones()))
         return out

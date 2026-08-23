@@ -11,6 +11,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .api import messages
 from .config import Settings
@@ -28,11 +29,15 @@ from .sim.backend import DroneBackend, DroneView
 from .sim.drone import SEV_INFO
 from .sim.world import World
 
+if TYPE_CHECKING:
+    from .api.ws import Hub
+
 log = logging.getLogger(__name__)
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
 BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder", "bot_siege"}
 SNAPSHOT_INTERVAL = 30.0
+MISSION_EVERY = P.TICK_HZ // P.MISSION_HZ  # mission + WS run every Nth sim tick
 
 
 class KinematicBackend(DroneBackend):
@@ -63,14 +68,14 @@ class KinematicBackend(DroneBackend):
 class DroneLifeService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.world = World(seed=settings.sim_seed)
+        self.world = World()
         self.gateway = Gateway(self.world, settings.mavlink_host, settings.mavlink_base_port)
         self.backend = KinematicBackend(self.world, self.gateway)
         self.bus = EventBus()
         self.registry = Registry(settings.max_students, settings.mavlink_base_port)
         self._bind_mission(settings)
         self.runner = RunnerManager(settings, EXAMPLES_DIR, self._on_run_event)
-        self.hub = None  # set by api.ws when the app wires up
+        self.hub: Hub | None = None  # set by api.ws when the app wires up
 
         self.ticks = 0
         self.overruns = 0
@@ -91,6 +96,8 @@ class DroneLifeService:
             pads=[hex.pad_cell(i) for i in range(settings.max_students)],
         )
         self.engine = GameEngine(self.backend, self.bus, mission_cls(), config, settings.sim_seed)
+        # deliberately unguarded: a broken tile_map() should fail the boot loudly
+        # before a workshop, not surface as a mid-session mission_error
         self.tilemap = self.engine.mission.tile_map()
         if self.tilemap is not None:
             self.world.terrain = self.tilemap
@@ -131,9 +138,9 @@ class DroneLifeService:
             events = self.world.step(P.DT)
             self._pending_events.extend((DroneView.of(d), kind) for d, kind in events)
             await self.gateway.telemetry_tick(tick)
-            if tick % 2 == 0:  # 10 Hz: mission + WS
+            if tick % MISSION_EVERY == 0:  # MISSION_HZ: mission + WS
                 pending, self._pending_events = self._pending_events, []
-                self.engine.tick(self.world.t, 2 * P.DT, pending)
+                self.engine.tick(self.world.t, MISSION_EVERY * P.DT, pending)
                 if self.hub is not None:
                     self.hub.broadcast_world(self.world_message())
                     if self.tilemap is not None and self.tilemap.version != self._tiles_sent:
@@ -153,6 +160,9 @@ class DroneLifeService:
                     self.overruns += 1
                     if delay < -1.0:  # fell far behind (laptop slept?): resync
                         next_t = loop.time()
+                    # nothing above is guaranteed to suspend, so a sustained
+                    # overrun would otherwise starve HTTP/WS/runner tasks
+                    await asyncio.sleep(0)
 
     async def _snapshotter(self) -> None:
         while True:
@@ -241,6 +251,7 @@ class DroneLifeService:
                 room_full = True
                 break
             if mode == "container":
+                assert code is not None  # read above, exactly for this mode
                 await self.runner.submit_container(student, code)
             else:
                 await self.runner.submit_local(student, script_path)

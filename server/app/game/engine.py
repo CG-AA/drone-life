@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 from ..core.bus import EventBus
 from ..sim.backend import DroneBackend, DroneView
-from .mission import SEV_INFO, Mission, MissionConfig
+from .mission import SEV_INFO, Entity, Mission, MissionConfig
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +53,9 @@ class _API:
             self._engine.backend.send_text(view.id, text, severity)
 
 
+ERROR_EMIT_EVERY = 30.0  # the feed ring is 200-deep; a 10 Hz bug must not flood it
+
+
 class GameEngine:
     def __init__(self, backend: DroneBackend, bus: EventBus, mission: Mission,
                  config: MissionConfig, seed: int) -> None:
@@ -63,11 +66,27 @@ class GameEngine:
         self.rng = random.Random(seed)
         self.score = 0
         self.api = _API(self)
+        self._last_error_emit = float("-inf")
+
+    def _mission_error(self, hook: str) -> None:
+        """A mission bug must never kill the sim — and must be visible on the
+        projector feed, not just in the server log."""
+        log.exception("mission.%s failed", hook)
+        if self.api.now - self._last_error_emit >= ERROR_EMIT_EVERY:
+            self._last_error_emit = self.api.now
+            self.bus.emit("mission_error",
+                          f"mission bug in {hook}() — check server logs", t=self.api.now)
 
     def start(self, now: float) -> None:
         self.api.now = now
         self.api._views = self.backend.drones()
-        self.mission.setup(self.api)
+        tm = self.mission.tile_map()
+        if tm is not None:  # pads are unbuildable in every mission, by default
+            tm.protect_pads(self.config.pad_positions())
+        try:
+            self.mission.setup(self.api)
+        except Exception:
+            self._mission_error("setup")
 
     def tick(self, now: float, dt: float, drone_events: list[tuple[DroneView, str]]) -> None:
         self.api.now = now
@@ -79,18 +98,25 @@ class GameEngine:
             try:
                 self.mission.on_drone_event(self.api, view, kind)
             except Exception:
-                log.exception("mission.on_drone_event failed")
+                self._mission_error("on_drone_event")
         try:
             self.mission.tick(self.api, dt)
         except Exception:
-            log.exception("mission.tick failed")  # a mission bug must never kill the sim
+            self._mission_error("tick")
 
-    def entities(self) -> list:
-        return self.mission.entities()
+    def entities(self) -> list[Entity]:
+        try:
+            return self.mission.entities(self.api)
+        except Exception:
+            self._mission_error("entities")
+            return []
 
     def reset(self, now: float) -> None:
         self.score = 0
         self.api.now = now
         self.api._views = self.backend.drones()
-        self.mission.reset(self.api)
+        try:
+            self.mission.reset(self.api)
+        except Exception:
+            self._mission_error("reset")
         self.bus.emit("reset", "world reset", t=now)

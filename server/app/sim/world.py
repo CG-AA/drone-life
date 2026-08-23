@@ -6,19 +6,16 @@ they like and the unthrottled driver can burn through sim time.
 
 from __future__ import annotations
 
-import random
-
 from ..game import hex
 from .drone import DroneSim
 from .terrain import FLAT, Terrain
 
 
 class World:
-    def __init__(self, seed: int = 42) -> None:
+    def __init__(self) -> None:
         self.t = 0.0
         self.epoch = 0  # bumped on reset so viewers clear trails
         self.drones: dict[str, DroneSim] = {}
-        self.rng = random.Random(seed)
         self.terrain: Terrain = FLAT  # a mission's TileMap, wired by the service
 
     @staticmethod

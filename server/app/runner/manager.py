@@ -6,12 +6,13 @@ for bots and tests (mode="local").
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Settings
@@ -37,6 +38,7 @@ class Run:
     proc: asyncio.subprocess.Process | None = None
     state: str = "starting"  # starting | running | exited
     exit_code: int | None = None
+    tasks: list[asyncio.Task] = field(default_factory=list)  # pumps + exit watcher
 
     def payload(self) -> dict:
         return {"run_id": self.run_id, "state": self.state, "exit_code": self.exit_code}
@@ -114,9 +116,20 @@ class RunnerManager:
         run.state = "running"
         ring.append("system", f"run {run_id} started ({mode})")
         self._emit(run)
-        asyncio.create_task(self._pump(run.proc.stdout, "stdout", ring))
-        asyncio.create_task(self._pump(run.proc.stderr, "stderr", ring))
-        asyncio.create_task(self._await_exit(student, run, ring))
+        assert run.proc.stdout is not None  # both PIPEd above
+        assert run.proc.stderr is not None
+        # retained: an unreferenced task can be GC'd mid-flight and its
+        # exception would vanish until collection
+        run.tasks = [
+            asyncio.create_task(self._pump(run.proc.stdout, "stdout", ring),
+                                name=f"pump-stdout-{run_id}"),
+            asyncio.create_task(self._pump(run.proc.stderr, "stderr", ring),
+                                name=f"pump-stderr-{run_id}"),
+            asyncio.create_task(self._await_exit(student, run, ring),
+                                name=f"await-exit-{run_id}"),
+        ]
+        for task in run.tasks:
+            task.add_done_callback(_log_task_crash)
         return run_id
 
     # --------------------------------------------------------------- runtime
@@ -126,13 +139,18 @@ class RunnerManager:
         while True:
             try:
                 line = await stream.readline()
-            except (ValueError, OSError):  # line longer than the reader limit, etc.
+            except ValueError:  # line longer than the reader limit: drop it, keep pumping
+                ring.append("system", "…output line too long, dropped…")
                 continue
+            except OSError as exc:  # dead transport would loop hot on continue
+                log.debug("log pump %s ended: %r", name, exc)
+                return
             if not line:
                 return
             ring.append(name, line.decode("utf-8", "replace").rstrip("\n"))
 
     async def _await_exit(self, student: Student, run: Run, ring: RingLog) -> None:
+        assert run.proc is not None  # _start only spawns this after exec succeeds
         try:
             code = await asyncio.wait_for(run.proc.wait(), timeout=self.s.run_max_seconds)
         except TimeoutError:
@@ -156,10 +174,8 @@ class RunnerManager:
             except (FileNotFoundError, OSError):
                 pass
         if run.proc and run.proc.returncode is None:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 run.proc.kill()
-            except ProcessLookupError:
-                pass
 
     async def _stop_locked(self, student_id: str) -> bool:
         run = self.runs.get(student_id)
@@ -175,6 +191,13 @@ class RunnerManager:
         run.exit_code = run.proc.returncode if run.proc else -1
         self.log_for(student_id).append("system", "stopped")
         self._emit(run)
+        if run.tasks:
+            # brief grace so the pumps drain the pipes, then reap stragglers
+            _done, pending = await asyncio.wait(run.tasks, timeout=1.0)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            run.tasks.clear()
         return True
 
     async def stop(self, student_id: str) -> bool:
@@ -209,3 +232,11 @@ class RunnerManager:
             self.on_event(run.student_id, run.payload())
         except Exception:
             log.exception("run event callback failed")
+
+
+def _log_task_crash(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.error("runner task %s crashed", task.get_name(), exc_info=exc)

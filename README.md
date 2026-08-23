@@ -49,15 +49,23 @@ console: `/admin` (needs `ADMIN_TOKEN`) — room code defaults to `classroom`
 
 Container pipeline (what students actually use): `make image`, then submit
 from the browser — or `make bots N=3 MODE=container SCRIPT=bot_courier` to
-watch bots play the whole game through real sandboxes.
+watch bots play the whole game through real sandboxes. Bot scripts are
+mission-specific (`bot_courier`→delivery, `bot_builder`→rampart,
+`bot_siege`→siege, `bot_patrol`→any) — a bot on the wrong mission just
+idles silently.
 
 ## Tests
 
 ```bash
-make test    # server (pytest, incl. real-mavutil flights) + web (vitest)
-make e2e     # real podman container completes a delivery end-to-end
-make load    # 10 bots, 60 s: tick overruns <1%, world feed ≥9 Hz
+make test       # server (pytest, incl. real-mavutil flights) + web (vitest)
+make typecheck  # web: tsc --noEmit
+make lint       # server: ruff check   (make lint-fix applies the autofixes)
+make e2e        # real podman container completes a delivery end-to-end
+make load       # 10 bots, 60 s: tick overruns <1%, world feed ≥9 Hz
 ```
+
+CI (`.github/workflows/ci.yml`) runs lint + tests + typecheck + build on every
+PR; `make kill-dev` / `make kill-prod` stop stray dev or prod instances.
 
 ## Layout
 
@@ -72,7 +80,8 @@ make load    # 10 bots, 60 s: tick overruns <1%, world feed ≥9 Hz
 | `web/src/submit/` | CodeMirror editor, run controls, live logs |
 | `web/src/admin/` | instructor console: roster, kill/kick, reset, bots |
 | `examples/` | `dronelife.py` helper, student templates, demo bots |
-| `docs/` | STUDENT_GUIDE (handout), DEPLOY (lab server + OCI proxy) |
+| `runner/` | Containerfile for the student-script sandbox image |
+| `docs/` | STUDENT_GUIDE (handout), MISSIONS (author guide), DEPLOY (lab server + OCI proxy) |
 
 ## Gotchas we already hit for you
 

@@ -174,7 +174,8 @@ export class Scene {
     const s = this.scale;
     const H = this.half;
     g.clear();
-    this.gridLabels.removeChildren();
+    // removeChildren() alone leaks: Pixi does not destroy detached children
+    for (const c of this.gridLabels.removeChildren()) c.destroy();
 
     const corners = [
       project(H, H, 0, s), project(-H, H, 0, s),
@@ -265,7 +266,7 @@ export class Scene {
       + `@${this.scale.toFixed(3)}/${this.hexSize}`;
     if (key === this.padsKey) return;
     this.padsKey = key;
-    this.padLayer.removeChildren();
+    for (const c of this.padLayer.removeChildren()) c.destroy({ children: true });
     const s = this.scale;
     // a pad IS a lattice cell (server: hex.pad_cell), so draw that cell's own
     // hex rather than a free-floating marker — it fills its grid hex exactly

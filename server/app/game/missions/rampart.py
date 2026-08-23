@@ -9,14 +9,15 @@ from __future__ import annotations
 from .. import hex
 from ..building import (
     CarrySlots,
+    FerryTexts,
     PlaceTracker,
     TileSource,
     fmt_cell,
     hover_alt_hint,
-    tick_sources,
+    tick_ferry,
 )
 from ..hex import Axial
-from ..mission import Entity, Mission, WorldAPI
+from ..mission import Entity, Mission, WorldAPI, fmt_world
 from ..tiles import TileMap
 
 QUARRY_CELL: Axial = (11, -7)  # infinite steel pile, ~(-31, 39)
@@ -26,6 +27,8 @@ WALL_HEIGHT = 2  # tiles per cell -> a 4 m wall
 PLACE_POINTS = 2
 WALL_BONUS = 40
 ANNOUNCE_EVERY = 15.0
+FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
+                   "GAME: got steel, place on the wall")
 
 
 class RampartMission(Mission):
@@ -43,12 +46,11 @@ class RampartMission(Mission):
         self.total = len(self.targets) * WALL_HEIGHT
         self.done = False
         self.last_announce = 0.0
-        self._views = []
 
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([*world.config.pad_positions(), QUARRY])
+        self.tm.set_keep_out([QUARRY])  # pads are engine-protected already
         self._announce(world)
 
     def tile_map(self) -> TileMap:
@@ -69,7 +71,7 @@ class RampartMission(Mission):
         return sum(self.tm.height(c) for c in self.targets)
 
     def _announce(self, world: WorldAPI) -> None:
-        world.broadcast_text(f"GAME: quarry at N {round(QUARRY[0])} E {round(QUARRY[1])}")
+        world.broadcast_text(f"GAME: quarry at {fmt_world(*QUARRY)}")
         gap = next((c for c in self.targets if self.tm.height(c) < WALL_HEIGHT), None)
         if gap is not None:
             world.broadcast_text(
@@ -77,16 +79,7 @@ class RampartMission(Mission):
 
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
-        self._views = drones
-
-        for _drone_id, _ in self.carry.sync_losses(drones):
-            world.emit_event("tile_lost", "a steel tile was lost")
-            world.broadcast_text("GAME: steel lost, grab another")
-
-        for d, _source in tick_sources(drones, [self.quarry], self.carry, dt):
-            world.emit_event("pickup", f"{d.name} picked up steel", student_id=d.student_id)
-            world.send_text(d.id, "GAME: got steel, place on the wall")
-
+        tick_ferry(world, drones, self.carry, [self.quarry], dt, FERRY)
         placed, refused = self.tracker.tick(drones, dt)
         for p in placed:
             total = world.add_score(PLACE_POINTS, f"wall tile at {fmt_cell(p.cell)}",
@@ -111,7 +104,7 @@ class RampartMission(Mission):
 
     # -------------------------------------------------------------- viewer
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
         out = [self.quarry.entity()]
         for cell in self.targets:
             have = self.tm.height(cell)
@@ -122,5 +115,5 @@ class RampartMission(Mission):
                               n=n, e=e, alt=self.tm.top_alt(cell),
                               data={"material": "steel", "need": WALL_HEIGHT,
                                     "have": have, "size": hex.HEX_SIZE}))
-        out.extend(self.carry.entities(self._views))
+        out.extend(self.carry.entities(world.drones()))
         return out

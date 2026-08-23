@@ -1,0 +1,24 @@
+# The podman path, end to end: build the sandbox image, then a real container
+# completes a delivery. Too slow for per-PR (the image build compiles
+# pymavlink); runs weekly and on demand — the only automated proof of the
+# rootless-podman/slirp pipeline before a workshop.
+name: e2e
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+      - run: podman build -f runner/Containerfile -t drone-life-runner:latest .
+      - run: uv sync --frozen
+        working-directory: server
+      - run: uv run pytest -q -m e2e
+        working-directory: server

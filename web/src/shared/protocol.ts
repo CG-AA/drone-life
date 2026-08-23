@@ -1,4 +1,10 @@
-/** Mirrors the server's WS envelope (app/api/ws.py + service.world_message). */
+/** Mirrors the server's wire shapes: the WS envelope (app/api/ws.py +
+ * app/api/messages.py) and the REST payloads (routes_public/routes_admin).
+ *
+ * Ordering quirk: the per-socket sender drains the latest-wins world slot
+ * before the hello/tiles queue, so the FIRST frame a fresh client receives is
+ * usually `world`, ahead of `hello`. Pages must tolerate a world frame with
+ * arena defaults still in place. */
 
 export interface Envelope<T = unknown> {
   v: number;
@@ -17,8 +23,7 @@ export interface DroneState {
   alt: number;
   vn: number;
   ve: number;
-  /** optional: a server older than the viewer won't send it */
-  valt?: number;
+  valt: number;
   yaw: number;
   mode: string;
   armed: boolean;
@@ -28,14 +33,37 @@ export interface DroneState {
   carrying: string | null;
 }
 
+/** Every kind the missions emit today; the viewer renders unknown kinds with a
+ * neutral fallback marker, so this list is documentation, not a gate. */
+export const KNOWN_KINDS = [
+  "crate", "dropoff",                                  // delivery
+  "tile_source", "tile_carried", "ghost_tile",         // building missions
+  "furnace",                                           // forge
+  "keep", "troop", "tower", "beam",                    // siege
+] as const;
+
 export interface EntityState {
   id: string;
-  kind: string; // "crate" | "dropoff" | future kinds
+  kind: string; // one of KNOWN_KINDS, or a future kind (fallback-rendered)
   n: number;
   e: number;
   alt: number;
+  /** per-kind payload — see the …Data shapes below; `carried_by` is special:
+   * the server derives DroneState.carrying from it (app/api/messages.py) */
   data: Record<string, unknown>;
 }
+
+// Per-kind `data` shapes, as the missions emit them. Renderers coerce field
+// by field (a missing field degrades, not crashes), so these are the
+// documented contract rather than enforced parses.
+export interface CrateData { carried_by?: string }
+export interface TileSourceData { material: string; remaining: number | null }
+export interface TileCarriedData { carried_by: string; material: string }
+export interface GhostTileData { material: string; need: number; have: number; size: number }
+export interface TroopData { dir: number; chewing: boolean }
+export interface KeepData { hp: number; max: number }
+export interface TowerData { range: number }
+export interface BeamData { tn: number; te: number; talt: number }
 
 export interface PadState {
   slot: number;
@@ -91,6 +119,40 @@ export interface RunState {
   run_id: string;
   state: "starting" | "running" | "exited";
   exit_code: number | null;
+}
+
+// ---------------- REST payloads (routes_public.py / routes_admin.py) --------
+
+export interface JoinInfo {
+  token: string;
+  student_id: string;
+  name: string;
+  slot: number;
+  sysid: number;
+  spawn: { n: number; e: number };
+  rejoined: boolean;
+}
+
+export interface RosterStudent {
+  student_id: string;
+  name: string;
+  slot: number;
+  sysid: number;
+  run: RunState | null;
+  connected: boolean;
+  crashed: boolean;
+}
+
+export interface Roster {
+  students: RosterStudent[];
+  score: number;
+  mission: string;
+  epoch: number;
+}
+
+export interface BotsResult {
+  started: string[]; // student ids
+  room_full: boolean;
 }
 
 export function parseEnvelope(raw: string, onSkew?: () => void): Envelope | null {

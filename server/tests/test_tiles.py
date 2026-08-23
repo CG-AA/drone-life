@@ -42,11 +42,21 @@ def test_rejections():
 def test_keep_out_rejects_near_pads():
     tm = TileMap()
     pad = hex.pad_position(0)
-    tm.set_keep_out([pad], radius=6.0)
+    tm.protect_pads([pad])
     near = hex.world_to_axial(*pad)
     assert tm.place(near, "steel") == (False, "too close to a pad")
     far = hex.world_to_axial(pad[0] + 20, pad[1])
     assert tm.place(far, "steel")[0] is True
+
+
+def test_pad_protection_survives_clear_and_mission_keep_out():
+    tm = TileMap()
+    pad = hex.pad_position(0)
+    tm.protect_pads([pad])  # engine-owned, set once at bind
+    tm.set_keep_out([(0.0, 0.0)])  # mission landmarks replace freely
+    tm.clear()  # what reset() does
+    assert tm.place(hex.world_to_axial(*pad), "steel") == (False, "too close to a pad")
+    assert tm.place(hex.world_to_axial(0.0, 0.0), "steel") == (False, "keep-out zone")
 
 
 def test_version_bumps_only_on_mutation():

@@ -32,9 +32,35 @@ make image
 sudo tee /etc/drone-life.env <<'EOF'
 ROOM_CODE=pick-something-short
 ADMIN_TOKEN=long-random-string
+MISSION=delivery
 EOF
 sudo chmod 600 /etc/drone-life.env
 ```
+
+## Configuration reference
+
+Every knob is an env var read by `server/app/config.py` (pydantic-settings;
+a `.env` file in `server/` also works for dev). The HTTP bind address and port
+are **not** settings — they are uvicorn CLI flags (see the Makefile `run`
+target and the systemd unit).
+
+| variable | default | meaning |
+|---|---|---|
+| `ROOM_CODE` | `classroom` | what students type to join — override for any reachable deploy |
+| `ADMIN_TOKEN` | `change-me` | instructor console + admin API token — override likewise |
+| `MISSION` | `delivery` | which mission plugin runs (`canyon`, `delivery`, `forge`, `freefly`, `rampart`, `siege`) |
+| `MAX_STUDENTS` | `20` | roster cap = drone slots = MAVLink ports |
+| `SIM_SEED` | `42` | mission RNG seed (crate spawns, wave gates) |
+| `SIM_UNTHROTTLED` | `false` | tests only: run the driver without sleeping |
+| `MAVLINK_HOST` | `127.0.0.1` | MAVLink listeners bind here — keep on loopback |
+| `MAVLINK_BASE_PORT` | `5760` | slot N's drone listens on base+N |
+| `RUNNER_IMAGE` | `drone-life-runner:latest` | sandbox image for student scripts |
+| `RUNNER_NETWORK` | `slirp4netns:allow_host_loopback=true` | podman network for sandboxes |
+| `DRONE_HOST` | `10.0.2.2` | host loopback as seen from inside a container |
+| `RUN_MAX_SECONDS` | `900` | wall-clock cap per script run |
+| `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`) |
+| `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
+| `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts, guards room-code guessing |
 
 ## systemd
 
@@ -47,7 +73,9 @@ curl -s localhost:8000/healthz
 
 Note: the unit runs as user `dronelife` via `User=`; because rootless podman
 needs a session, `enable-linger` (step 1) is what makes containers work when
-nobody is logged in.
+nobody is logged in. The unit assumes the clone lives at `/opt/drone-life`
+and uv at `/home/dronelife/.local/bin/uv` — edit both paths if yours differ,
+and put `MISSION=` in `/etc/drone-life.env` or the deploy runs `delivery`.
 
 ## OCI VM reverse proxy
 

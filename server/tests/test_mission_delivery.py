@@ -8,13 +8,13 @@ from app.game.missions.delivery import (
     POINTS,
     DeliveryMission,
 )
-from tests.conftest import FakeWorld, view
+from tests.support.harness import FakeWorld, view
 
 
 def make() -> tuple[DeliveryMission, FakeWorld]:
     world = FakeWorld()
     mission = DeliveryMission()
-    mission.setup(world)
+    world.start(mission)
     return mission, world
 
 
@@ -75,7 +75,7 @@ def test_carrier_crash_respawns_crate():
     assert crate.id not in mission.crates
     assert len(mission.crates) == 3
     assert world.score == 0
-    assert any(kind == "crate_lost" for kind, _ in world.events)
+    assert any(ev["kind"] == "crate_lost" for ev in world.events)
 
 
 def test_reannounce_for_late_joiners():
@@ -87,8 +87,6 @@ def test_reannounce_for_late_joiners():
 
 def test_reset_clears_and_respawns():
     mission, world = make()
-    ids_before = set(mission.crates)
     mission.reset(world)
-    assert len(mission.crates) == 3
-    assert set(mission.crates).isdisjoint(ids_before) or True  # fresh ids from 1
+    assert set(mission.crates) == {"1", "2", "3"}, "crate numbering restarts"
     assert mission.next_id == 4

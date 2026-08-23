@@ -6,9 +6,10 @@ import { REDUCED_MOTION } from "../shared/theme";
 const FEED_MAX = 8;
 const FEED_TTL_MS = 45_000;
 
-/** Severity class per server event kind (see game/engine.py + missions/).
- * Unlisted kinds render as the neutral blue default. */
-const EVENT_CLASS: Record<string, string> = {
+/** Severity class per event kind. The full server-side registry lives in
+ * server/app/game/events.py; hud.test.ts pins this table to it, so every kind
+ * appears here — neutral ones explicitly as "". `stale` is client-only. */
+export const EVENT_CLASS: Record<string, string> = {
   score: "score",
   delivery: "score",
   wave_clear: "triumph",
@@ -21,9 +22,18 @@ const EVENT_CLASS: Record<string, string> = {
   keep_hit: "danger",
   keep_fell: "danger",
   tower_down: "danger",
+  mission_error: "danger",
   wave_start: "warn",
   orphan_rtl: "warn",
   script_exit: "warn",
+  reset: "warn",
+  joined: "",
+  kicked: "",
+  respawned: "",
+  reset_mine: "",
+  crate_spawn: "",
+  pickup: "",
+  tile_placed: "",
   stale: "danger", // client-side: protocol version skew, page needs a refresh
 };
 

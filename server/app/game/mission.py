@@ -25,8 +25,21 @@ from .hex import Axial
 if TYPE_CHECKING:
     from .tiles import TileMap
 
-SEV_INFO = 6
-SEV_WARNING = 4
+# one truth for severities: the sim owns them; the MAVLink dialect constants in
+# mav/wire.py are pinned equal by test
+from ..sim.drone import SEV_INFO, SEV_WARNING  # noqa: F401  (mission authors' import surface)
+
+
+def fmt_world(n: float, e: float) -> str:
+    """Position in the announce grammar: 'N 10 E -55' (see module docstring)."""
+    return f"N {round(n)} E {round(e)}"
+
+# every kind on_drone_event can receive; producers: the sim (armed…respawned),
+# the gateway (connected/disconnected/orphan_rtl), the service (joined)
+DRONE_EVENT_KINDS: tuple[str, ...] = (
+    "joined", "connected", "disconnected", "armed", "disarmed",
+    "takeoff", "landed", "crashed", "respawned", "orphan_rtl",
+)
 
 
 @dataclass(frozen=True)
@@ -76,10 +89,11 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
         """Called at 10 Hz."""
 
     def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:  # noqa: B027
-        """kind: joined|connected|disconnected|armed|disarmed|takeoff|landed|
-        crashed|respawned|orphan_rtl"""
+        """kind is one of DRONE_EVENT_KINDS; delivered before tick() each step."""
 
-    def entities(self) -> list[Entity]:
+    def entities(self, world: WorldAPI) -> list[Entity]:
+        """Called at 10 Hz after tick() — and on WS connect, possibly before
+        the first tick — so read live state from `world`, don't stash it."""
         return []
 
     def tile_map(self) -> TileMap | None:

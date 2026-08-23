@@ -13,6 +13,7 @@ tick instead of twenty. Hub methods still take plain dicts.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -73,8 +74,10 @@ class Client:
                     except asyncio.QueueEmpty:
                         break
                     await self.ws.send_text(msg)
-        except Exception:
-            pass  # socket died; the receive loop cleans up
+        except Exception as exc:
+            # socket died; the receive loop cleans up — but keep a trace so a
+            # genuine sender bug is not indistinguishable from a closed tab
+            log.debug("ws sender ended: %r", exc)
 
 
 class Hub:
@@ -94,6 +97,9 @@ class Hub:
     async def stop(self) -> None:
         if self._flusher:
             self._flusher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._flusher
+            self._flusher = None
 
     # ------------------------------------------------- called by the service
 
@@ -179,6 +185,7 @@ async def _serve(ws: WebSocket, client: Client) -> None:
         pass
     finally:
         sender.cancel()
+        await asyncio.gather(sender, return_exceptions=True)
         hub.unregister(client)
 
 

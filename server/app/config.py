@@ -14,8 +14,7 @@ class Settings(BaseSettings):
     room_code: str = "classroom"
     admin_token: str = "change-me"
 
-    http_host: str = "0.0.0.0"
-    http_port: int = 8000
+    # (the HTTP bind address/port are uvicorn CLI flags — see the Makefile)
 
     # MAVLink endpoints stay on loopback; containers reach them via slirp host-loopback
     mavlink_host: str = "127.0.0.1"

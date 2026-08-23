@@ -28,14 +28,22 @@ class TileMap:
         self._stacks: dict[Axial, list[str]] = {}
         self._keep_out: list[tuple[float, float]] = []
         self._keep_out_radius = KEEPOUT_RADIUS
+        self._pad_keep_out: list[tuple[float, float]] = []
 
     # ------------------------------------------------------------ configuration
 
     def set_keep_out(self, points: Iterable[tuple[float, float]],
                      radius: float = KEEPOUT_RADIUS) -> None:
-        """Mark circles (pads, dropoffs) whose cells reject placement."""
+        """Mark circles (mission landmarks: quarries, dropoffs, gates) whose
+        cells reject placement. Spawn pads need no entry here — the engine
+        protects them via protect_pads()."""
         self._keep_out = list(points)
         self._keep_out_radius = radius
+
+    def protect_pads(self, points: Iterable[tuple[float, float]]) -> None:
+        """Engine-owned: every spawn pad is unbuildable, always. Kept separate
+        from set_keep_out so no mission can forget it or clear it."""
+        self._pad_keep_out = list(points)
 
     # --------------------------------------------------------------- placement
     # (ok, reason) command-API style, like DroneSim, so callers can message it.
@@ -46,9 +54,12 @@ class TileMap:
         if not self.in_bounds(cell):
             return False, "outside the arena"
         n, e = hex.axial_to_world(cell, self.size)
+        for kn, ke in self._pad_keep_out:
+            if math.hypot(n - kn, e - ke) <= KEEPOUT_RADIUS:
+                return False, "too close to a pad"
         for kn, ke in self._keep_out:
             if math.hypot(n - kn, e - ke) <= self._keep_out_radius:
-                return False, "too close to a pad"
+                return False, "keep-out zone"
         if self.height(cell) >= MAX_STACK:
             return False, "stack is full"
         return True, ""

@@ -1,5 +1,7 @@
 """Flow field: every in-bounds cell gets a next step; walls price in chewing."""
 
+from itertools import pairwise
+
 from app.game import hex, path
 from app.game.tiles import TileMap
 
@@ -60,7 +62,7 @@ def test_two_high_wall_reroutes_without_chewing():
     start = (0, 6)
     assert field.cost[start] > hex.distance(start, GOAL), "the wall costs"
     cells = walk(field, start)
-    for a, b in zip(cells, cells[1:], strict=False):
+    for a, b in pairwise(cells):
         assert abs(tm.height(a) - tm.height(b)) <= 1, "route never over-climbs"
 
 

@@ -117,11 +117,10 @@ class DroneSim:
         elif mode == P.MODE_RTL:
             if self.armed and not self.on_ground:
                 self._start_rtl(t)
-        elif mode == P.MODE_LAND:
-            if self.armed and not self.on_ground:
-                self.flight = Flight.LAND
-                self.tn, self.te = self.n, self.e
-                self.vel_sp = None
+        elif mode == P.MODE_LAND and self.armed and not self.on_ground:
+            self.flight = Flight.LAND
+            self.tn, self.te = self.n, self.e
+            self.vel_sp = None
         return True, ""
 
     def arm(self, t: float) -> tuple[bool, str]:
@@ -398,10 +397,9 @@ class DroneSim:
         elif self.flight == Flight.RTL_CRUISE:
             if math.hypot(self.tn - self.n, self.te - self.e) < P.ARRIVE_RADIUS:
                 self.flight = Flight.LAND
-        elif self.flight == Flight.LAND:
-            if self.d >= self.ground_d - 1e-6:
-                self.d = self.ground_d
-                self.vn = self.ve = self.vd = 0.0
-                self.flight = Flight.IDLE
-                self.disarm_at = t + P.DISARM_DELAY
-                self.events.append("landed")
+        elif self.flight == Flight.LAND and self.d >= self.ground_d - 1e-6:
+            self.d = self.ground_d
+            self.vn = self.ve = self.vd = 0.0
+            self.flight = Flight.IDLE
+            self.disarm_at = t + P.DISARM_DELAY
+            self.events.append("landed")

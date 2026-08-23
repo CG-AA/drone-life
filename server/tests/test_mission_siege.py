@@ -13,13 +13,13 @@ from app.game.missions.siege import (
     SiegeMission,
 )
 from app.game.units import GroundUnit
-from tests.conftest import FakeWorld, view
+from tests.support.harness import FakeWorld, assert_grammar, view
 
 
 def make():
     world = FakeWorld()
     mission = SiegeMission()
-    mission.setup(world)
+    world.start(mission)
     return world, mission
 
 
@@ -52,19 +52,13 @@ def texts(world):
     return [text for _target, text in world.texts]
 
 
-def assert_grammar(world):
-    for text in texts(world):
-        assert text.startswith("GAME: "), text
-        assert len(text) <= 50, text
-
-
 # ------------------------------------------------------------ setup & waves
 
 def test_setup_entities_and_announcements():
     world, m = make()
-    kinds = {e.kind for e in m.entities()}
+    kinds = {e.kind for e in m.entities(world)}
     assert {"keep", "tile_source"} <= kinds
-    keep = next(e for e in m.entities() if e.kind == "keep")
+    keep = next(e for e in m.entities(world) if e.kind == "keep")
     assert keep.data == {"hp": KEEP_HP, "max": KEEP_HP}
     assert any("keep at N 0 E 0" in t for t in texts(world))
     assert any("quarry at N -50 E 44" in t for t in texts(world))
@@ -184,10 +178,10 @@ def test_tower_builds_fires_and_beam_expires():
     assert ((creep.n - tn) ** 2 + (creep.e - te) ** 2) ** 0.5 <= 12.0
     world.run(m, 0.3)
     assert not m.creeps, "the tower shot it"
-    beams = [e for e in m.entities() if e.kind == "beam"]
+    beams = [e for e in m.entities(world) if e.kind == "beam"]
     assert len(beams) == 1 and beams[0].data["talt"] == creep.alt
     world.run(m, BEAM_S + 0.2)
-    assert not [e for e in m.entities() if e.kind == "beam"], "beam expired"
+    assert not [e for e in m.entities(world) if e.kind == "beam"], "beam expired"
     assert_grammar(world)
 
 
@@ -234,3 +228,15 @@ def test_reset_keeps_tile_map_identity():
     assert m.tile_map() is tm, "same map object, rebuilt"
     assert not list(tm.cells()) and not m.creeps
     assert m.keep_hp == KEEP_HP and m.state == "grace"
+
+
+# ------------------------------------------------------------------- beams
+
+def test_beams_expire_even_in_an_empty_room():
+    world, m = make()
+    freeze_waves(m)
+    m.beams.append(("beam1", world.now + BEAM_S, (0.0, 0.0, 5.0), (1.0, 1.0, 0.0)))
+    world.views = []  # everyone left while a tower was mid-shot
+    world.run(m, BEAM_S + 1.0)
+    assert m.beams == []
+    assert not [e for e in m.entities(world) if e.kind == "beam"]

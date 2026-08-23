@@ -71,8 +71,8 @@ class Gateway:
             try:
                 old.link.statustext("replaced by a new connection", SEV_WARNING)
                 old.writer.close()
-            except Exception:
-                pass
+            except (OSError, RuntimeError) as exc:  # already-dead transport
+                log.debug("closing replaced connection for %s: %r", drone.id, exc)
         task = self.orphan_tasks.pop(drone.id, None)
         if task:
             task.cancel()
@@ -111,7 +111,7 @@ class Gateway:
     async def _orphan_watch(self, drone: DroneSim) -> None:
         """Sim-time grace, then fly the abandoned drone home."""
         deadline = self.world.t + P.ORPHAN_GRACE
-        while self.world.t < deadline:
+        while self.world.t < deadline:  # noqa: ASYNC110 — polling SIM time, no event exists
             await asyncio.sleep(0.05)
         if not drone.connected and drone.armed and not drone.on_ground and not drone.crashed:
             drone.set_mode(P.MODE_RTL, self.world.t)

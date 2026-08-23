@@ -1,12 +1,11 @@
 /** Submit page: join → edit → run → watch logs and your drone strip. */
 
 import type { DroneState, LogLine, RunState, WorldData } from "../shared/protocol";
+import { $, armedConfirm, banner, guarded, runPill } from "../shared/ui";
 import { GameSocket } from "../shared/ws";
 import { ApiFailure, STUDENT_KEY, TOKEN_KEY, fetchTemplate, join, resetMine,
   stopRun, submitCode } from "./api";
 import { Editor } from "./editor";
-
-const $ = (id: string) => document.getElementById(id)!;
 
 const editor = new Editor($("editor"));
 let studentId = "";
@@ -37,7 +36,14 @@ async function handleJoin(ev: Event): Promise<void> {
 async function enter(id: string, name: string): Promise<void> {
   studentId = id;
   $("pilot-name").textContent = name;
-  if (editor.isEmpty) editor.setCode(await fetchTemplate());
+  if (editor.isEmpty) {
+    try {
+      editor.setCode(await fetchTemplate());
+    } catch {
+      // the join already succeeded — never bounce back to the overlay over one GET
+      banner("could not load the starter template — pick one from the templates menu");
+    }
+  }
   connectWs();
 }
 
@@ -58,6 +64,16 @@ function connectWs(): void {
     showJoin("session expired — join again");
   };
   ws.onSkew = () => banner("this page is out of date — refresh to reconnect");
+  let wasDown = false;
+  ws.onStatus = (up) => {
+    if (!up) {
+      wasDown = true;
+      banner("connection lost — reconnecting…");
+    } else if (wasDown) {
+      wasDown = false;
+      banner("");
+    }
+  };
   ws.connect();
 }
 
@@ -69,7 +85,7 @@ async function run(): Promise<void> {
   btn.disabled = true;
   try {
     await submitCode(editor.code);
-    setPill("starting", "");
+    runPill($("run-pill"), { run_id: "", state: "starting", exit_code: null });
     $("run-hint").textContent = "watch the sky view — and the log pane on the right";
   } catch (e) {
     if (e instanceof ApiFailure && e.error.code === "syntax") {
@@ -83,76 +99,16 @@ async function run(): Promise<void> {
   }
 }
 
-/** Disable a button while its request is in flight; surface failures. */
-async function guarded(btn: HTMLButtonElement, action: () => Promise<unknown>,
-                       failMsg: string): Promise<void> {
-  btn.disabled = true;
-  try {
-    await action();
-    banner("");
-  } catch (e) {
-    banner(e instanceof ApiFailure ? `${failMsg}: ${e.error.msg}` : failMsg);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-interface BannerOpts {
-  info?: boolean;
-  actions?: Array<[label: string, onClick: () => void]>;
-}
-
-function banner(text: string, opts: BannerOpts = {}): void {
-  const el = $("banner");
-  el.textContent = text;
-  el.classList.toggle("info", Boolean(opts.info));
-  for (const [label, onClick] of opts.actions ?? []) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = label;
-    b.addEventListener("click", onClick);
-    el.appendChild(b);
-  }
-  el.classList.toggle("show", text.length > 0);
-}
-
-function setPill(state: string, extra: string): void {
-  const pill = $("run-pill");
-  pill.textContent = state + extra;
-  pill.className = "pill" + (state === "running" || state === "starting" ? " running"
-    : state === "exited" ? " exited" : "");
-}
-
 function setRunState(rs: RunState): void {
   scriptRunning = rs.state === "starting" || rs.state === "running";
-  if (rs.state === "exited") {
-    setPill("exited", rs.exit_code === null ? "" : ` (code ${rs.exit_code})`);
-  } else {
-    setPill(rs.state, "");
-  }
+  runPill($("run-pill"), rs);
 }
 
 // reset kills a running script, so make a running reset a two-step press
 const resetBtn = $("reset-btn") as HTMLButtonElement;
-let resetArmTimer = 0;
-
-function disarmReset(): void {
-  window.clearTimeout(resetArmTimer);
-  resetArmTimer = 0;
-  resetBtn.textContent = "reset drone";
-  resetBtn.classList.remove("confirm");
-}
-
-function onResetClick(): void {
-  if (scriptRunning && resetArmTimer === 0) {
-    resetBtn.textContent = "really reset?";
-    resetBtn.classList.add("confirm");
-    resetArmTimer = window.setTimeout(disarmReset, 3000);
-    return;
-  }
-  disarmReset();
-  void guarded(resetBtn, resetMine, "could not reset your drone");
-}
+armedConfirm(resetBtn, "really reset?",
+  () => void guarded(resetBtn, resetMine, "could not reset your drone"),
+  () => scriptRunning);
 
 // ----------------------------------------------------------------- templates
 
@@ -225,13 +181,18 @@ $("join-form").addEventListener("submit", handleJoin);
 $("run-btn").addEventListener("click", () => void run());
 $("stop-btn").addEventListener("click", () => void guarded(
   $("stop-btn") as HTMLButtonElement, stopRun, "could not stop the script"));
-resetBtn.addEventListener("click", onResetClick);
 templateSel.addEventListener("change", onTemplatePick);
 
-const saved = localStorage.getItem(STUDENT_KEY);
-if (localStorage.getItem(TOKEN_KEY) && saved) {
-  const info = JSON.parse(saved) as { student_id: string; name: string };
-  void enter(info.student_id, info.name);
+interface SavedStudent { student_id: string; name: string }
+let saved: SavedStudent | null = null;
+try {
+  saved = JSON.parse(localStorage.getItem(STUDENT_KEY) ?? "null") as SavedStudent | null;
+} catch {
+  // corrupt storage must not blank the page — fall through to the join overlay
+}
+if (localStorage.getItem(TOKEN_KEY) && saved?.student_id) {
+  enter(saved.student_id, saved.name)
+    .catch(() => showJoin("could not restore your session — join again"));
 } else {
   showJoin();
 }

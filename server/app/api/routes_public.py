@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, Request
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from ..core.registry import RoomFullError, Student
 from ..runner.manager import RunnerError
 from ..service import EXAMPLES_DIR, DroneLifeService
+from ..sim.backend import DroneView
 from .auth import err, get_service, require_student
 
 router = APIRouter(prefix="/api/v1")
@@ -62,7 +64,8 @@ async def template(variant: str = "beginner") -> PlainTextResponse:
     filename = TEMPLATES.get(variant)
     if filename is None:
         raise err(404, "variant", f"unknown template variant {variant!r}")
-    return PlainTextResponse((EXAMPLES_DIR / filename).read_text())
+    # off-loop: this route shares the event loop with the 20 Hz sim driver
+    return PlainTextResponse(await asyncio.to_thread((EXAMPLES_DIR / filename).read_text))
 
 
 @router.post("/submit")
@@ -102,7 +105,6 @@ async def status(student: Student = Depends(require_student),
                  service: DroneLifeService = Depends(get_service)) -> dict:
     run = service.runner.run_for(student.id)
     drone = service.world.drones.get(service.drone_id_for(student))
-    from ..sim.backend import DroneView
     return {
         "student_id": student.id,
         "run": run.payload() if run else None,

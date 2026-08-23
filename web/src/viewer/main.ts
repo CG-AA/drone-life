@@ -28,8 +28,9 @@ function projectorControls(): void {
   window.addEventListener("pointermove", wake);
   wake();
   window.addEventListener("dblclick", () => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void document.documentElement.requestFullscreen();
+    // a denied fullscreen request is fine; an unhandled rejection is not
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
   });
 }
 
@@ -155,7 +156,7 @@ async function boot(): Promise<void> {
       const target: Pose = {
         n: predict(d.n, still ? 0 : d.vn, age),
         e: predict(d.e, still ? 0 : d.ve, age),
-        alt: predict(d.alt, still ? 0 : (d.valt ?? 0), age),
+        alt: predict(d.alt, still ? 0 : d.valt, age),
         yaw: d.yaw,
       };
       dronePoses.set(d.id, smoothPose(dronePoses.get(d.id), target, dtMs));
@@ -190,4 +191,13 @@ async function boot(): Promise<void> {
   });
 }
 
-void boot();
+boot().catch((err: unknown) => {
+  // Pixi/WebGL init is what most plausibly failed, so plain DOM only here —
+  // an unattended projector must show words, not a silent black page
+  console.error("viewer boot failed", err);
+  const div = document.createElement("div");
+  div.className = "boot-error";
+  div.textContent =
+    "viewer failed to start — refresh to retry; a WebGL-capable browser is required";
+  document.body.appendChild(div);
+});

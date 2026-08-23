@@ -17,16 +17,17 @@ if TYPE_CHECKING:
 
 
 def world_message(service: DroneLifeService) -> dict:
+    ents = service.engine.entities()
     entities = [
         {"id": e.id, "kind": e.kind, "n": _f(e.n), "e": _f(e.e), "alt": _f(e.alt),
          "data": e.data}
-        for e in service.engine.entities()
+        for e in ents
     ]
     carrying: dict[str, str] = {}
-    for ent in entities:
-        carrier = ent["data"].get("carried_by")
-        if carrier:
-            carrying[carrier] = ent["id"]
+    for ent in ents:
+        carrier = ent.data.get("carried_by")
+        if isinstance(carrier, str) and carrier:
+            carrying[carrier] = ent.id
     drones = []
     for view in sorted(service.backend.drones(), key=lambda v: v.sysid):
         drones.append({

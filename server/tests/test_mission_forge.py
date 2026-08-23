@@ -8,13 +8,13 @@ from app.game.missions.forge import (
     PLACE_POINTS,
     ForgeMission,
 )
-from tests.conftest import FakeWorld, view
+from tests.support.harness import FakeWorld, view
 
 
 def make() -> tuple[ForgeMission, FakeWorld]:
     world = FakeWorld()
     mission = ForgeMission()
-    mission.setup(world)
+    world.start(mission)
     return mission, world
 
 
@@ -47,7 +47,7 @@ def test_sixth_tile_lights_the_furnace():
     assert mission.furnaces == [(0, 0)], "the furnace sits at the ring center"
     assert world.score == 6 * PLACE_POINTS + FURNACE_POINTS
     assert any("furnace lit" in t for target, t in world.texts if target == "*")
-    kinds = [e.kind for e in mission.entities()]
+    kinds = [e.kind for e in mission.entities(world)]
     assert kinds.count("furnace") == 1
     assert kinds.count("tile_source") == 1
 
