@@ -138,7 +138,7 @@ def hover(cell, alt, drone_id="d0"):
 
 def run_place(tracker, drones, seconds, dt=0.1):
     all_placed, all_refused = [], []
-    for _ in range(int(round(seconds / dt))):
+    for _ in range(round(seconds / dt)):
         placed, refused = tracker.tick(drones, dt)
         all_placed.extend(placed)
         all_refused.extend(refused)
@@ -224,7 +224,7 @@ def test_place_refused_on_keep_out():
 
 def run_sources(drones, sources, carry, seconds, dt=0.1):
     pickups = []
-    for _ in range(int(round(seconds / dt))):
+    for _ in range(round(seconds / dt)):
         pickups.extend(tick_sources(drones, sources, carry, dt))
     return pickups
 

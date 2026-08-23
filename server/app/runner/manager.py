@@ -6,6 +6,7 @@ for bots and tests (mode="local").
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -171,10 +172,8 @@ class RunnerManager:
             except (FileNotFoundError, OSError):
                 pass
         if run.proc and run.proc.returncode is None:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 run.proc.kill()
-            except ProcessLookupError:
-                pass
 
     async def _stop_locked(self, student_id: str) -> bool:
         run = self.runs.get(student_id)
@@ -192,7 +191,7 @@ class RunnerManager:
         self._emit(run)
         if run.tasks:
             # brief grace so the pumps drain the pipes, then reap stragglers
-            done, pending = await asyncio.wait(run.tasks, timeout=1.0)
+            _done, pending = await asyncio.wait(run.tasks, timeout=1.0)
             for task in pending:
                 task.cancel()
             await asyncio.gather(*pending, return_exceptions=True)

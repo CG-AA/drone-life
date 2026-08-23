@@ -111,7 +111,7 @@ class Gateway:
     async def _orphan_watch(self, drone: DroneSim) -> None:
         """Sim-time grace, then fly the abandoned drone home."""
         deadline = self.world.t + P.ORPHAN_GRACE
-        while self.world.t < deadline:
+        while self.world.t < deadline:  # noqa: ASYNC110 — polling SIM time, no event exists
             await asyncio.sleep(0.05)
         if not drone.connected and drone.armed and not drone.on_ground and not drone.crashed:
             drone.set_mode(P.MODE_RTL, self.world.t)

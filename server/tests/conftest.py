@@ -2,17 +2,17 @@ import os
 
 os.environ["MAVLINK20"] = "1"  # must be set before mavutil is imported anywhere
 
-import asyncio  # noqa: E402
-import random  # noqa: E402
-import socket  # noqa: E402
-from contextlib import asynccontextmanager  # noqa: E402
+import asyncio
+import random
+import socket
+from contextlib import asynccontextmanager
 
-import pytest  # noqa: E402
-from pymavlink import mavutil  # noqa: E402
+import pytest
+from pymavlink import mavutil
 
-from app.config import Settings  # noqa: E402
-from app.main import create_app  # noqa: E402
-from app.service import DroneLifeService  # noqa: E402
+from app.config import Settings
+from app.main import create_app
+from app.service import DroneLifeService
 
 
 def find_port_base(count: int = 8) -> int:

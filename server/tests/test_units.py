@@ -19,7 +19,7 @@ def run(us, tm, flow, seconds, chew_s=1.0):
     """Step for `seconds`; collect (time, result) of eventful ticks."""
     events = []
     t = 0.0
-    for _ in range(int(round(seconds / DT))):
+    for _ in range(round(seconds / DT)):
         result = step_units(us, tm, flow, DT, chew_s)
         t += DT
         if result.arrived or result.chews:

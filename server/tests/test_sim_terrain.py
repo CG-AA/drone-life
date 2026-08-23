@@ -31,7 +31,7 @@ def spawn_at(world: World, n: float, e: float):
 
 def run(world: World, seconds: float) -> list[str]:
     events = []
-    for _ in range(int(round(seconds / P.DT))):
+    for _ in range(round(seconds / P.DT)):
         events.extend(kind for _, kind in world.step(P.DT))
     return events
 

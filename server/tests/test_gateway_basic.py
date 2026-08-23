@@ -10,7 +10,6 @@ ACCEPTED = mavutil.mavlink.MAV_RESULT_ACCEPTED
 DENIED = mavutil.mavlink.MAV_RESULT_DENIED
 UNSUPPORTED = mavutil.mavlink.MAV_RESULT_UNSUPPORTED
 
-
 async def test_heartbeat_encoding(pilot_factory):
     pilot, _ = await pilot_factory("Alice")
 
@@ -23,7 +22,6 @@ async def test_heartbeat_encoding(pilot_factory):
 
     await asyncio.to_thread(check)
 
-
 async def test_arm_denied_outside_guided(pilot_factory):
     pilot, _ = await pilot_factory("Bob")
 
@@ -33,7 +31,6 @@ async def test_arm_denied_outside_guided(pilot_factory):
         pilot.wait_statustext("PreArm")
 
     await asyncio.to_thread(check)
-
 
 async def test_mode_set_both_paths(pilot_factory):
     pilot, _ = await pilot_factory("Cara")
@@ -46,19 +43,17 @@ async def test_mode_set_both_paths(pilot_factory):
         pilot.conn.mav.set_mode_send(
             pilot.conn.target_system,
             mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 5)  # LOITER
-        deadline = 0
         for _ in range(40):
             hb = pilot.conn.recv_match(type="HEARTBEAT", blocking=True, timeout=10)
             if hb and hb.custom_mode == 5:
                 return
-            deadline += 1
+
         raise AssertionError("mode never became LOITER via SET_MODE")
 
     await asyncio.to_thread(check)
 
-
 async def test_full_flight_arm_takeoff_goto_land(pilot_factory):
-    pilot, student = await pilot_factory("Dave")
+    pilot, _student = await pilot_factory("Dave")
 
     def check():
         pilot.mode_guided()
@@ -76,7 +71,6 @@ async def test_full_flight_arm_takeoff_goto_land(pilot_factory):
         assert abs(msg.x - 20) < 2 and abs(msg.y + 15) < 2, "landed in place"
 
     await asyncio.to_thread(check)
-
 
 async def test_velocity_setpoint_times_out(pilot_factory):
     pilot, _ = await pilot_factory("Eve")
@@ -102,7 +96,6 @@ async def test_velocity_setpoint_times_out(pilot_factory):
 
     await asyncio.to_thread(check)
 
-
 async def test_bounds_clamp_and_warning(pilot_factory):
     # spawn pads sit at n=-90, 10 m from the south wall: one velocity push hits it
     pilot, _ = await pilot_factory("Finn")
@@ -120,7 +113,6 @@ async def test_bounds_clamp_and_warning(pilot_factory):
 
     await asyncio.to_thread(check)
 
-
 async def test_unsupported_command_gets_acked(pilot_factory):
     pilot, _ = await pilot_factory("Gita")
 
@@ -129,7 +121,6 @@ async def test_unsupported_command_gets_acked(pilot_factory):
         assert pilot.wait_ack(mavutil.mavlink.MAV_CMD_DO_SET_SERVO) == UNSUPPORTED
 
     await asyncio.to_thread(check)
-
 
 async def test_global_setpoint_with_fake_origin(pilot_factory):
     pilot, _ = await pilot_factory("Hana")
@@ -149,7 +140,6 @@ async def test_global_setpoint_with_fake_origin(pilot_factory):
         pilot.wait_alt(20, tol=1.0)
 
     await asyncio.to_thread(check)
-
 
 async def test_disconnect_triggers_rtl_home(pilot_factory, service):
     pilot, student = await pilot_factory("Ivan")
@@ -174,7 +164,6 @@ async def test_disconnect_triggers_rtl_home(pilot_factory, service):
     raise AssertionError(
         f"drone never returned home: n={drone.n:.1f} e={drone.e:.1f} "
         f"alt={drone.alt:.1f} armed={drone.armed} flight={drone.flight}")
-
 
 def test_severity_constants_match_the_dialect():
     """sim.drone owns the plain ints (pymavlink-free); the wire uses the

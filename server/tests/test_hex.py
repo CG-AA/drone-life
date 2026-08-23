@@ -1,6 +1,7 @@
 """Pure axial hex math — the geometry every tile feature stands on."""
 
 import math
+from itertools import pairwise
 
 from app.game import hex
 
@@ -45,7 +46,7 @@ def test_line_endpoints_and_adjacency():
     cells = hex.line(a, b)
     assert cells[0] == a and cells[-1] == b
     assert len(cells) == hex.distance(a, b) + 1
-    for prev, cur in zip(cells, cells[1:], strict=False):
+    for prev, cur in pairwise(cells):
         assert hex.distance(prev, cur) == 1
 
 
@@ -57,7 +58,7 @@ def test_cells_along_hugs_the_world_segment():
         _, e = hex.axial_to_world(cell)
         assert abs(e - (-35.0)) <= hex.HEX_SIZE + 1e-9, "stays within a cell of the segment"
     # edge-connected barrier: every consecutive pair shares an edge
-    for prev, cur in zip(cells, cells[1:], strict=False):
+    for prev, cur in pairwise(cells):
         assert hex.distance(prev, cur) == 1
 
 
