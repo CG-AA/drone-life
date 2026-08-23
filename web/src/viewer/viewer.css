@@ -10,6 +10,18 @@ canvas { touch-action: none; }
 
 #hud { position: fixed; inset: 0; pointer-events: none; }
 
+/* shown by main.ts when Pixi/WebGL init fails — plain DOM, no canvas needed */
+.boot-error {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 2rem;
+  text-align: center;
+  font-size: clamp(1rem, 2.5vmin, 1.5rem);
+  color: var(--text-muted, #ccc);
+}
+
 #score-box {
   position: absolute;
   top: clamp(10px, 2vmin, 28px);
