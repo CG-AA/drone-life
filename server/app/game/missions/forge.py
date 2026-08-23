@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from .. import hex
 from ..blueprints import BlueprintTracker, ring_blueprint
-from ..building import CarrySlots, PlaceTracker, TileSource, tick_sources
+from ..building import CarrySlots, FerryTexts, PlaceTracker, TileSource, tick_ferry
 from ..hex import Axial
-from ..mission import Entity, Mission, WorldAPI
+from ..mission import Entity, Mission, WorldAPI, fmt_world
 from ..tiles import TileMap
 
 CLAY_PIT_CELL: Axial = (-11, 6)  # infinite clay pile, ~(27, -42)
@@ -19,6 +19,8 @@ FURNACE = ring_blueprint("furnace", "clay", radius=1)
 PLACE_POINTS = 1
 FURNACE_POINTS = 30
 ANNOUNCE_EVERY = 20.0
+FERRY = FerryTexts("clay", "GAME: clay lost, grab another",
+                   "GAME: got clay, build a ring of 6")
 
 
 class ForgeMission(Mission):
@@ -55,20 +57,11 @@ class ForgeMission(Mission):
     # ------------------------------------------------------------------ tick
 
     def _announce(self, world: WorldAPI) -> None:
-        world.broadcast_text(
-            f"GAME: clay pit at N {round(CLAY_PIT[0])} E {round(CLAY_PIT[1])}")
+        world.broadcast_text(f"GAME: clay pit at {fmt_world(*CLAY_PIT)}")
 
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
-
-        for _drone_id, _ in self.carry.sync_losses(drones):
-            world.emit_event("tile_lost", "a clay tile was lost")
-            world.broadcast_text("GAME: clay lost, grab another")
-
-        for d, _source in tick_sources(drones, [self.pit], self.carry, dt):
-            world.emit_event("pickup", f"{d.name} picked up clay", student_id=d.student_id)
-            world.send_text(d.id, "GAME: got clay, build a ring of 6")
-
+        tick_ferry(world, drones, self.carry, [self.pit], dt, FERRY)
         placed, refused = self.tracker.tick(drones, dt)
         for p in placed:
             world.add_score(PLACE_POINTS, "clay placed", student_id=p.drone.student_id)

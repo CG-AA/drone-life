@@ -25,8 +25,14 @@ from .hex import Axial
 if TYPE_CHECKING:
     from .tiles import TileMap
 
-SEV_INFO = 6
-SEV_WARNING = 4
+# one truth for severities: the sim owns them; the MAVLink dialect constants in
+# mav/wire.py are pinned equal by test
+from ..sim.drone import SEV_INFO, SEV_WARNING  # noqa: F401  (mission authors' import surface)
+
+
+def fmt_world(n: float, e: float) -> str:
+    """Position in the announce grammar: 'N 10 E -55' (see module docstring)."""
+    return f"N {round(n)} E {round(e)}"
 
 # every kind on_drone_event can receive; producers: the sim (armed…respawned),
 # the gateway (connected/disconnected/orphan_rtl), the service (joined)

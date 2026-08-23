@@ -174,3 +174,13 @@ async def test_disconnect_triggers_rtl_home(pilot_factory, service):
     raise AssertionError(
         f"drone never returned home: n={drone.n:.1f} e={drone.e:.1f} "
         f"alt={drone.alt:.1f} armed={drone.armed} flight={drone.flight}")
+
+
+def test_severity_constants_match_the_dialect():
+    """sim.drone owns the plain ints (pymavlink-free); the wire uses the
+    dialect's. mission.py re-exports the sim's. One truth, pinned here."""
+    from app.mav import wire
+    from app.sim import drone
+
+    assert wire.SEV_INFO == drone.SEV_INFO
+    assert wire.SEV_WARNING == drone.SEV_WARNING

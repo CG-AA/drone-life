@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from ..sim.backend import DroneView
 from . import hex
 from .hex import Axial
-from .mission import Entity
+from .mission import Entity, WorldAPI, fmt_world
 from .tiles import TILE_HEIGHT, TileMap
 
 PICKUP_RADIUS = 2.5  # m horizontal, at a source
@@ -148,9 +148,8 @@ def hover_alt_hint(tm: TileMap, cell: Axial) -> int:
 
 
 def fmt_cell(cell: Axial) -> str:
-    """Cell center as announce-style coordinates: 'N 10 E -55'."""
-    n, e = hex.axial_to_world(cell)
-    return f"N {round(n)} E {round(e)}"
+    """Cell center in the announce grammar: 'N 10 E -55'."""
+    return fmt_world(*hex.axial_to_world(cell))
 
 
 def crush_ok(tm: TileMap, cell: Axial, drones: Iterable[DroneView],
@@ -246,3 +245,26 @@ def tick_sources(drones: Iterable[DroneView], sources: Iterable[TileSource],
                 source.remaining -= 1
             pickups.append((winner, source))
     return pickups
+
+
+@dataclass(frozen=True)
+class FerryTexts:
+    """A build mission's flavor for the standard gather loop."""
+
+    material: str  # feed noun: "steel", "clay"
+    lost_say: str  # "GAME: steel lost, grab another"
+    got_say: str  # "GAME: got steel, place on the wall"
+
+
+def tick_ferry(world: WorldAPI, drones: Iterable[DroneView], carry: CarrySlots,
+               sources: Iterable[TileSource], dt: float, texts: FerryTexts) -> None:
+    """The gather preamble every build mission runs: drop tiles whose carrier
+    died, run the source pickups, send the standard events and texts."""
+    drones = list(drones)
+    for _drone_id, _material in carry.sync_losses(drones):
+        world.emit_event("tile_lost", f"a {texts.material} tile was lost")
+        world.broadcast_text(texts.lost_say)
+    for d, _source in tick_sources(drones, sources, carry, dt):
+        world.emit_event("pickup", f"{d.name} picked up {texts.material}",
+                         student_id=d.student_id)
+        world.send_text(d.id, texts.got_say)

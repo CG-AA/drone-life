@@ -9,14 +9,14 @@ import math
 from dataclasses import dataclass, field
 
 from .. import hex
-from ..building import CarrySlots, DwellTracker
+from ..building import PICKUP_ALT, PICKUP_DWELL, CarrySlots, DwellTracker
 from ..hex import Axial
-from ..mission import Entity, Mission, WorldAPI
+from ..mission import Entity, Mission, WorldAPI, fmt_world
 
 CRATE_COUNT = 3
+# deliberately tighter than building.PICKUP_RADIUS (2.5): a crate is a precise
+# grab, a quarry is a generous pile
 PICKUP_RADIUS = 2.0  # m horizontal
-PICKUP_ALT = 3.0  # must be below this altitude
-PICKUP_DWELL = 2.0  # s hovering in range
 DROP_RADIUS = 3.0
 DROP_DWELL = 1.0
 POINTS = 10
@@ -81,7 +81,7 @@ class DeliveryMission(Mission):
         self._announce(world, crate)
 
     def _announce(self, world: WorldAPI, crate: Crate) -> None:
-        world.broadcast_text(f"GAME: crate {crate.id} at N {round(crate.n)} E {round(crate.e)}")
+        world.broadcast_text(f"GAME: crate {crate.id} at {fmt_world(crate.n, crate.e)}")
 
     # ------------------------------------------------------------------ tick
 
