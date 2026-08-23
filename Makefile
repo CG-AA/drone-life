@@ -11,7 +11,7 @@ N ?= 5
 MODE ?= local
 SCRIPT ?= bot_patrol
 
-.PHONY: dev-server dev-web build image run kill-dev kill-prod test test-web e2e load lint fmt bots reset clean
+.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load lint lint-fix bots reset clean
 
 dev-server:
 	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
@@ -40,9 +40,16 @@ kill-prod:
 	-pkill -f 'uvicorn app.main:app --host'
 	-podman ps -aq --filter label=drone-life=1 | xargs -r podman rm -f -t 0
 
-test:
+test: test-server test-web
+
+test-server:
 	cd server && uv run pytest -q
-	cd web && npx vitest run
+
+test-web:
+	cd web && npm test
+
+typecheck:
+	cd web && npm run typecheck
 
 e2e:
 	cd server && uv run pytest -q -m e2e
@@ -53,7 +60,7 @@ load:
 lint:
 	cd server && uv run ruff check app tests
 
-fmt:
+lint-fix:
 	cd server && uv run ruff check --fix app tests
 
 # spawn demo bots: make bots N=10 MODE=container SCRIPT=bot_courier
