@@ -35,14 +35,17 @@ over and even **land on top**.
 
   means `drone.goto(-30, 40, 2)`, wait for `got steel`, then
   `drone.goto(10, -55, 4)` and hold still. Each block climbs the target
-  altitude by 2 m — the game always tells you the right number.
-- **forge** — same ferry loop from the clay pit, but you build anywhere:
-  close a **ring of 6 clay tiles** and a furnace lights for +30.
+  altitude by 2 m — the game always tells you the right number. Every
+  placed tile is **+2**, and finishing the whole wall pays **+40**.
+- **forge** — same ferry loop from the clay pit, but you build anywhere
+  (**+1** per tile): close a **ring of 6 clay tiles** and a furnace
+  lights for +30.
 - **canyon** — no scoring, just walls in the sky. Practice flying over
   (or through the corridor) without becoming a wreck on the ramparts.
 - **siege** — tower defense. Creep waves march from a gate toward the
   **Keep at (0, 0)**; every one that arrives costs it hp (and the class
-  points). Three ways to fight back:
+  points — the Keep falling is **−25**, though it rebuilds). Every kill
+  pays **+2** and a cleared wave **+10**. Three ways to fight back:
   1. **Zap**: hover low over a creep for **1.5 s** — the game texts you your
      nearest target (`GAME: creep at N 12 E -40`) every few seconds.
   2. **Squish**: place a tile right on top of one (same ferry loop as
@@ -81,6 +84,8 @@ drone.next_event(timeout=10)     # block until the next GAME message
 drone.land()                     # land right here
 drone.rtl()                      # fly home to your pad and land
 drone.wait(2)                    # plain sleep
+drone.armed                      # True while the motors are armed
+drone.close()                    # hang up cleanly (scripts may also just end)
 ```
 
 `print()` anything — it shows up live in your log pane.
