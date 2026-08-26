@@ -18,7 +18,8 @@ export const COLORS = {
   disarmed: 0x39445c,     // drone hull when disarmed
 } as const;
 
-export const FONT_UI = 'system-ui, "Segoe UI", Roboto, sans-serif';
+export const FONT_UI =
+  'system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'; // --font-ui
 
 /** Gate for decorative motion (flickers, pulses). Position/score updates are
  * meaningful motion and stay; ~4 Hz flicker effects must respect this. */

@@ -1,4 +1,12 @@
-/* Viewer (projector) page — fluid HUD over the Pixi canvas. */
+/* Viewer (projector) page — fluid HUD over the Pixi canvas.
+   Sizes are tuned to be read from five meters back on a washed-out projector:
+   every text element gets a panel, because the arena underneath ranges from
+   near-black floor to near-white steel tile tops. */
+
+:root {
+  /* the panel that makes HUD text legible over any arena content */
+  --hud-panel: rgba(16, 22, 33, 0.82);
+}
 
 html, body { overflow: hidden; }
 
@@ -28,6 +36,11 @@ canvas { touch-action: none; }
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
+  /* the score sits over the arena's far corner, where steel stacks are nearly
+     white — without a panel the numerals drop to ~1.7:1 there */
+  background: var(--hud-panel);
+  padding: 4px 22px 10px;
+  border-radius: 12px;
 }
 #score {
   font-size: clamp(2.5rem, 7vmin, 6rem);
@@ -36,7 +49,7 @@ canvas { touch-action: none; }
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
 }
 #mission {
-  font-size: clamp(0.75rem, 1.6vmin, 1.125rem);
+  font-size: clamp(0.9rem, 2vmin, 1.75rem);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.25em;
@@ -46,16 +59,17 @@ canvas { touch-action: none; }
   position: absolute;
   left: clamp(12px, 2vmin, 28px);
   bottom: clamp(12px, 2vmin, 28px);
-  width: clamp(300px, 26vw, 480px);
+  width: clamp(320px, 30vw, 640px);
   display: flex;
   flex-direction: column-reverse;
-  gap: 4px;
+  gap: 5px;
 }
 #feed div {
-  background: rgba(16, 22, 33, 0.82);
-  border-left: 3px solid var(--accent);
-  padding: 5px 10px;
-  font-size: clamp(0.85rem, 1.5vmin, 1.15rem);
+  background: var(--hud-panel);
+  border-left: 4px solid var(--accent);
+  padding: 6px 12px;
+  font-size: clamp(1rem, 1.9vmin, 1.6rem);
+  font-weight: 600;
   border-radius: 0 6px 6px 0;
   transition: opacity 1s;
 }
@@ -74,8 +88,10 @@ canvas { touch-action: none; }
   position: absolute;
   top: clamp(12px, 2vmin, 28px);
   right: clamp(14px, 2vmin, 30px);
-  font-size: clamp(0.75rem, 1.4vmin, 1rem);
-  opacity: 0.85;
+  font-size: clamp(0.85rem, 1.7vmin, 1.4rem);
+  background: var(--hud-panel);
+  padding: 6px 14px;
+  border-radius: 10px;
 }
 #conn::before { content: "●"; margin-right: 6px; color: var(--danger); }
 #conn.up::before { color: var(--ok); }
@@ -85,9 +101,11 @@ canvas { touch-action: none; }
   position: absolute;
   right: clamp(14px, 2vmin, 30px);
   bottom: clamp(12px, 2vmin, 28px);
-  font-size: clamp(0.7rem, 1.3vmin, 0.95rem);
+  font-size: clamp(0.8rem, 1.5vmin, 1.25rem);
   color: var(--text-muted);
-  opacity: 0.7;
+  background: var(--hud-panel);
+  padding: 6px 14px;
+  border-radius: 10px;
   transition: opacity 1s;
 }
 #nav-hint.gone { opacity: 0; }
