@@ -108,8 +108,11 @@ worked answer in the repo — don't reveal that until the wrap.
 - Delivery lull: `make bots N=2 SCRIPT=bot_courier` — two bots quietly show
   the full loop on the projector. Kick them from `/admin` once real deliveries
   resume (they hold roster slots, and the cap is `MAX_STUDENTS`).
-- Siege round 1, if nobody builds: `make bots N=2 SCRIPT=bot_builder` gets a
-  wall started (`bot_siege` zaps; `bot_builder` ferries steel).
+- Siege lull: `make bots N=2 SCRIPT=bot_siege` — zappers only. **`bot_builder`
+  cannot demo building on siege**: it waits for rampart's `wall gap`
+  announcements, which siege never sends (verified in rehearsal — it grabs
+  steel and hovers forever). Building has to be demoed by a human: place
+  3 steel on one cell on the projector and let the tower speak for itself.
 - Never leave bots in during a "record" round — the record should be human.
 
 ## 8. Contingencies
@@ -151,7 +154,14 @@ Siege (all in `server/app/game/missions/siege.py`): `GRACE_S` (45 — raise to
 between waves), `SPAWN_GAP` (1.5 s/creep), wave size
 `min(16, 4 + 2·(wave−1))`, speed `min(2.5, 1.5 + 0.1·(wave−1))`,
 `KILL_POINTS` 2 / `WAVE_BONUS` 10 / `TOWER_POINTS` 15 / `KEEP_FALL_POINTS`
-−25. Rehearsal observations go beside the round table on workshop day.
+−25.
+
+Measured (8 × `bot_siege` + 2 × `bot_builder`, ~3.5 min): grace and the wave
+machine run exactly on the documented clocks — waves 1–3 in ~50 s per cycle
+(spawn + fight + 20 s build), all cleared by zaps alone, keep never hit.
+Eight optimal zappers trivialize early waves; a human room will bleed more,
+so the defaults stand. The interesting pressure starts once sizes reach the
+cap of 16 (wave 7) — reach it in a round before judging difficulty.
 
 ## Scaling the plan to other lengths
 
