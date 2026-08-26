@@ -13,7 +13,10 @@ from ..building import PICKUP_ALT, PICKUP_DWELL, CarrySlots, DwellTracker
 from ..hex import Axial
 from ..mission import Entity, Mission, WorldAPI, fmt_world
 
-CRATE_COUNT = 3
+CRATE_COUNT = 3  # floor: crates alive even in an empty room
+CRATE_MAX = 8
+PILOTS_PER_CRATE = 3  # one crate in the air per this many connected pilots
+SPAWN_STAGGER_S = 2.0  # top-up spawns spread out, never one announce burst
 # deliberately tighter than building.PICKUP_RADIUS (2.5): a crate is a precise
 # grab, a quarry is a generous pile
 PICKUP_RADIUS = 2.0  # m horizontal
@@ -38,6 +41,7 @@ class Crate:
     e: float
     carried_by: str | None = None  # drone id
     dwell: DwellTracker = field(default_factory=_pickup_dwell)
+    last_announce: float = 0.0
 
 
 class DeliveryMission(Mission):
@@ -48,7 +52,7 @@ class DeliveryMission(Mission):
         self.carry = CarrySlots()  # drone id -> crate id
         self.drop_dwell = DwellTracker(DROP_RADIUS, PICKUP_ALT, DROP_DWELL)
         self.next_id = 1
-        self.last_announce = 0.0
+        self.last_spawn = float("-inf")
 
     # ------------------------------------------------------------- lifecycle
 
@@ -61,19 +65,34 @@ class DeliveryMission(Mission):
         self.carry.clear()
         self.drop_dwell.clear()
         self.next_id = 1
+        self.last_spawn = float("-inf")
         self.setup(world)
+
+    def _desired(self, world: WorldAPI) -> int:
+        """Crate population scales with the room: enough that a full class is
+        never starved, few enough that a rehearsal with 3 bots feels the same."""
+        pilots = sum(1 for d in world.drones() if d.connected)
+        return min(CRATE_MAX, max(CRATE_COUNT, math.ceil(pilots / PILOTS_PER_CRATE)))
 
     def _spawn_crate(self, world: WorldAPI) -> None:
         half = world.config.arena_half - SPAWN_MARGIN
         keep_away = [DROPOFF, *world.config.pad_positions(),
                      *[(c.n, c.e) for c in self.crates.values()]]
+        # rejection sampling; under pressure, keep the most isolated sample
+        # seen rather than whatever the last draw happened to be
         n = e = 0.0
+        best = -1.0
         for _ in range(200):
-            n = world.rng.uniform(-half, half)
-            e = world.rng.uniform(-half, half)
-            if all(math.hypot(n - kn, e - ke) >= MIN_SPAWN_DIST for kn, ke in keep_away):
+            cn = world.rng.uniform(-half, half)
+            ce = world.rng.uniform(-half, half)
+            d = min((math.hypot(cn - kn, ce - ke) for kn, ke in keep_away),
+                    default=math.inf)
+            if d > best:
+                best, n, e = d, cn, ce
+            if d >= MIN_SPAWN_DIST:
                 break
         crate = Crate(str(self.next_id), n, e)
+        self.last_spawn = world.now
         self.next_id += 1
         self.crates[crate.id] = crate
         world.emit_event("crate_spawn", f"crate {crate.id} appeared",
@@ -81,6 +100,7 @@ class DeliveryMission(Mission):
         self._announce(world, crate)
 
     def _announce(self, world: WorldAPI, crate: Crate) -> None:
+        crate.last_announce = world.now
         world.broadcast_text(f"GAME: crate {crate.id} at {fmt_world(crate.n, crate.e)}")
 
     # ------------------------------------------------------------------ tick
@@ -88,13 +108,18 @@ class DeliveryMission(Mission):
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = {d.id: d for d in world.drones()}
 
-        if world.now - self.last_announce > ANNOUNCE_EVERY:
-            self.last_announce = world.now
-            for crate in self.crates.values():
-                if crate.carried_by is None:
-                    self._announce(world, crate)
+        # the room grew: top up toward the scaled target, one crate at a time
+        if (len(self.crates) < self._desired(world)
+                and world.now - self.last_spawn >= SPAWN_STAGGER_S):
+            self._spawn_crate(world)
+
+        # per-crate clocks so re-announces stagger instead of bursting
+        for crate in self.crates.values():
+            if crate.carried_by is None and world.now - crate.last_announce > ANNOUNCE_EVERY:
+                self._announce(world, crate)
 
         # carrier crashed or vanished before delivering: a fresh crate spawns
+        # (unless the room shrank and we're above target — then it drains)
         for drone_id, crate_id in self.carry.sync_losses(drones.values()):
             lost = self.crates.pop(crate_id, None)
             if lost is None:
@@ -103,7 +128,8 @@ class DeliveryMission(Mission):
             reason = "crashed" if (d and d.crashed) else "was lost"
             world.emit_event("crate_lost", f"crate {lost.id} {reason}",
                              student_id=d.student_id if d else None)
-            self._spawn_crate(world)
+            if len(self.crates) < self._desired(world):
+                self._spawn_crate(world)
 
         # ground crates: hover low + dwell to pick up (one crate per drone)
         for crate in list(self.crates.values()):
@@ -131,7 +157,8 @@ class DeliveryMission(Mission):
                                  f"{winner.name} delivered crate {delivered.id}! +{POINTS}",
                                  student_id=winner.student_id, data={"points": POINTS})
                 world.send_text(winner.id, f"GAME: delivered! +{POINTS} (team {total})")
-                self._spawn_crate(world)
+                if len(self.crates) < self._desired(world):
+                    self._spawn_crate(world)
 
     # -------------------------------------------------------------- viewer
 
