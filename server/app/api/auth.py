@@ -22,8 +22,15 @@ def constant_time_eq(a: str, b: str) -> bool:
 
     The encode matters: compare_digest raises TypeError on non-ASCII str, so a
     student pasting an accented room code would get a 500 instead of a 403.
+    surrogatepass covers the rest — a JSON body may carry a lone surrogate
+    (`{"room_code": "\\ud800"}`), which plain .encode() refuses.
     """
-    return hmac.compare_digest(a.encode(), b.encode())
+    return hmac.compare_digest(_utf8(a), _utf8(b))
+
+
+def _utf8(value: str) -> bytes:
+    """Bytes for any str a client can send — never raises."""
+    return value.encode("utf-8", "surrogatepass")
 
 
 def get_service(request: Request) -> DroneLifeService:

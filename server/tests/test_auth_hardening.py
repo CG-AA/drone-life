@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from app.api.auth import RateLimiter, constant_time_eq
+from app.core.registry import Registry
 from tests.conftest import make_settings, running_app
 
 
@@ -21,6 +22,35 @@ def test_constant_time_eq_survives_non_ascii():
     """compare_digest raises on non-ASCII str — a pasted 'clé' must 403, not 500."""
     assert not constant_time_eq("clé", "test-room")
     assert constant_time_eq("clé", "clé")
+
+
+def test_constant_time_eq_survives_lone_surrogates():
+    """JSON can carry "\\ud800", which plain .encode() refuses to encode."""
+    lone = "\ud800"
+    assert not constant_time_eq(lone, "test-room")
+    assert constant_time_eq(lone, lone)
+
+
+async def test_join_rejects_lone_surrogate_room_code(tmp_path):
+    """End to end: an unencodable room code is a wrong code, not a 500."""
+    async with running_app(make_settings(tmp_path)) as app:
+        client = await transport_client(app, "10.0.0.14")
+        async with client:
+            r = await client.post(
+                "/api/v1/join",
+                content=b'{"room_code": "\\ud800", "name": "Eve"}',
+                headers={"content-type": "application/json"},
+            )
+            assert r.status_code == 403
+
+
+def test_by_token_survives_unencodable_input(tmp_path):
+    """Headers are ASCII on the wire, so this is defence in depth for by_token:
+    a restored snapshot or a future caller must not crash the lookup."""
+    registry = Registry(max_students=2, base_port=5760)
+    student, _ = registry.join("Ada")
+    assert registry.by_token("\ud800") is None
+    assert registry.by_token(student.token) is student
 
 
 class FakeClock:

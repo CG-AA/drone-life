@@ -32,12 +32,14 @@ class Registry:
         self.students: dict[str, Student] = {}  # by id
 
     def by_token(self, token: str) -> Student | None:
-        # constant-time per candidate; the scan itself only leaks the roster size
-        want = token.encode()
-        return next(
-            (s for s in self.students.values() if hmac.compare_digest(s.token.encode(), want)),
-            None,
-        )
+        # constant-time per candidate; the scan itself only leaks the roster size.
+        # surrogatepass: a bearer token is client-supplied and must never crash
+        # the compare (a lone surrogate makes plain .encode() raise)
+        want = token.encode("utf-8", "surrogatepass")
+        for student in self.students.values():
+            if hmac.compare_digest(student.token.encode("utf-8", "surrogatepass"), want):
+                return student
+        return None
 
     def by_name(self, name: str) -> Student | None:
         key = _norm(name)
