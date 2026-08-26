@@ -129,18 +129,29 @@ worked answer in the repo — don't reveal that until the wrap.
 - **Room joins slower than planned**: stretch freefly, shrink delivery II;
   never shrink the siege intro — round 1 absorbs confusion, the intro doesn't.
 
-## 9. Balance knobs (fill from rehearsal)
+## 9. Balance knobs (numbers from the pre-workshop rehearsal)
 
 Delivery (all in `server/app/game/missions/delivery.py`): crate supply is
-roster-scaled — `PILOTS_PER_CRATE`, `CRATE_MAX`, floor `CRATE_COUNT`,
-`SPAWN_STAGGER_S`; value `POINTS`. Measured rehearsal run goes here
-(bots N, deliveries/min, median crate wait).
+roster-scaled — one crate per `PILOTS_PER_CRATE` (3) connected pilots,
+clamped to [`CRATE_COUNT` 3, `CRATE_MAX` 8], one top-up per
+`SPAWN_STAGGER_S` (2 s); value `POINTS` (10).
+
+Measured (20 × `bot_courier`, local mode, 7.8 min): **12.5 deliveries/min**,
+median crate wait **12.7 s** (a long tail to ~90 s when a crate spawns far
+from the pack — it spreads the room, leave it), score climbs linearly
+(no starvation flattening), 7 crates live for 20 pilots, tick overruns
+0.05 %. Twenty optimal bots are the *ceiling* — expect a human class at
+roughly a third of that rate, which sits mid-band. **Verdict: ship the
+defaults.** If a fast class ever floods it, raise `PILOTS_PER_CRATE` 3→4;
+if a slow one starves, lower `CRATE_MAX` won't help — lower
+`PILOTS_PER_CRATE` 3→2 instead.
 
 Siege (all in `server/app/game/missions/siege.py`): `GRACE_S` (45 — raise to
-60 if wave 1 beats the first tower in rehearsal), `BUILD_S` (20, between
-waves), `SPAWN_GAP` (1.5 s/creep), wave size `min(16, 4 + 2·(wave−1))`, speed
-`min(2.5, 1.5 + 0.1·(wave−1))`, `KILL_POINTS`/`WAVE_BONUS`/`TOWER_POINTS`.
-Observed wave timings from rehearsal go here.
+60 for a first-timer room, or when the intro runs long), `BUILD_S` (20,
+between waves), `SPAWN_GAP` (1.5 s/creep), wave size
+`min(16, 4 + 2·(wave−1))`, speed `min(2.5, 1.5 + 0.1·(wave−1))`,
+`KILL_POINTS` 2 / `WAVE_BONUS` 10 / `TOWER_POINTS` 15 / `KEEP_FALL_POINTS`
+−25. Rehearsal observations go beside the round table on workshop day.
 
 ## Scaling the plan to other lengths
 
