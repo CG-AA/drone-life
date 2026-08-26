@@ -11,7 +11,7 @@ N ?= 5
 MODE ?= local
 SCRIPT ?= bot_patrol
 
-.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load lint lint-fix bots reset clean
+.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load lint lint-fix preflight bots reset clean
 
 dev-server:
 	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
@@ -64,6 +64,10 @@ lint:
 
 lint-fix:
 	cd server && uv run ruff check --fix app tests
+
+# workshop morning: can this box actually run a class? (--no-smoke skips the test container)
+preflight:
+	cd server && uv run python -m app.preflight $(PREFLIGHT_ARGS)
 
 # spawn demo bots: make bots N=10 MODE=container SCRIPT=bot_courier
 bots:
