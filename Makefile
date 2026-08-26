@@ -10,6 +10,7 @@ HOST ?= 127.0.0.1:8000
 N ?= 5
 MODE ?= local
 SCRIPT ?= bot_patrol
+LOAD_BOTS ?= 10
 
 .PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load lint lint-fix preflight bots reset clean
 
@@ -55,8 +56,9 @@ typecheck:
 e2e:
 	cd server && uv run pytest -q -m e2e
 
+# rehearse the real class size on the real hardware: make load LOAD_BOTS=20
 load:
-	cd server && uv run pytest -q -m load
+	cd server && LOAD_BOTS=$(LOAD_BOTS) uv run pytest -q -m load
 
 lint:
 	cd server && uv run ruff check app tests
