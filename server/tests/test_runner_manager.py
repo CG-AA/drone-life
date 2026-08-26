@@ -1,19 +1,31 @@
-"""RunnerManager local-mode lifecycle: logs pumped, exits observed, stop reaps."""
+"""RunnerManager local-mode lifecycle: logs pumped, exits observed, stop reaps.
+
+Container mode is mocked here (podman lives in the e2e suite) — what these
+pin is that a missing image fails the submit instead of the run.
+"""
 
 import asyncio
 
+import pytest
+
 from app.config import Settings
 from app.core.registry import Student
-from app.runner.manager import RunnerManager
+from app.runner.manager import RunnerError, RunnerManager
 
 
 def make_student() -> Student:
     return Student(id="s0", name="Testy", token="t", slot=0, sysid=1, port=5760)
 
 
-def make_manager(events: list) -> RunnerManager:
-    return RunnerManager(Settings(), examples_dir=None,
+def make_manager(events: list, **overrides) -> RunnerManager:
+    return RunnerManager(Settings(**overrides), examples_dir=None,
                          on_event=lambda sid, payload: events.append((sid, payload)))
+
+
+def fake_image_probe(available: bool):
+    async def _probe(self) -> bool:
+        return available
+    return _probe
 
 
 async def wait_for(predicate, timeout: float = 5.0) -> None:
@@ -59,3 +71,38 @@ async def test_stop_kills_and_reaps_tasks(tmp_path):
     assert run.tasks == []  # cancelled-or-done and cleared, nothing left pending
     lines = [e["line"] for e in mgr.log_for("s0").tail(50) if e["stream"] == "system"]
     assert "stopped" in lines
+
+
+async def test_submit_container_without_image_raises_runner_error(tmp_path, monkeypatch):
+    events: list = []
+    mgr = make_manager(events, state_dir=tmp_path / "state")
+    monkeypatch.setattr(RunnerManager, "_image_ok", fake_image_probe(False))
+
+    with pytest.raises(RunnerError, match="make image"):
+        await mgr.submit_container(make_student(), "print('hi')\n")
+    assert mgr.run_for("s0") is None  # nothing half-started, nothing to explain
+    assert events == []
+
+
+async def test_image_probe_caches_the_positive_only(tmp_path, monkeypatch):
+    events: list = []
+    mgr = make_manager(events, state_dir=tmp_path / "state")
+    calls: list = []
+    rc = [1]
+
+    class FakeProc:
+        async def wait(self) -> int:
+            return rc[0]
+
+    async def fake_exec(*argv, **kwargs):
+        calls.append(argv)
+        return FakeProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    assert await mgr._image_ok() is False
+    assert await mgr._image_ok() is False  # negatives re-probe: `make image` must land
+    assert len(calls) == 2
+    rc[0] = 0
+    assert await mgr._image_ok() is True
+    assert await mgr._image_ok() is True  # positive cached: an image can't un-build
+    assert len(calls) == 3

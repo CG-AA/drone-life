@@ -52,6 +52,7 @@ class RunnerManager:
         self.runs: dict[str, Run] = {}
         self.logs: dict[str, RingLog] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self._image_seen = False
 
     def log_for(self, student_id: str) -> RingLog:
         return self.logs.setdefault(student_id, RingLog())
@@ -64,13 +65,36 @@ class RunnerManager:
 
     # ------------------------------------------------------------- submitting
 
-    async def submit_container(self, student: Student, code: str) -> str:
-        script_dir = self.s.abs_state_dir / "scripts" / student.id
+    async def _image_ok(self) -> bool:
+        """`--pull=never` turns a missing image into an exit-125 container nobody
+        reads. Probe first so submit fails with a sentence instead. Only the
+        positive is cached: `make image` mid-class must fix the next click."""
+        if self._image_seen:
+            return True
+        try:
+            p = await asyncio.create_subprocess_exec(
+                "podman", "image", "exists", self.s.runner_image,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            )
+            self._image_seen = await p.wait() == 0
+        except (FileNotFoundError, OSError):
+            return False
+        return self._image_seen
+
+    def _write_script(self, script_dir: Path, code: str) -> None:
         script_dir.mkdir(parents=True, exist_ok=True)
         script = script_dir / "current.py"
         script.write_text(code)
         script.chmod(0o644)  # rootless uid mapping: container user must be able to read it
         script_dir.chmod(0o755)
+
+    async def submit_container(self, student: Student, code: str) -> str:
+        if not await self._image_ok():
+            raise RunnerError(f"runner image {self.s.runner_image} is not built "
+                              "— instructor: run `make image`")
+        script_dir = self.s.abs_state_dir / "scripts" / student.id
+        # off-loop: this runs on the request path the 20 Hz driver shares
+        await asyncio.to_thread(self._write_script, script_dir, code)
         async with self._lock(student.id):
             await self._stop_locked(student.id)
             run_id = uuid.uuid4().hex[:8]
