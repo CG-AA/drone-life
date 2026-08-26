@@ -10,6 +10,7 @@ works when tick() ran first fails here too.
 from __future__ import annotations
 
 import random
+import re
 
 from app.game import hex
 from app.game.events import EVENT_KINDS
@@ -25,11 +26,32 @@ def view(drone_id="d0", n=0.0, e=0.0, alt=1.0, armed=True, crashed=False) -> Dro
     )
 
 
+_POS_RE = re.compile(r" at N -?\d+ E -?\d+($|[ ,!])")
+
+
+def check_text(text: str) -> None:
+    """The STATUSTEXT law (see mission.py), checked on every emission.
+
+    Prefix and length are hard rules (the sim truncates to 50 chars silently —
+    an over-long text reaches students cut off mid-word). Positions must come
+    from fmt_world/fmt_cell: bots regex `at N <int> E <int>` (bot_courier.py),
+    so a hand-rolled coordinate format breaks them silently. Floats never
+    belong in GAME text. The "confirmations end with !" clause stays a style
+    rule — mid-sentence `!` is legitimate ("tower up! +15"), so it can't be
+    mechanized.
+    """
+    assert text.startswith("GAME: "), text
+    assert len(text) <= 50, f"statustext would truncate: {text!r} ({len(text)})"
+    if " at N" in text:
+        assert _POS_RE.search(text), f"malformed position (use fmt_world): {text!r}"
+    assert not re.search(r"\d\.\d", text), f"float leaked into GAME text: {text!r}"
+
+
 def assert_grammar(world: FakeWorld) -> None:
-    """The STATUSTEXT law (see mission.py): `GAME: ` prefix, 50 chars max."""
+    """Re-check every text a mission produced (kept for explicit callers;
+    FakeWorld already checks each emission as it happens)."""
     for _target, text in world.texts:
-        assert text.startswith("GAME: "), text
-        assert len(text) <= 50, text
+        check_text(text)
 
 
 class FakeWorld:
@@ -60,9 +82,11 @@ class FakeWorld:
         return self.score
 
     def send_text(self, drone_id, text, severity=6):
+        check_text(text)
         self.texts.append((drone_id, text))
 
     def broadcast_text(self, text, severity=6):
+        check_text(text)
         self.texts.append(("*", text))
 
     # --------------------------------------------- engine-shaped drivers
