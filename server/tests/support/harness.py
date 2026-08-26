@@ -13,6 +13,7 @@ import random
 import re
 
 from app.game import hex
+from app.game.engine import MILESTONE_EVERY
 from app.game.events import EVENT_KINDS
 from app.game.mission import Mission, MissionConfig
 from app.sim.backend import DroneView
@@ -75,10 +76,15 @@ class FakeWorld:
                             "data": data or {}, "t": round(self.now, 2)})
 
     def add_score(self, points, reason, student_id=None):
+        prev = self.score
         self.score += points
         self.scores.append((points, reason, student_id))
         self.emit_event("score", f"{points:+d}: {reason}", student_id=student_id,
                         data={"points": points, "total": self.score})
+        if points > 0 and prev // MILESTONE_EVERY < self.score // MILESTONE_EVERY:
+            mark = self.score // MILESTONE_EVERY * MILESTONE_EVERY
+            self.emit_event("milestone", f"team passes {mark} points!",
+                            data={"total": self.score})
         return self.score
 
     def send_text(self, drone_id, text, severity=6):

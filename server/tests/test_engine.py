@@ -84,3 +84,39 @@ def test_healthy_mission_scores_through_the_api():
     assert engine.score == 10
     assert [ev["kind"] for ev in engine.bus.feed] == ["score"]
     assert [ent.id for ent in engine.entities()] == ["x"]
+
+
+class QuietMission(Mission):
+    name = "quiet"
+
+
+def milestones(engine: GameEngine) -> list[dict]:
+    return [ev for ev in engine.bus.feed if ev["kind"] == "milestone"]
+
+
+def test_milestone_fires_on_upward_century_cross():
+    engine = make_engine(QuietMission())
+    for _ in range(9):
+        engine.api.add_score(10, "crate delivered")
+    assert milestones(engine) == []
+    engine.api.add_score(10, "crate delivered")
+    assert [ev["msg"] for ev in milestones(engine)] == ["team passes 100 points!"]
+    engine.api.add_score(150, "big finish")  # one crossing event even for a jump
+    assert [ev["msg"] for ev in milestones(engine)][-1] == "team passes 200 points!"
+    assert len(milestones(engine)) == 2
+
+
+def test_milestone_never_fires_on_a_loss():
+    engine = make_engine(QuietMission())
+    engine.api.add_score(105, "head start")
+    assert len(milestones(engine)) == 1
+    engine.api.add_score(-25, "keep fell")  # dips below 100
+    assert len(milestones(engine)) == 1, "losses never celebrate"
+
+
+def test_milestone_recelebrates_a_recrossed_mark():
+    engine = make_engine(QuietMission())
+    engine.api.add_score(105, "head start")
+    engine.api.add_score(-25, "keep fell")
+    engine.api.add_score(30, "wave clear")  # back over 100
+    assert len(milestones(engine)) == 2, "a re-earned mark is worth re-celebrating"
