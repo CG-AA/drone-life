@@ -242,7 +242,7 @@ export class CameraController {
   /** Ease the live camera toward its target. Called once per rendered frame. */
   update(dtMs: number): void {
     if (this.scene.camera !== this.applied) {
-      // the scene refit itself (window resize, new arena, resetCamera)
+      // the scene refit itself (window resize, fullscreen, new arena)
       this.target = { ...this.scene.camera };
       this.applied = this.scene.camera;
       this.anchor = null;

@@ -56,6 +56,7 @@ export class Scene {
   private padsKey = "";
   private lastPads: PadState[] = [];
   private appliedScale = 0;
+  private syncQueued = false;
 
   /** px per meter. Layers read this to redraw at the current zoom. */
   get scale(): number {
@@ -65,7 +66,11 @@ export class Scene {
   async init(): Promise<void> {
     await this.app.init({
       background: COLORS.bg,
-      resizeTo: window,
+      // deliberately not resizeTo: window — Pixi's ResizePlugin defers the
+      // renderer resize to a later frame, which leaves one frame drawn with
+      // the new camera in the old framebuffer. syncViewport() owns the size.
+      width: window.innerWidth,
+      height: window.innerHeight,
       antialias: true,
       // sharp on HiDPI/scaled-4K projectors; area-capped to bound GPU cost
       resolution: clampResolution(window.devicePixelRatio, window.innerWidth,
@@ -80,10 +85,10 @@ export class Scene {
     this.world.addChild(this.gridLayer, this.gridLabels, this.padLayer, this.trailLayer,
                         this.decalLayer, this.spriteLayer);
     this.app.stage.addChild(this.world);
-    window.addEventListener("resize", () => {
-      this.applyResolution();
-      this.layout();
-    });
+    window.addEventListener("resize", () => this.queueViewportSync());
+    // F11 and the double-click handler both land here; on some browsers the
+    // fullscreen transition reports its final size only after this event
+    document.addEventListener("fullscreenchange", () => this.queueViewportSync());
     this.watchDpr();
     this.layout();
   }
@@ -95,8 +100,7 @@ export class Scene {
    * every change, since the query itself is ratio-specific. */
   private watchDpr(): void {
     const onChange = (): void => {
-      this.applyResolution();
-      this.layout();
+      this.queueViewportSync();
       arm();
     };
     const arm = (): void => {
@@ -106,14 +110,35 @@ export class Scene {
     arm();
   }
 
-  /** Re-point the renderer at the current device pixel density. Idempotent:
-   * the resize and dppx paths both call it and the second one is a no-op. */
-  applyResolution(): void {
-    const res = clampResolution(window.devicePixelRatio, window.innerWidth,
-                                window.innerHeight);
-    if (Math.abs(res - this.app.renderer.resolution) < 1e-6) return;
-    this.app.renderer.resize(window.innerWidth, window.innerHeight, res);
-    this.textResolution = res;
+  /** Coalesce a burst of viewport events into one sync. Dragging a window
+   * edge fires resize at pointer rate, and each sync rebuilds the whole hex
+   * lattice, every pad, and (next tick) every tile prism. */
+  private queueViewportSync(): void {
+    if (this.syncQueued) return;
+    this.syncQueued = true;
+    window.requestAnimationFrame(() => {
+      this.syncQueued = false;
+      this.syncViewport();
+    });
+  }
+
+  /** Match the renderer to the window, then refit. Owns both the size and the
+   * device pixel density, so the framebuffer and the camera can never
+   * disagree about how big the viewport is. */
+  private syncViewport(): void {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const res = clampResolution(window.devicePixelRatio, w, h);
+    if (Math.abs(res - this.textResolution) > 1e-6) {
+      this.textResolution = res;
+      // Text rasterizes at the resolution it was built with. Drones and
+      // entities re-point theirs every frame; the grid and pad labels are
+      // only rebuilt when the zoom changes, so force that rebuild or they
+      // stay soft for as long as the projector keeps this zoom.
+      this.appliedScale = 0;
+    }
+    this.app.renderer.resize(w, h, res);
+    this.layout();
   }
 
   setArena(half: number, altMax: number): void {
@@ -133,16 +158,9 @@ export class Scene {
     this.drawPads(this.lastPads);
   }
 
-  /** Back to the fitted projector view. */
-  resetCamera(): void {
-    this.userAdjusted = false;
-    this.layout();
-  }
-
   layout(): void {
-    // window dims, not renderer dims: Pixi's ResizePlugin applies the actual
-    // renderer resize on a later rAF, so renderer.width here can be stale
-    // (one F11 toggle would leave the arena fitted to the old viewport).
+    // window dims, not renderer dims: syncViewport resizes the renderer just
+    // before calling this, but setArena and boot reach it directly.
     const w = window.innerWidth;
     const h = window.innerHeight;
     this.camera = this.userAdjusted
