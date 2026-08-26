@@ -195,8 +195,8 @@ export class Scene {
     }
     const nArrow = project(H + 16, -H - 8, 0, s);
     const eArrow = project(-H - 8, H + 16, 0, s);
-    this.addLabel("N ↑", nArrow, COLORS.labelBright, 15);
-    this.addLabel("E ↑", eArrow, COLORS.labelBright, 15);
+    this.addLabel("N ↑", nArrow, COLORS.labelBright, 18);
+    this.addLabel("E ↑", eArrow, COLORS.labelBright, 18);
   }
 
   /** Pre-tiles fallback: the old 20 m square grid. */
@@ -248,10 +248,13 @@ export class Scene {
   }
 
   private addLabel(text: string, at: { x: number; y: number }, color: number,
-                   size = 12): void {
+                   size = 14): void {
     const label = new Text({
       text,
-      style: { fontFamily: FONT_UI, fontSize: size, fill: color },
+      style: {
+        fontFamily: FONT_UI, fontSize: size, fill: color,
+        stroke: { color: COLORS.ink, width: 2.5 },
+      },
       resolution: this.textResolution,
     });
     label.anchor.set(0.5);
@@ -285,7 +288,10 @@ export class Scene {
       g.position.set(center.x, center.y);
       const label = new Text({
         text: pad.name,
-        style: { fontFamily: FONT_UI, fontSize: 11, fill: color, fontWeight: "600" },
+        style: {
+          fontFamily: FONT_UI, fontSize: 13, fill: color, fontWeight: "600",
+          stroke: { color: COLORS.ink, width: 2.5 },
+        },
         resolution: this.textResolution,
       });
       label.anchor.set(0.5, 0);

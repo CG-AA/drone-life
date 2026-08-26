@@ -2,7 +2,7 @@
 
 import { Container, Graphics, Text } from "pixi.js";
 import type { EntityState } from "../../shared/protocol";
-import { FONT_UI, REDUCED_MOTION } from "../../shared/theme";
+import { COLORS, FONT_UI, REDUCED_MOTION } from "../../shared/theme";
 import { project } from "../iso";
 import type { Scene } from "../scene";
 
@@ -28,11 +28,14 @@ export class EntityVis {
     scene.decalLayer.addChild(this.decal);
   }
 
-  addLabel(text: string, color: number, size = 12, dy = 10): Text {
+  addLabel(text: string, color: number, size = 13, dy = 10): Text {
     this.label = new Text({
       text,
+      // landmark labels sit on top of their own bright fills (crate, keep,
+      // furnace) — the dark stroke is what separates them
       style: { fontFamily: FONT_UI, fontSize: size,
-               fill: color, fontWeight: "700", letterSpacing: 1 },
+               fill: color, fontWeight: "700", letterSpacing: 1,
+               stroke: { color: COLORS.ink, width: 2.5 } },
       resolution: this.scene.textResolution,
     });
     this.label.anchor.set(0.5, 0);

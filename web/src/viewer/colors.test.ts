@@ -1,7 +1,10 @@
-/** slotColor: stable, in-range, and distinct for adjacent sysids. */
+/** slotColor: stable, in-range, distinct for adjacent sysids, and legible
+ * on the arena floor from the back of the room. */
 
 import { expect, it } from "vitest";
-import { slotColor } from "./colors";
+import { contrastRatio, relativeLuminance, slotColor } from "./colors";
+
+const FLOOR = 0x151b28; // COLORS.floor in shared/theme.ts
 
 it("is deterministic", () => {
   expect(slotColor(3)).toBe(slotColor(3));
@@ -20,4 +23,18 @@ it("gives adjacent sysids clearly different hues (golden angle)", () => {
   const all = new Set<number>();
   for (let sysid = 1; sysid <= 20; sysid++) all.add(slotColor(sysid));
   expect(all.size).toBe(20);
+});
+
+it("measures contrast on the WCAG scale", () => {
+  expect(contrastRatio(0xffffff, 0x000000)).toBeCloseTo(21, 1);
+  expect(contrastRatio(FLOOR, FLOOR)).toBeCloseTo(1, 5);
+  expect(relativeLuminance(0xffffff)).toBeCloseTo(1, 5);
+  expect(relativeLuminance(0x000000)).toBeCloseTo(0, 5);
+});
+
+it("clears AA against the arena floor for every slot", () => {
+  for (let sysid = 1; sysid <= 40; sysid++) {
+    const ratio = contrastRatio(slotColor(sysid), FLOOR);
+    expect(ratio, `sysid ${sysid} on the floor`).toBeGreaterThanOrEqual(4.5);
+  }
 });
