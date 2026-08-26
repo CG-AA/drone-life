@@ -45,7 +45,9 @@ make bots N=5 ADMIN_TOKEN=change-me      # five demo drones on the viewer
 
 Viewer: `http://localhost:8000/` — submit page: `/submit` — instructor
 console: `/admin` (needs `ADMIN_TOKEN`) — room code defaults to `classroom`
-(override with `ROOM_CODE`).
+(override with `ROOM_CODE`). Those placeholder secrets only boot because
+`make dev-server` passes `ALLOW_DEFAULT_SECRETS=1`; any other launch refuses
+to start until you set real ones.
 
 Container pipeline (what students actually use): `make image`, then submit
 from the browser — or `make bots N=3 MODE=container SCRIPT=bot_courier` to

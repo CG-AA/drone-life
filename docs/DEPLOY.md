@@ -28,7 +28,8 @@ cd web && npm ci && npm run build && cd ..
 # 4. the sandbox image
 make image
 
-# 5. config
+# 5. config — the server refuses to start on the placeholder values, so fill
+#    these in for real (ADMIN_TOKEN: `openssl rand -base64 24`)
 sudo tee /etc/drone-life.env <<'EOF'
 ROOM_CODE=pick-something-short
 ADMIN_TOKEN=long-random-string
@@ -61,6 +62,13 @@ target and the systemd unit).
 | `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`) |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
 | `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts, guards room-code guessing |
+| `ALLOW_DEFAULT_SECRETS` | `false` | dev only: boot on the placeholder `ROOM_CODE`/`ADMIN_TOKEN` |
+
+The server **refuses to start** when `ROOM_CODE` or `ADMIN_TOKEN` is still the
+placeholder (`classroom` / `change-me`) or is empty — uvicorn aborts with the
+reason on stderr and exits non-zero, so a misconfigured unit fails loudly at
+`systemctl start` instead of quietly serving an open room. `make dev-server`
+sets `ALLOW_DEFAULT_SECRETS=1`; `make run` deliberately does not.
 
 ## systemd
 
