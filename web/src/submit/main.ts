@@ -8,6 +8,8 @@ import { STUDENT_KEY, TOKEN_KEY, fetchTemplate, join, resetMine,
 import { Editor } from "./editor";
 import type { ErrorView } from "./errors";
 import { codeTooBig, describeError, tooBigText } from "./errors";
+import type { LogCursor } from "./logmerge";
+import { freshLines } from "./logmerge";
 
 const editor = new Editor($("editor"));
 let studentId = "";
@@ -171,8 +173,15 @@ function onTemplatePick(): void {
 // ---------------------------------------------------------------------- panes
 
 const logPane = $("log-pane");
+let logCursor: LogCursor | null = null;
 
-function appendLogs(lines: LogLine[]): void {
+function appendLogs(batch: LogLine[]): void {
+  // every reconnect re-sends the tail of the ring buffer; render only what is
+  // actually new, or a bad afternoon of wifi doubles the pane
+  const merged = freshLines(batch, logCursor);
+  logCursor = merged.cursor;
+  const lines = merged.fresh;
+  if (lines.length === 0) return;
   const stickToBottom =
     logPane.scrollTop + logPane.clientHeight > logPane.scrollHeight - 40;
   for (const line of lines) {
