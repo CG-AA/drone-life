@@ -5,6 +5,7 @@ from __future__ import annotations
 import hmac
 import time
 from collections import deque
+from collections.abc import Callable
 
 from fastapi import Header, HTTPException, Request
 
@@ -43,14 +44,22 @@ def require_admin(request: Request, x_admin_token: str = Header("")) -> None:
 
 
 class RateLimiter:
-    """Tiny sliding-window per-key limiter (join endpoint / room-code guessing)."""
+    """Tiny sliding-window per-key limiter (room-code guessing, submit spam).
 
-    def __init__(self, per_minute: int) -> None:
+    Keys are caller-supplied (client IPs, student ids), so stale ones are swept
+    once a minute — otherwise the dict grows for the life of the process.
+    """
+
+    def __init__(self, per_minute: int, clock: Callable[[], float] = time.monotonic) -> None:
         self.per_minute = per_minute
+        self.clock = clock
         self.hits: dict[str, deque[float]] = {}
+        self._last_sweep = clock()
 
     def allow(self, key: str) -> bool:
-        now = time.monotonic()
+        now = self.clock()
+        if now - self._last_sweep > 60:
+            self._sweep(now)
         window = self.hits.setdefault(key, deque())
         while window and now - window[0] > 60:
             window.popleft()
@@ -58,3 +67,9 @@ class RateLimiter:
             return False
         window.append(now)
         return True
+
+    def _sweep(self, now: float) -> None:
+        self._last_sweep = now
+        stale = [key for key, window in self.hits.items() if not window or now - window[-1] > 60]
+        for key in stale:
+            del self.hits[key]

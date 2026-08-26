@@ -69,8 +69,13 @@ async def template(variant: str = "beginner") -> PlainTextResponse:
 
 
 @router.post("/submit")
-async def submit(body: SubmitBody, student: Student = Depends(require_student),
+async def submit(body: SubmitBody, request: Request,
+                 student: Student = Depends(require_student),
                  service: DroneLifeService = Depends(get_service)) -> dict:
+    # first, before the size check and the parse: a submit loop costs a podman
+    # start and a 64 KB parse on the driver's event loop
+    if not request.app.state.submit_limiter.allow(student.id):
+        raise err(429, "rate", "submitting too fast — wait a few seconds")
     code = body.code
     if len(code.encode()) > MAX_CODE_BYTES:
         raise err(413, "too_big", "script larger than 64 KB")
@@ -114,8 +119,14 @@ async def status(student: Student = Depends(require_student),
 
 
 @router.get("/world")
-async def world(code: str = "", service: DroneLifeService = Depends(get_service)) -> dict:
+async def world(request: Request, code: str = "",
+                service: DroneLifeService = Depends(get_service)) -> dict:
     if not constant_time_eq(code.strip(), service.settings.room_code):
+        # a wrong code here is a room-code guess like any other, so it spends the
+        # join budget; correct codes never touch it (the projector polls freely)
+        ip = request.client.host if request.client else "?"
+        if not request.app.state.join_limiter.allow(ip):
+            raise err(429, "rate", "too many attempts; wait a minute")
         raise err(403, "room_code", "wrong room code")
     return {"world": service.world_message(), "feed": list(service.bus.feed)[-30:],
             "hello": service.hello_message()}

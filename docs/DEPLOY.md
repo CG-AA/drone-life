@@ -64,7 +64,8 @@ target and the systemd unit).
 | `RUN_MAX_SECONDS` | `900` | wall-clock cap per script run |
 | `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`) |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
-| `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts, guards room-code guessing |
+| `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |
+| `SUBMIT_RATE_LIMIT_PER_MINUTE` | `10` | per-student script submissions, guards container churn |
 | `ALLOW_DEFAULT_SECRETS` | `false` | dev only: boot on the placeholder `ROOM_CODE`/`ADMIN_TOKEN` |
 
 One variable in `/etc/drone-life.env` is **not** a `config.py` setting:

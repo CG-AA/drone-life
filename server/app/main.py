@@ -47,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.service = service
     app.state.hub = hub
     app.state.join_limiter = RateLimiter(settings.join_rate_limit_per_minute)
+    app.state.submit_limiter = RateLimiter(settings.submit_rate_limit_per_minute)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request, exc: StarletteHTTPException):

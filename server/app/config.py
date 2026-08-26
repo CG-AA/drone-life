@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     static_dir: Path = Path("../web/dist")
 
     join_rate_limit_per_minute: int = 30  # per IP, guards room-code guessing
+    submit_rate_limit_per_minute: int = 10  # per student, guards container churn
 
     @property
     def abs_state_dir(self) -> Path:

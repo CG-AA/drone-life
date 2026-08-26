@@ -196,6 +196,8 @@ async def ws_viewer(ws: WebSocket) -> None:
     service = ws.app.state.service
     code = ws.query_params.get("code", "").strip()
     if not constant_time_eq(code, service.settings.room_code):
+        # count the guess against the join budget so this is not a free oracle
+        ws.app.state.join_limiter.allow(ws.client.host if ws.client else "?")
         await ws.close(code=4403)
         return
     await ws.accept()
