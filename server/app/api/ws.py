@@ -194,10 +194,17 @@ async def _serve(ws: WebSocket, client: Client) -> None:
 @router.websocket("/ws/viewer")
 async def ws_viewer(ws: WebSocket) -> None:
     service = ws.app.state.service
+    # wrong codes spend the join budget, and once it is gone every connection
+    # from that address is refused — including one bearing the right code, so
+    # guessing here cannot outlive the ceiling (see routes_public.world)
+    ip = ws.client.host if ws.client else "?"
+    limiter = ws.app.state.join_limiter
     code = ws.query_params.get("code", "").strip()
+    if limiter.blocked(ip):
+        await ws.close(code=4403)
+        return
     if not constant_time_eq(code, service.settings.room_code):
-        # count the guess against the join budget so this is not a free oracle
-        ws.app.state.join_limiter.allow(ws.client.host if ws.client else "?")
+        limiter.allow(ip)
         await ws.close(code=4403)
         return
     await ws.accept()

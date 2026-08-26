@@ -199,7 +199,12 @@ and the student bearer token — are constant-time.
 
 **Rate limits.** Joins are limited per IP, and wrong room codes on `/world` and
 `/ws/viewer` spend the same budget, so none of the three is a free guessing
-oracle. This depends on `FORWARDED_ALLOW_IPS` being set (see the proxy section)
+oracle. Once an address hits the ceiling those two endpoints refuse *every*
+request from it, including one carrying the right code: answering correct
+codes while declining to charge for wrong ones would leave the guessing
+unbounded, only with a 429 in place of a 403. A correct code costs nothing
+while the address is under its ceiling, so the projector is unaffected.
+This depends on `FORWARDED_ALLOW_IPS` being set (see the proxy section)
 — without it the whole class shares one bucket. Submissions are capped per
 student, and each run's log output is capped at ~50 lines/s to keep a runaway
 `print` loop from drowning the hub. Admin auth is deliberately *not* limited:

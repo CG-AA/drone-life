@@ -47,6 +47,16 @@ def test_viewer_accepts_room_code_with_stray_whitespace(client):
         assert "hello" in frame_types(ws)
 
 
+def test_viewer_stops_answering_once_guessing_exhausts_the_budget(tmp_path):
+    """Same rule as /world: while the ceiling holds, the right code is refused
+    too — otherwise the handshake stays a room-code oracle with no ceiling."""
+    settings = make_settings(tmp_path, join_rate_limit_per_minute=2)
+    with TestClient(create_app(settings)) as c:
+        for _ in range(2):
+            assert close_code(c, "/ws/viewer?code=nope") == 4403
+        assert close_code(c, "/ws/viewer?code=test-room") == 4403
+
+
 def test_student_rejects_bad_token(client):
     assert close_code(client, "/ws/student?token=bogus") == 4401
 

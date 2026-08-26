@@ -75,6 +75,19 @@ class RateLimiter:
         window.append(now)
         return True
 
+    def blocked(self, key: str) -> bool:
+        """Whether this key is at its ceiling — a peek that spends nothing.
+
+        Lets a caller refuse *every* request from a key that has been guessing,
+        including correct ones: answering correct-vs-wrong while refusing to
+        charge for it would leave the endpoint an oracle with no ceiling at all.
+        """
+        window = self.hits.get(key)
+        if not window:
+            return False
+        now = self.clock()
+        return sum(1 for hit in window if now - hit <= 60) >= self.per_minute
+
     def _sweep(self, now: float) -> None:
         self._last_sweep = now
         stale = [key for key, window in self.hits.items() if not window or now - window[-1] > 60]

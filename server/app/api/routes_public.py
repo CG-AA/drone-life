@@ -121,12 +121,16 @@ async def status(student: Student = Depends(require_student),
 @router.get("/world")
 async def world(request: Request, code: str = "",
                 service: DroneLifeService = Depends(get_service)) -> dict:
+    # a wrong code here is a room-code guess like any other, so it spends the
+    # join budget. Once that budget is gone every answer is 429, right code or
+    # wrong — answering the correct one while refusing to charge for guesses
+    # would leave an oracle with no ceiling at all.
+    ip = request.client.host if request.client else "?"
+    limiter = request.app.state.join_limiter
+    if limiter.blocked(ip):
+        raise err(429, "rate", "too many attempts; wait a minute")
     if not constant_time_eq(code.strip(), service.settings.room_code):
-        # a wrong code here is a room-code guess like any other, so it spends the
-        # join budget; correct codes never touch it (the projector polls freely)
-        ip = request.client.host if request.client else "?"
-        if not request.app.state.join_limiter.allow(ip):
-            raise err(429, "rate", "too many attempts; wait a minute")
+        limiter.allow(ip)
         raise err(403, "room_code", "wrong room code")
     return {"world": service.world_message(), "feed": list(service.bus.feed)[-30:],
             "hello": service.hello_message()}

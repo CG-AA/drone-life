@@ -87,6 +87,24 @@ def test_limiter_keys_are_independent():
     assert limiter.allow("b")
 
 
+def test_blocked_peeks_without_spending():
+    limiter = RateLimiter(2, clock=FakeClock())
+    assert not limiter.blocked("a")
+    assert not limiter.blocked("a"), "peeking must not consume budget"
+    limiter.allow("a")
+    limiter.allow("a")
+    assert limiter.blocked("a")
+
+
+def test_blocked_clears_when_the_window_slides():
+    clock = FakeClock()
+    limiter = RateLimiter(1, clock=clock)
+    limiter.allow("a")
+    assert limiter.blocked("a")
+    clock.advance(61)
+    assert not limiter.blocked("a")
+
+
 def test_limiter_sweeps_stale_keys():
     """Keys are client IPs — without the sweep the dict grows for the process's life."""
     clock = FakeClock()
@@ -121,8 +139,23 @@ async def test_join_limit_is_per_ip(tmp_path):
             assert (await bob.post("/api/v1/join", json=guess)).status_code == 403
 
 
-async def test_world_wrong_code_spends_the_join_budget(tmp_path):
-    """/world was an unlimited room-code oracle — guessing there is guessing."""
+async def test_world_correct_code_never_spends_budget(tmp_path):
+    """The projector's own polling must not throttle itself."""
+    settings = make_settings(tmp_path, join_rate_limit_per_minute=2)
+    async with running_app(settings) as app:
+        client = await transport_client(app, "10.0.0.9")
+        async with client:
+            for _ in range(5):
+                assert (await client.get("/api/v1/world?code=test-room")).status_code == 200
+
+
+async def test_world_stops_answering_once_guessing_exhausts_the_budget(tmp_path):
+    """/world was an unlimited room-code oracle.
+
+    Spending budget on wrong codes alone would not fix that: an attacker whose
+    budget is gone still learns 'wrong' from a 429 and 'right' from a 200. Once
+    the ceiling is hit every answer must look the same.
+    """
     settings = make_settings(tmp_path, join_rate_limit_per_minute=2)
     async with running_app(settings) as app:
         client = await transport_client(app, "10.0.0.9")
@@ -130,8 +163,8 @@ async def test_world_wrong_code_spends_the_join_budget(tmp_path):
             for _ in range(2):
                 assert (await client.get("/api/v1/world?code=nope")).status_code == 403
             assert (await client.get("/api/v1/world?code=nope")).status_code == 429
-            # the real code still works: correct requests never spend budget
-            assert (await client.get("/api/v1/world?code=test-room")).status_code == 200
+            # the correct code is refused identically while the ceiling holds
+            assert (await client.get("/api/v1/world?code=test-room")).status_code == 429
 
 
 async def test_world_accepts_code_with_whitespace(tmp_path):
