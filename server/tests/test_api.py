@@ -146,8 +146,14 @@ async def test_admin_bots_partial_fill_and_reset_clears_them(client):
 
 
 async def test_healthz(client):
+    """The admin console reads these keys — dropping one breaks it silently."""
     r = await client.get("/healthz")
-    assert r.status_code == 200 and r.json()["ok"] is True
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert set(body) == {"ok", "drones", "ticks", "overruns", "score", "mission",
+                         "students", "uptime_s", "driver_alive", "last_tick_age_s",
+                         "driver_errors"}
 
 
 async def test_rampart_tiles_and_terrain_wiring(tmp_path):

@@ -186,7 +186,7 @@ class RunnerManager:
                                 name=f"await-exit-{run_id}"),
         ]
         for task in run.tasks:
-            task.add_done_callback(_log_task_crash)
+            task.add_done_callback(log_task_crash)
         return run_id
 
     # --------------------------------------------------------------- runtime
@@ -298,9 +298,11 @@ class RunnerManager:
             log.exception("run event callback failed")
 
 
-def _log_task_crash(task: asyncio.Task) -> None:
+def log_task_crash(task: asyncio.Task) -> None:
+    """A long-lived task that dies must say so — a strong reference keeps its
+    exception from ever surfacing on its own. Used for the driver too."""
     if task.cancelled():
         return
     exc = task.exception()
     if exc is not None:
-        log.error("runner task %s crashed", task.get_name(), exc_info=exc)
+        log.error("task %s crashed", task.get_name(), exc_info=exc)
