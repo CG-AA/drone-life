@@ -108,10 +108,21 @@ Lab-server firewall: allow 8000 **only** from the OCI VM's address.
 ## Workshop-day runbook
 
 ```bash
+# 0. before anything else: does this box have what a submit needs?
+sudo -iu dronelife
+cd /opt/drone-life && set -a && . /etc/drone-life.env && set +a && make preflight
+
 systemctl status drone-life           # green?
 make bots N=3 HOST=localhost:8000 ADMIN_TOKEN=...   # smoke: three drones on the projector
 make reset HOST=localhost:8000 ADMIN_TOKEN=...      # clean slate between sessions
 ```
+
+`make preflight` checks podman, the runner image, subuid/subgid, slirp4netns,
+the MAVLink port range, `web/dist`, the state dir and disk, then runs one real
+container. Exit 1 means don't start class — every failure line names its fix.
+It sources the env file so it checks the deploy you are about to run; without
+that it checks the defaults instead. `make preflight PREFLIGHT_ARGS=--no-smoke`
+skips the container run when you only want the fast checks.
 
 - Projector: open `https://drones.example.org/`, enter the room code once.
 - Students: `https://drones.example.org/submit` + the room code.
@@ -122,6 +133,71 @@ make reset HOST=localhost:8000 ADMIN_TOKEN=...      # clean slate between sessio
 - Between class sessions: `make reset` (kills all scripts, respawns drones,
   fresh crates + score). `server/state/` keeps the roster across restarts —
   delete it for a completely fresh class.
+
+## When things break
+
+Server logs are `journalctl -u drone-life -f`. The instructor console's health
+line is the fastest read on whether the sim itself is alive.
+
+| symptom | check | fix |
+|---|---|---|
+| every submit says "runner image … is not built" | `podman image exists drone-life-runner:latest` | `make image` — no restart needed, the next submit picks it up |
+| a student's log ends "the sandbox failed to start (podman exit 125)" | `journalctl -u drone-life \| grep podman` | usually the image or subuid ranges: `make preflight` names which |
+| projector frozen, console says **SIM STALLED** | `curl -s localhost:8000/healthz` | `journalctl -u drone-life -n 100` for the traceback, then `systemctl restart drone-life` |
+| console health line shows climbing "sim errors" | server log has `driver tick failed` | a mission or sim bug — restart clears it, the traceback names the file |
+| server won't start, port 8000 busy | `ss -ltnp 'sport = :8000'` | `make kill-prod` (uvicorn + leftover containers), then start again |
+| joins return 500 | `ss -ltnp` over 5760–5779 | something squats a MAVLink port — kill it, restart |
+| students can reach the page but not join | the room code they were given vs `ROOM_CODE` in `/etc/drone-life.env` | tell them the right one — a wrong code is a clear message on their page, not a hang |
+| a script won't die | console **kill script** | `podman ps --filter label=drone-life=1` then `podman rm -f -t 0 <id>` |
+| server boots but serves no page | `ls /opt/drone-life/web/dist` | `make build` — the server starts fine without it and silently serves nothing |
+| boot fails on a corrupt snapshot | `journalctl -u drone-life -n 50` | `rm server/state/snapshot.json` and restart — roster, tokens and score are lost, students re-join and same names take the same slots |
+| proxy or OCI VM dead | can you reach the lab server directly? | hotspot fallback: `make run` on the lab server binds `0.0.0.0:8000`, students use `http://<lab-ip>:8000/submit`. Open the room's firewall to that port only, and put the URL on the projector |
+
+"Flaky" is not a diagnosis. A student whose drone flew home on its own didn't
+hit a bug: a script that disconnects gets 10 s of grace, then auto-RTL with
+`script gone: returning home`.
+
+## Reading /healthz
+
+`curl -s localhost:8000/healthz` — no token needed.
+
+| field | healthy | meaning |
+|---|---|---|
+| `ok` | `true` | the driver is alive and ticked in the last 5 s |
+| `driver_alive` | `true` | the 20 Hz task exists and hasn't finished |
+| `last_tick_age_s` | < 0.2 | seconds since the last *successful* tick |
+| `ticks` / `overruns` | overruns/ticks < 1% | counters since boot, not rates — take a delta |
+| `driver_errors` | `0` | ticks that raised; anything above 0 is in the server log |
+| `drones` / `students` / `score` / `mission` / `uptime_s` | — | what's flying, who's in, where the game is |
+
+`ok` says nothing about podman or the image — those cost a subprocess and
+belong to `make preflight`, not to a poll that runs every few seconds.
+
+## Restarts and mission switches
+
+A restart keeps the **roster, student tokens and the team score** (from
+`server/state/snapshot.json`, written every 30 s and on exit). It does **not**
+keep drone positions, mission entities (crates, tiles, waves) or running
+scripts: the mission runs `setup()` again and every container is swept. Students
+do not need to re-join — their page reconnects with the token it already has.
+
+Switching missions is a restart, since `MISSION` is read at boot:
+
+```bash
+sudoedit /etc/drone-life.env        # MISSION=siege
+systemctl restart drone-life        # ~5 s
+make reset HOST=localhost:8000 ADMIN_TOKEN=...   # fresh score for the new mission
+```
+
+Footguns:
+
+- `make clean` deletes `server/state/` — every token with it. Students would
+  have to re-join. It is not part of any deploy step.
+- The systemd unit never reads the Makefile. `MISSION=` on a `make` command
+  line only affects a server you start with `make dev-server` / `make run`;
+  under systemd only `/etc/drone-life.env` counts.
+- Rehearse the real class size on the real hardware before the day:
+  `make load LOAD_BOTS=20`, and watch the console's overrun percentage.
 
 ## Threat model notes
 
