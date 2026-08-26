@@ -1,8 +1,10 @@
 /** runLabel: a student must be able to read why their script stopped. */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
-import { runLabel } from "./ui";
+import { END_LABEL, runLabel } from "./ui";
 import type { RunState } from "./protocol";
 
 function run(over: Partial<RunState> = {}): RunState {
@@ -34,4 +36,23 @@ it("keeps the exit code for a plain script error — that's the debugging handle
 it("falls back to the old rendering when a server sends no reason", () => {
   expect(runLabel(run({ reason: null, exit_code: 3 }))).toBe("exited (3)");
   expect(runLabel(run({ reason: null, exit_code: null }))).toBe("exited");
+});
+
+it("knows every reason the server can send", () => {
+  const path = fileURLToPath(
+    new URL("../../../server/app/runner/manager.py", import.meta.url));
+  const src = readFileSync(path, "utf8");
+  const block = src.split("# BEGIN-END-REASONS")[1]?.split("# END-END-REASONS")[0];
+  expect(block, "marker block missing from manager.py").toBeTruthy();
+  const reasons = [...block!.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+
+  expect(reasons.length).toBeGreaterThan(5);
+  // "error" deliberately has no label — it keeps its exit code instead
+  const labelled = new Set([...Object.keys(END_LABEL), "error"]);
+  for (const reason of reasons) {
+    expect(labelled, `no rendering for reason ${reason}`).toContain(reason);
+  }
+  for (const reason of Object.keys(END_LABEL)) {
+    expect(reasons, `${reason} is not a server reason any more`).toContain(reason);
+  }
 });

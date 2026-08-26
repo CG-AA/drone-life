@@ -85,7 +85,9 @@ export function armedConfirm(btn: HTMLButtonElement, armedLabel: string,
   });
 }
 
-const END_LABEL: Record<string, string> = {
+/** Pinned to manager.py's END_REASONS by ui.test.ts — "error" is absent on
+ * purpose: it renders its exit code, which is the student's debugging handle. */
+export const END_LABEL: Record<string, string> = {
   done: "finished",
   timeout: "timed out",
   stopped: "stopped",

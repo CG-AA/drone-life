@@ -25,9 +25,19 @@ log = logging.getLogger(__name__)
 RunEventCb = Callable[[str, dict], None]  # (student_id, run_state payload)
 
 # Why a run ended. An exit code alone can't tell a student whether they were
-# killed, timed out, or never started — mirrored in web/src/shared/protocol.ts.
-END_REASONS = ("done", "error", "timeout", "stopped", "replaced",
-               "start_failed", "runner_failed")
+# killed, timed out, or never started. protocol.ts mirrors this list and
+# ui.test.ts pins it, so keep the one-per-line quoted format.
+# BEGIN-END-REASONS
+END_REASONS = (
+    "done",          # exit 0
+    "error",         # the script itself failed
+    "timeout",       # hit run_max_seconds
+    "stopped",       # student's stop button, admin kill, or a reset
+    "replaced",      # superseded by a new submit
+    "start_failed",  # the runner process never launched
+    "runner_failed",  # podman failed, not the script
+)
+# END-END-REASONS
 
 PODMAN_ERROR_CODES = (125, 126, 127)  # podman itself failed, not the student's script
 
