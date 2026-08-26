@@ -4,12 +4,14 @@
 
 import type { BotsResult, RosterStudent } from "../shared/protocol";
 import { $, actionButton, armedConfirm, banner, guarded, runPill } from "../shared/ui";
-import { ApiFailure, clearToken, fetchRoster, getToken, kickStudent, killScript,
+import { ApiFailure, clearToken, fetchHealth, fetchRoster, getToken, kickStudent, killScript,
   resetWorld, setToken, spawnBots } from "./api";
+import { formatHealth, type HealthSample } from "./health";
 
 const POLL_MS = 3000;
 
 let pollTimer = 0;
+let lastHealth: HealthSample | null = null;
 
 // ------------------------------------------------------------------ token gate
 
@@ -39,9 +41,14 @@ async function handleToken(ev: Event): Promise<void> {
 async function poll(): Promise<void> {
   window.clearTimeout(pollTimer);
   try {
-    const roster = await fetchRoster();
+    const [roster, health] = await Promise.all([fetchRoster(), fetchHealth()]);
     $("summary").textContent =
       `mission ${roster.mission} — score ${roster.score} — ${roster.students.length} in the sky`;
+    const now = Date.now();
+    const line = $("health-line");
+    line.textContent = formatHealth(health, lastHealth, now);
+    line.classList.toggle("danger", !health.ok);
+    lastHealth = { ticks: health.ticks, at: now };
     renderRoster(roster.students);
     banner("");
   } catch (e) {
@@ -51,6 +58,8 @@ async function poll(): Promise<void> {
       throw e;
     }
     $("summary").textContent = "server unreachable — retrying…";
+    $("health-line").textContent = "";
+    lastHealth = null; // a gap in the samples would fake a tick rate
   } finally {
     if (getToken()) pollTimer = window.setTimeout(() => void poll(), POLL_MS);
   }

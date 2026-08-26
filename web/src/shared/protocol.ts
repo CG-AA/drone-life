@@ -156,6 +156,21 @@ export interface Roster {
   epoch: number;
 }
 
+/** GET /healthz (service.health()) — unauthenticated, no podman probes in it. */
+export interface Health {
+  ok: boolean;
+  drones: number;
+  ticks: number;
+  overruns: number;
+  score: number;
+  mission: string;
+  students: number;
+  uptime_s: number;
+  driver_alive: boolean;
+  last_tick_age_s: number;
+  driver_errors: number;
+}
+
 export interface BotsResult {
   started: string[]; // student ids
   room_full: boolean;
