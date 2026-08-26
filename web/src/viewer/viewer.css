@@ -109,3 +109,10 @@ canvas { touch-action: none; }
   transition: opacity 1s;
 }
 #nav-hint.gone { opacity: 0; }
+
+/* room-code prompt (overlay chrome itself lives in theme.css) */
+#join-error {
+  color: var(--danger-soft, var(--danger));
+  font-size: 0.9375rem;
+  min-height: 20px;
+}

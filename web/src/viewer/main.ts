@@ -12,6 +12,8 @@ import { Scene } from "./scene";
 import { TerrainRenderer } from "./terrain";
 
 const CODE_KEY = "dl_room_code";
+/** Set just before the reload a refused code triggers, read once after it. */
+const REJECTED_KEY = "dl_code_rejected";
 const CURSOR_IDLE_MS = 3000;
 const HINT_MS = 8000;
 
@@ -39,10 +41,11 @@ interface Frame {
   at: number; // performance.now() when received
 }
 
-async function askRoomCode(): Promise<string> {
+async function askRoomCode(error = ""): Promise<string> {
   const overlay = document.getElementById("join-overlay")!;
   const form = document.getElementById("code-form") as HTMLFormElement;
   const input = document.getElementById("code-input") as HTMLInputElement;
+  document.getElementById("join-error")!.textContent = error;
   overlay.classList.remove("hidden");
   input.focus();
   return new Promise((resolve) => {
@@ -65,9 +68,15 @@ async function boot(): Promise<void> {
   const entityR = new EntityRenderer(scene);
   const terrainR = new TerrainRenderer(scene);
 
-  let code = localStorage.getItem(CODE_KEY);
+  // a refused code clears itself and reloads; the flag survives that reload so
+  // the operator learns why they are back at the prompt
+  const refused = sessionStorage.getItem(REJECTED_KEY) !== null;
+  sessionStorage.removeItem(REJECTED_KEY);
+  let code = refused ? null : localStorage.getItem(CODE_KEY);
   if (!code) {
-    code = await askRoomCode();
+    code = await askRoomCode(refused
+      ? "that room code was refused — check with your instructor"
+      : "");
     localStorage.setItem(CODE_KEY, code);
   }
 
@@ -104,6 +113,7 @@ async function boot(): Promise<void> {
   ws.on<EventData>("event", (ev) => hud.addEvent(ev));
   ws.onStatus = (up) => hud.setConn(up);
   ws.onRejected = () => {
+    sessionStorage.setItem(REJECTED_KEY, "1");
     localStorage.removeItem(CODE_KEY);
     location.reload();
   };
