@@ -53,7 +53,8 @@
 #bots-count { width: 4.5rem; }
 #bots-script { width: 9rem; }
 
-#reset-world-btn { margin-left: auto; }
+/* the confirm input takes the button's place, so it inherits its position */
+#reset-world-btn, #controls .typed-confirm { margin-left: auto; }
 button.danger { background: var(--danger); color: var(--danger-bg); }
 button.danger.confirm { background: var(--warn); }
 
