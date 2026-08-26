@@ -3,6 +3,10 @@
 You have a drone in a shared sky. You fly it by writing Python. Everyone in the
 class flies at the same time, on the same map, toward the same team score.
 
+Your instructor announces which mission is live — the day usually starts in
+**freefly** (no objectives, just fly) before the scoring games below. The
+one-page version of this guide is `CHEATSHEET.md` (on your desk).
+
 ## The game
 
 **Co-op delivery.** Crates appear around the arena. Hover **low (below 3 m)**
@@ -77,18 +81,72 @@ drone = connect()                # your drone; the server wires this up
 drone.takeoff(10)                # GUIDED mode + arm + climb to 10 m
 drone.goto(20, -40, 10)          # fly there, waits until you arrive
 drone.goto(20, -40, 2, wait=False)   # ...or don't wait
+drone.goto(0, 0, 2, tolerance=0.5, timeout=30)  # arrival slack (m) / give-up (s)
 drone.move(3, 0, 0, seconds=5)   # velocity flying: 3 m/s north for 5 s
 n, e, alt = drone.position()     # where am I?
 drone.events()                   # new GAME messages since last call (a list)
-drone.next_event(timeout=10)     # block until the next GAME message
+drone.next_event(timeout=10)     # block until the next GAME message (or None)
 drone.land()                     # land right here
 drone.rtl()                      # fly home to your pad and land
 drone.wait(2)                    # plain sleep
 drone.armed                      # True while the motors are armed
+drone.set_mode(5)                # raw mode switch (4=GUIDED 5=LOITER 6=RTL 9=LAND)
 drone.close()                    # hang up cleanly (scripts may also just end)
 ```
 
 `print()` anything — it shows up live in your log pane.
+
+One subtlety worth knowing: your log pane shows `DRONE: GAME: crate 3 at
+N 12 E -40`, but the strings `drone.events()` hands you have the `GAME: `
+prefix already stripped — match against `"crate 3 at N 12 E -40"`. (The bot
+examples in `examples/` regex exactly that form.)
+
+## GAME messages — glossary
+
+Every message names your next action. Positions are always `N <int> E <int>`
+— feed them straight into `goto`.
+
+**Delivery**
+
+| message | it means → do this |
+|---|---|
+| `crate 3 at N 12 E -40` | a crate is on the ground → `goto(12, -40, 2)` and hold |
+| `got crate 3! drop at N 0 E 0` | it's yours → carry it to the center, hover low |
+| `crate 3 taken` | someone beat you to it → pick another crate |
+| `delivered! +10 (team 128)` | scored — the number is the team total |
+| `too high, get under 3 m` | you're over the spot but too high → descend |
+| `hands full, drop at N 0 E 0` | you already carry a crate → deliver it first |
+| `no crate! grab one first` | you're at the dropoff empty-handed → go get one |
+| `crate lost, grab another` | your crash dropped it → a fresh one just spawned |
+
+**Building (rampart / forge / siege share the ferry loop)**
+
+| message | it means → do this |
+|---|---|
+| `quarry at N -31 E 39` / `clay pit at …` | the pile → hover it low (below 3 m) for 2 s |
+| `got steel, place on the wall` (or clay…) | carrying → fly to a target cell |
+| `wall gap at N 10 E -55 hover 4` | rampart tells you where AND the altitude |
+| `hover 6 m to place` | right cell, wrong height → hover at that altitude |
+| `placed! wall 12/34 +2` / `clay placed +1` | it landed — progress and points |
+| `not a wall cell` / `can't build there` | wrong spot → aim for the announced cells |
+| `steel lost, grab another` | a carrier crashed → back to the pile |
+| `hands full, place your steel/clay` | you can carry exactly one tile |
+| `rampart complete! +40` / `furnace lit! +30` | the team finished a structure |
+
+**Siege**
+
+| message | it means → do this |
+|---|---|
+| `keep at N 0 E 0, protect it!` | the thing creeps are marching toward |
+| `wave 3 at N 85 E 0, 8 creeps` | where they enter, how many are coming |
+| `creep at N 12 E -40` | your nearest target — it's moving, lead it |
+| `hover low on a creep to zap it` | stay within ~4 m, low, for 1.5 s |
+| `zap! creep down +2` / `squish! creep under tile +2` | a kill, either way |
+| `stack 3 steel = watchtower` | 3 tiles on one cell → auto-firing tower (+15) |
+| `tower up! +15` / `tower down at …` | a tower rose / was chewed from under |
+| `wall chewed at N 10 E -55` | a blocked creep is eating through → rebuild, zap it |
+| `wave 3 clear! +10` / `wave 4 in 20s, build!` | breathe, then build |
+| `keep hit! hp 7` / `keep fell! -25, rebuilt` | leaks cost points; it never game-overs |
 
 ## What's really happening (the pymavlink underneath)
 
@@ -124,12 +182,14 @@ connection string and the messages are identical.
 | symptom | why | fix |
 |---|---|---|
 | `DRONE: PreArm: set mode GUIDED first` | armed before setting mode | `drone.takeoff()` does the right order for you |
+| `gave up waiting for: arming (is the drone crashed or mid-air?)` | ran takeoff while crashed or already flying | press **reset drone**, then Run again |
+| `DRONE: replaced by a new connection` | two scripts (or two `connect()`s) at once | one Run at a time — the newest wins |
 | script hangs forever | a `recv_match(blocking=True)` with no `timeout` | always pass `timeout=...` in raw pymavlink |
 | drone stops mid-flight and hovers | your velocity setpoints stopped arriving | that's the 3 s rule — use `move()` or re-send |
 | drone flew home by itself | your script ended (or crashed) | check the log pane for the traceback |
 | `syntax error, line N` in red | Python couldn't parse your script | the editor jumps to the line for you |
 | drone stuck somewhere weird | — | press **reset drone**: script stops, drone back on your pad |
-| picked up nothing over a crate | too high, or not 2 full seconds | below 3 m altitude, hold still, count to 2 |
+| picked up nothing over a crate | too high, or not 2 full seconds | below 3 m altitude, hold still, count to 2 — the drone now tells you (`too high, get under 3 m`) |
 | `DRONE: CRASH: hit a wall` | flew into a tile stack side-on | go over the top (walls max out at 8 m) or around |
 | tile won't place | wrong altitude, wrong cell, or empty hands | hover at the **announced** altitude on the announced spot, carrying |
 | creep won't die under me | too high, or it walked out from under you | stay within ~4 m of it, **below its feet + 3 m**, for a full 1.5 s |
@@ -143,3 +203,11 @@ connection string and the messages are identical.
   full map soon enough.
 - When someone else grabs "your" crate you'll hear `GAME: crate 3 taken` —
   have a plan B.
+
+## Level up (for the engineers in the room)
+
+Done early? Pick **pymavlink** from the templates menu and re-fly your script
+in the raw protocol — everything `dronelife` does is ~150 lines you can read.
+Then try beating the house bots (`examples/bot_courier.py`,
+`examples/bot_siege.py` — note how the siege bot *leads* its target). Your
+instructor has more where that came from.
