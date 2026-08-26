@@ -41,14 +41,15 @@ async function handleToken(ev: Event): Promise<void> {
 async function poll(): Promise<void> {
   window.clearTimeout(pollTimer);
   try {
-    const [roster, health] = await Promise.all([fetchRoster(), fetchHealth()]);
+    // the roster is what unsticks a student — never lose it over the health line
+    const [roster, health] = await Promise.all([fetchRoster(), fetchHealth().catch(() => null)]);
     $("summary").textContent =
       `mission ${roster.mission} — score ${roster.score} — ${roster.students.length} in the sky`;
     const now = Date.now();
     const line = $("health-line");
-    line.textContent = formatHealth(health, lastHealth, now);
-    line.classList.toggle("danger", !health.ok);
-    lastHealth = { ticks: health.ticks, at: now };
+    line.textContent = health === null ? "" : formatHealth(health, lastHealth, now);
+    line.classList.toggle("danger", health !== null && !health.ok);
+    lastHealth = health === null ? null : { ticks: health.ticks, at: now };
     renderRoster(roster.students);
     banner("");
   } catch (e) {
