@@ -168,10 +168,14 @@ class DroneLifeService:
         say so on the feed, and let healthz go stale if it never recovers."""
         self.driver_errors += 1
         now = time.monotonic()
-        if now - self._last_driver_error >= DRIVER_ERROR_EVERY:
-            self._last_driver_error = now
-            log.exception("driver tick failed")
+        if now - self._last_driver_error < DRIVER_ERROR_EVERY:
+            return
+        self._last_driver_error = now
+        log.exception("driver tick failed")
+        try:
             self.bus.emit("mission_error", "sim error — check server logs", t=self.world.t)
+        except Exception:  # emit fans out to the hub: the last defence can't raise either
+            log.exception("could not put the driver error on the feed")
 
     async def _driver(self) -> None:
         loop = asyncio.get_running_loop()

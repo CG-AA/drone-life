@@ -86,6 +86,25 @@ async def test_a_broken_broadcast_does_not_kill_the_driver(service):
     assert service.driver_errors > 0
 
 
+async def test_a_listener_that_raises_cannot_kill_the_driver_either(service, monkeypatch):
+    """The error path fans out to the WS hub. If that raise escaped the
+    handler, the guard would only have moved where the sim dies."""
+    def boom(dt):
+        raise RuntimeError("world is on fire")
+
+    def also_boom(event):
+        raise RuntimeError("the feed is on fire too")
+
+    monkeypatch.setattr(service.world, "step", boom)
+    service.bus.subscribe(also_boom)
+    before = service.ticks
+    await spin()
+
+    assert not service._tasks[0].done()
+    assert service.ticks > before
+    assert service.driver_errors > 0
+
+
 async def test_healthz_reports_a_fresh_service_as_running(service):
     health = service.health()
     assert health["ok"] is True and health["driver_alive"] is True
