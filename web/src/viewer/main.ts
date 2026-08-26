@@ -2,6 +2,7 @@
 
 import type { EntityState, EventData, HelloData, TilesData, WorldData }
   from "../shared/protocol";
+import { ApiFailure, request } from "../shared/http";
 import { GameSocket } from "../shared/ws";
 import { attractView } from "./attract";
 import { CameraController } from "./controls";
@@ -134,6 +135,17 @@ async function boot(): Promise<void> {
     // a projector that has been sitting for hours has long since faded the
     // hint; whoever just walked up to it deserves to see the controls again
     if (up) reshowHint();
+  };
+  // the server refuses a bad code before accepting the upgrade, so the socket
+  // can only report a failed handshake; this asks the REST route what the
+  // socket cannot say
+  ws.verify = async () => {
+    try {
+      await request("GET", `/api/v1/world?code=${encodeURIComponent(code)}`, {});
+      return false;
+    } catch (e) {
+      return e instanceof ApiFailure && e.status === 403;
+    }
   };
   ws.onRejected = () => {
     sessionStorage.setItem(REJECTED_KEY, "1");

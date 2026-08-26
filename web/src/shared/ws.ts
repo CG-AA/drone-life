@@ -25,6 +25,12 @@ export class GameSocket {
   onStatus: (up: boolean) => void = () => {};
   /** Called when the server refuses the connection (bad code/token). */
   onRejected: (code: number) => void = () => {};
+  /** Asked when a socket dies before it ever opened. The server refuses a bad
+   * code or token *before* accepting the upgrade, so the browser reports a
+   * failed handshake — no close code survives that, and 1006 alone can't tell
+   * a wrong room code from a server that is merely down. Answer true and we
+   * treat it as a refusal instead of retrying forever in silence. */
+  verify: (() => Promise<boolean>) | null = null;
   /** Called once if the server speaks a newer protocol version (stale page). */
   onSkew: () => void = () => {};
   private skewSeen = false;
@@ -43,8 +49,10 @@ export class GameSocket {
     // never act on (or close) the replacement that this.ws points to by then
     const sock = new WebSocket(`${proto}//${location.host}${this.url}`);
     this.ws = sock;
+    let opened = false;
     sock.onopen = () => {
       if (this.ws !== sock) return;
+      opened = true;
       this.backoff = 500;
       this.lastMsgAt = Date.now();
       this.onStatus(true);
@@ -76,10 +84,21 @@ export class GameSocket {
         this.onRejected(ev.code);
         return;
       }
-      if (!this.closed) {
+      if (this.closed) return;
+      const retry = (): void => {
+        if (this.closed || this.ws !== sock) return;
         window.setTimeout(() => this.connect(), this.backoff);
         this.backoff = Math.min(this.backoff * 1.7, 5000);
+      };
+      if (opened || !this.verify) {
+        retry();
+        return;
       }
+      // a handshake that never opened may be a refusal wearing 1006; ask
+      void this.verify().then(
+        (rejected) => rejected ? this.onRejected(ev.code) : retry(),
+        () => retry(), // couldn't ask: assume the server, not the credential
+      );
     };
     sock.onerror = () => sock.close();
   }

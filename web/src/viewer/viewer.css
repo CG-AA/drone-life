@@ -136,10 +136,13 @@ canvas { touch-action: none; }
   margin-bottom: 0.4em;
 }
 #attract-code {
-  font-size: clamp(3rem, 14vmin, 11rem);
+  /* vw as well as vmin: a long room code must not run off the wall */
+  font-size: clamp(2rem, min(14vmin, 11vw), 11rem);
   font-weight: 800;
   letter-spacing: 0.06em;
   line-height: 1.05;
+  max-width: 92vw;
+  overflow-wrap: anywhere;
 }
 
 /* a projector that has lost the server should look wrong from the back row */

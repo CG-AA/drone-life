@@ -130,9 +130,19 @@ function connectWs(): void {
   });
   ws.on<{ lines: LogLine[] }>("log", (d) => appendLogs(d.lines));
   ws.on<RunState>("run_state", (d) => setRunState(d));
+  // a dead token is refused before the upgrade is accepted, so the socket
+  // reports a failed handshake with no code to read; /status can say which
+  ws.verify = async () => {
+    try {
+      await fetchStatus();
+      return false;
+    } catch (e) {
+      return e instanceof ApiFailure && e.status === 401;
+    }
+  };
   ws.onRejected = () => {
     localStorage.removeItem(TOKEN_KEY);
-    showJoin("session expired — join again");
+    showJoin("your session expired — join again");
   };
   ws.onSkew = () => banner("this page is out of date — refresh to reconnect");
   let wasDown = false;
