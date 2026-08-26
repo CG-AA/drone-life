@@ -8,6 +8,7 @@
 
 import { type Camera, clampCamera, defaultCamera, followCenter, maxScale, panBy,
          screenToWorld, solveCenter, worldToScreen, zoomAt } from "./camera";
+import { nextFollowId } from "./follow";
 import { expBlend, type Pose } from "./interp";
 import { fitScale } from "./iso";
 import type { Scene } from "./scene";
@@ -184,6 +185,15 @@ export class CameraController {
     if (wasTap) this.followId = this.droneAt(ev.clientX, ev.clientY);
   };
 
+  /** Tour the roster from the keyboard — clicking a moving drone at arena
+   * zoom is a fiddly shot to ask of someone standing at a projector. */
+  private followNext(): void {
+    const poses = this.poses?.();
+    if (!poses) return;
+    this.followId = nextFollowId([...poses.keys()], this.followId);
+    this.settled = false;
+  }
+
   /** Nearest drone drawn within picking distance of a screen point. */
   private droneAt(sx: number, sy: number): string | null {
     const poses = this.poses?.();
@@ -227,6 +237,7 @@ export class CameraController {
       case "ArrowRight": case "d": case "D": this.pan(-KEY_PAN_PX, 0); break;
       case "ArrowUp": case "w": case "W": this.pan(0, KEY_PAN_PX); break;
       case "ArrowDown": case "s": case "S": this.pan(0, -KEY_PAN_PX); break;
+      case "n": case "N": this.followNext(); break;
       case "0": case "Home":
         this.target = defaultCamera(this.scene.half, this.scene.altMax, this.vw, this.vh);
         this.anchor = null;

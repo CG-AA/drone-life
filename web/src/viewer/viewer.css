@@ -110,6 +110,42 @@ canvas { touch-action: none; }
 }
 #nav-hint.gone { opacity: 0; }
 
+/* pre-class attract screen: readable from every seat, gone the moment a
+   drone shows up */
+#attract {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.35em;
+  text-align: center;
+  background: radial-gradient(closest-side, var(--hud-panel), transparent 85%);
+}
+#attract.hidden { display: none; }
+.attract-label {
+  font-size: clamp(0.9rem, 2vmin, 1.75rem);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+}
+#attract-url {
+  font-size: clamp(1.2rem, 3.5vmin, 2.75rem);
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 0.4em;
+}
+#attract-code {
+  font-size: clamp(3rem, 14vmin, 11rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.05;
+}
+
+/* a projector that has lost the server should look wrong from the back row */
+body.disconnected canvas { filter: brightness(0.55) saturate(0.6); }
+body.disconnected #conn { font-weight: 700; }
+
 /* room-code prompt (overlay chrome itself lives in theme.css) */
 #join-error {
   color: var(--danger-soft, var(--danger));
