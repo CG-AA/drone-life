@@ -1,13 +1,15 @@
 """Siege mission through the WorldAPI seam: waves, combat verbs, keep, towers."""
 
 from app.game import hex
-from app.game.building import PLACE_DWELL
+from app.game.building import HINT_SUSTAIN, PICKUP_DWELL, PLACE_DWELL
 from app.game.missions.siege import (
     BEAM_S,
+    FERRY,
     GRACE_S,
     KEEP_FALL_POINTS,
     KEEP_HP,
     KILL_POINTS,
+    QUARRY,
     TOWER_POINTS,
     WAVE_BONUS,
     SiegeMission,
@@ -240,3 +242,14 @@ def test_beams_expire_even_in_an_empty_room():
     world.run(m, BEAM_S + 1.0)
     assert m.beams == []
     assert not [e for e in m.entities(world) if e.kind == "beam"]
+
+
+def test_hands_full_at_the_quarry_hints():
+    world, m = make()
+    freeze_waves(m)
+    world.views = [view(n=QUARRY[0], e=QUARRY[1], alt=2.0)]
+    world.run(m, PICKUP_DWELL + 0.2)
+    assert m.carry.item("d0") == "steel"
+    world.run(m, HINT_SUSTAIN + 0.3)  # still hovering the quarry, hands full
+    assert ("d0", FERRY.full_say) in world.texts
+    assert_grammar(world)

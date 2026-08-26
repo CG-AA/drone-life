@@ -11,6 +11,7 @@ from ..building import (
     CarrySlots,
     FerryTexts,
     PlaceTracker,
+    SourceHints,
     TileSource,
     fmt_cell,
     hover_alt_hint,
@@ -28,7 +29,8 @@ PLACE_POINTS = 2
 WALL_BONUS = 40
 ANNOUNCE_EVERY = 15.0
 FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
-                   "GAME: got steel, place on the wall")
+                   "GAME: got steel, place on the wall",
+                   "GAME: hands full, place on the wall")
 
 
 class RampartMission(Mission):
@@ -46,6 +48,7 @@ class RampartMission(Mission):
         self.total = len(self.targets) * WALL_HEIGHT
         self.done = False
         self.last_announce = 0.0
+        self.hints = SourceHints(self.carry, FERRY.full_say)
 
     # ------------------------------------------------------------- lifecycle
 
@@ -63,6 +66,7 @@ class RampartMission(Mission):
         self.quarry.dwell.clear()
         self.done = False
         self.last_announce = 0.0
+        self.hints.clear()
         self.setup(world)
 
     # ------------------------------------------------------------------ tick
@@ -80,6 +84,7 @@ class RampartMission(Mission):
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
         tick_ferry(world, drones, self.carry, [self.quarry], dt, FERRY)
+        self.hints.tick(world, drones, *QUARRY, dt)
         placed, refused = self.tracker.tick(drones, dt)
         for p in placed:
             total = world.add_score(PLACE_POINTS, f"wall tile at {fmt_cell(p.cell)}",

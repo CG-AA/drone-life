@@ -9,7 +9,16 @@ import math
 from dataclasses import dataclass, field
 
 from .. import hex
-from ..building import PICKUP_ALT, PICKUP_DWELL, CarrySlots, DwellTracker
+from ..building import (
+    PICKUP_ALT,
+    PICKUP_DWELL,
+    TOO_HIGH_SAY,
+    CarrySlots,
+    DwellTracker,
+    HintThrottle,
+    HoverHint,
+    SourceHints,
+)
 from ..hex import Axial
 from ..mission import Entity, Mission, WorldAPI, fmt_world
 
@@ -29,6 +38,11 @@ SPAWN_MARGIN = 15.0  # keep away from arena walls
 DROPOFF_CELL: Axial = (0, 0)
 DROPOFF = hex.axial_to_world(DROPOFF_CELL)
 
+FULL_SAY = "GAME: hands full, drop at N 0 E 0"
+EMPTY_SAY = "GAME: no crate! grab one first"
+LOST_SAY = "GAME: crate lost, grab another"
+EMPTY_HINT_SUSTAIN = 3.0  # generous: a fresh deliverer lingering isn't nagged
+
 
 def _pickup_dwell() -> DwellTracker:
     return DwellTracker(PICKUP_RADIUS, PICKUP_ALT, PICKUP_DWELL)
@@ -42,6 +56,7 @@ class Crate:
     carried_by: str | None = None  # drone id
     dwell: DwellTracker = field(default_factory=_pickup_dwell)
     last_announce: float = 0.0
+    hints: SourceHints | None = None  # wired at spawn (needs mission state)
 
 
 class DeliveryMission(Mission):
@@ -53,6 +68,13 @@ class DeliveryMission(Mission):
         self.drop_dwell = DwellTracker(DROP_RADIUS, PICKUP_ALT, DROP_DWELL)
         self.next_id = 1
         self.last_spawn = float("-inf")
+        self.hint_throttle = HintThrottle()  # shared: one nag pace per drone
+        self.drop_high = HoverHint(
+            DROP_RADIUS, lambda d: self.carry.item(d.id) is not None and d.alt > PICKUP_ALT,
+            TOO_HIGH_SAY, "drop_high", self.hint_throttle)
+        self.drop_empty = HoverHint(
+            DROP_RADIUS, lambda d: self.carry.item(d.id) is None,
+            EMPTY_SAY, "drop_empty", self.hint_throttle, sustain=EMPTY_HINT_SUSTAIN)
 
     # ------------------------------------------------------------- lifecycle
 
@@ -66,6 +88,9 @@ class DeliveryMission(Mission):
         self.drop_dwell.clear()
         self.next_id = 1
         self.last_spawn = float("-inf")
+        self.hint_throttle.clear()
+        self.drop_high.clear()
+        self.drop_empty.clear()
         self.setup(world)
 
     def _desired(self, world: WorldAPI) -> int:
@@ -92,6 +117,8 @@ class DeliveryMission(Mission):
             if d >= MIN_SPAWN_DIST:
                 break
         crate = Crate(str(self.next_id), n, e)
+        crate.hints = SourceHints(self.carry, FULL_SAY, radius=PICKUP_RADIUS,
+                                  throttle=self.hint_throttle)
         self.last_spawn = world.now
         self.next_id += 1
         self.crates[crate.id] = crate
@@ -128,6 +155,8 @@ class DeliveryMission(Mission):
             reason = "crashed" if (d and d.crashed) else "was lost"
             world.emit_event("crate_lost", f"crate {lost.id} {reason}",
                              student_id=d.student_id if d else None)
+            if d is not None:
+                world.send_text(d.id, LOST_SAY)
             if len(self.crates) < self._desired(world):
                 self._spawn_crate(world)
 
@@ -135,6 +164,8 @@ class DeliveryMission(Mission):
         for crate in list(self.crates.values()):
             if crate.carried_by is not None:
                 continue
+            if crate.hints is not None:
+                crate.hints.tick(world, drones.values(), crate.n, crate.e, dt)
             winner = crate.dwell.update(drones.values(), crate.n, crate.e, dt,
                                         eligible=lambda d: self.carry.item(d.id) is None)
             if winner is not None:
@@ -146,6 +177,8 @@ class DeliveryMission(Mission):
                 world.broadcast_text(f"GAME: crate {crate.id} taken")
 
         # the dropoff runs one dwell for whoever is carrying
+        self.drop_high.tick(world, drones.values(), *DROPOFF, dt)
+        self.drop_empty.tick(world, drones.values(), *DROPOFF, dt)
         winner = self.drop_dwell.update(drones.values(), *DROPOFF, dt,
                                         eligible=lambda d: self.carry.item(d.id) is not None)
         if winner is not None:

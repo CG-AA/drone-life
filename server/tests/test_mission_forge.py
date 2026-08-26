@@ -1,9 +1,10 @@
 """Forge mission: free placement, blueprint matching, furnaces from data."""
 
 from app.game import hex
-from app.game.building import PICKUP_DWELL, PLACE_DWELL, hover_alt_hint
+from app.game.building import HINT_SUSTAIN, PICKUP_DWELL, PLACE_DWELL, hover_alt_hint
 from app.game.missions.forge import (
     CLAY_PIT,
+    FERRY,
     FURNACE_POINTS,
     PLACE_POINTS,
     ForgeMission,
@@ -74,3 +75,12 @@ def test_reset_clears_furnaces_and_claims():
     for cell in ring_cells((0, 0)):
         carry_one_to(mission, world, cell)
     assert len(mission.furnaces) == 1
+
+
+def test_hands_full_at_the_pit_hints():
+    mission, world = make()
+    world.views = [view(n=CLAY_PIT[0], e=CLAY_PIT[1], alt=2.0)]
+    world.run(mission, PICKUP_DWELL + 0.2)
+    assert mission.carry.item("d0") == "clay"
+    world.run(mission, HINT_SUSTAIN + 0.3)  # still hovering the pit, hands full
+    assert ("d0", FERRY.full_say) in world.texts

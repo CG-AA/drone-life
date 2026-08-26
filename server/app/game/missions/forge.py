@@ -8,7 +8,14 @@ from __future__ import annotations
 
 from .. import hex
 from ..blueprints import BlueprintTracker, ring_blueprint
-from ..building import CarrySlots, FerryTexts, PlaceTracker, TileSource, tick_ferry
+from ..building import (
+    CarrySlots,
+    FerryTexts,
+    PlaceTracker,
+    SourceHints,
+    TileSource,
+    tick_ferry,
+)
 from ..hex import Axial
 from ..mission import Entity, Mission, WorldAPI, fmt_world
 from ..tiles import TileMap
@@ -20,7 +27,8 @@ PLACE_POINTS = 1
 FURNACE_POINTS = 30
 ANNOUNCE_EVERY = 20.0
 FERRY = FerryTexts("clay", "GAME: clay lost, grab another",
-                   "GAME: got clay, build a ring of 6")
+                   "GAME: got clay, build a ring of 6",
+                   "GAME: hands full, place your clay")
 
 
 class ForgeMission(Mission):
@@ -34,6 +42,7 @@ class ForgeMission(Mission):
         self.blueprints = BlueprintTracker([FURNACE])
         self.furnaces: list[Axial] = []  # lit furnace ring centers
         self.last_announce = 0.0
+        self.hints = SourceHints(self.carry, FERRY.full_say)
 
     # ------------------------------------------------------------- lifecycle
 
@@ -52,6 +61,7 @@ class ForgeMission(Mission):
         self.pit.dwell.clear()
         self.furnaces.clear()
         self.last_announce = 0.0
+        self.hints.clear()
         self.setup(world)
 
     # ------------------------------------------------------------------ tick
@@ -62,6 +72,7 @@ class ForgeMission(Mission):
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
         tick_ferry(world, drones, self.carry, [self.pit], dt, FERRY)
+        self.hints.tick(world, drones, *CLAY_PIT, dt)
         placed, refused = self.tracker.tick(drones, dt)
         for p in placed:
             world.add_score(PLACE_POINTS, "clay placed", student_id=p.drone.student_id)
