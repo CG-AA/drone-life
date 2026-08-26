@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import time
 from collections import deque
 
@@ -13,6 +14,15 @@ from ..service import DroneLifeService
 
 def err(status: int, code: str, msg: str, **extra) -> HTTPException:
     return HTTPException(status, detail={"code": code, "msg": msg, **extra})
+
+
+def constant_time_eq(a: str, b: str) -> bool:
+    """Timing-safe equality for secrets (room codes, admin tokens).
+
+    The encode matters: compare_digest raises TypeError on non-ASCII str, so a
+    student pasting an accented room code would get a 500 instead of a 403.
+    """
+    return hmac.compare_digest(a.encode(), b.encode())
 
 
 def get_service(request: Request) -> DroneLifeService:
@@ -28,7 +38,7 @@ def require_student(request: Request, authorization: str = Header("")) -> Studen
 
 
 def require_admin(request: Request, x_admin_token: str = Header("")) -> None:
-    if x_admin_token != request.app.state.service.settings.admin_token:
+    if not constant_time_eq(x_admin_token, request.app.state.service.settings.admin_token):
         raise err(403, "auth", "bad admin token")
 
 

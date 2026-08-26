@@ -20,6 +20,8 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from .auth import constant_time_eq
+
 log = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -192,7 +194,8 @@ async def _serve(ws: WebSocket, client: Client) -> None:
 @router.websocket("/ws/viewer")
 async def ws_viewer(ws: WebSocket) -> None:
     service = ws.app.state.service
-    if ws.query_params.get("code", "") != service.settings.room_code:
+    code = ws.query_params.get("code", "").strip()
+    if not constant_time_eq(code, service.settings.room_code):
         await ws.close(code=4403)
         return
     await ws.accept()

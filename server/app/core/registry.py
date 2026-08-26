@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 import re
 import secrets
@@ -31,7 +32,12 @@ class Registry:
         self.students: dict[str, Student] = {}  # by id
 
     def by_token(self, token: str) -> Student | None:
-        return next((s for s in self.students.values() if s.token == token), None)
+        # constant-time per candidate; the scan itself only leaks the roster size
+        want = token.encode()
+        return next(
+            (s for s in self.students.values() if hmac.compare_digest(s.token.encode(), want)),
+            None,
+        )
 
     def by_name(self, name: str) -> Student | None:
         key = _norm(name)

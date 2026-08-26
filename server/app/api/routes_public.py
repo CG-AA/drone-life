@@ -14,7 +14,7 @@ from ..core.registry import RoomFullError, Student
 from ..runner.manager import RunnerError
 from ..service import EXAMPLES_DIR, DroneLifeService
 from ..sim.backend import DroneView
-from .auth import err, get_service, require_student
+from .auth import constant_time_eq, err, get_service, require_student
 
 router = APIRouter(prefix="/api/v1")
 
@@ -40,7 +40,7 @@ async def join(body: JoinBody, request: Request,
     ip = request.client.host if request.client else "?"
     if not request.app.state.join_limiter.allow(ip):
         raise err(429, "rate", "too many join attempts; wait a minute")
-    if body.room_code.strip() != service.settings.room_code:
+    if not constant_time_eq(body.room_code.strip(), service.settings.room_code):
         raise err(403, "room_code", "wrong room code — ask your instructor")
     name = body.name.strip()
     if not (1 <= len(name) <= 24):
@@ -115,7 +115,7 @@ async def status(student: Student = Depends(require_student),
 
 @router.get("/world")
 async def world(code: str = "", service: DroneLifeService = Depends(get_service)) -> dict:
-    if code != service.settings.room_code:
+    if not constant_time_eq(code.strip(), service.settings.room_code):
         raise err(403, "room_code", "wrong room code")
     return {"world": service.world_message(), "feed": list(service.bus.feed)[-30:],
             "hello": service.hello_message()}
