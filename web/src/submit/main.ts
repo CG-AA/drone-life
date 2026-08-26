@@ -3,8 +3,8 @@
 import type { DroneState, LogLine, RunState, WorldData } from "../shared/protocol";
 import { $, armedConfirm, banner, guarded, runPill } from "../shared/ui";
 import { GameSocket } from "../shared/ws";
-import { STUDENT_KEY, TOKEN_KEY, fetchTemplate, join, resetMine,
-  stopRun, submitCode } from "./api";
+import { ApiFailure, CODE_KEY, STUDENT_KEY, TOKEN_KEY, fetchStatus, fetchTemplate,
+  join, resetMine, stopRun, submitCode } from "./api";
 import { Editor } from "./editor";
 import type { ErrorView } from "./errors";
 import { codeTooBig, describeError, tooBigText } from "./errors";
@@ -16,11 +16,26 @@ let studentId = "";
 let ws: GameSocket | null = null;
 let scriptRunning = false;
 
+interface SavedStudent { student_id: string; name: string }
+let saved: SavedStudent | null = null;
+try {
+  saved = JSON.parse(localStorage.getItem(STUDENT_KEY) ?? "null") as SavedStudent | null;
+} catch {
+  // corrupt storage must not blank the page — fall through to the join overlay
+}
+
 // ------------------------------------------------------------------ join flow
 
 function showJoin(error = ""): void {
   $("join-overlay").classList.remove("hidden");
   $("join-error").textContent = error;
+  const nameEl = $("join-name") as HTMLInputElement;
+  const codeEl = $("join-code") as HTMLInputElement;
+  // coming back after an expiry should not mean retyping what we know
+  if (!nameEl.value) nameEl.value = saved?.name ?? "";
+  if (!codeEl.value) codeEl.value = localStorage.getItem(CODE_KEY) ?? "";
+  const empty = [nameEl, codeEl].find((el) => !el.value);
+  (empty ?? nameEl).focus();
 }
 
 /** Render a mapped failure into the banner, wiring up whatever it offers. */
@@ -52,8 +67,18 @@ async function handleJoin(ev: Event): Promise<void> {
   }
   try {
     const info = await join(code, name);
+    saved = { student_id: info.student_id, name: info.name };
     $("join-overlay").classList.add("hidden");
     await enter(info.student_id, info.name);
+    if (info.rejoined) {
+      // the server matches on name, so this is also what a student sees when
+      // they take someone else's drone by typing their name
+      banner(`welcome back, ${info.name} — you're back on your drone. `
+        + "Not you? join again with a different name.", {
+        info: true,
+        actions: [["not me", () => { banner(""); showJoin(); }]],
+      });
+    }
   } catch (e) {
     showJoin(describeError(e, "join").text);
   }
@@ -71,6 +96,26 @@ async function enter(id: string, name: string): Promise<void> {
     }
   }
   connectWs();
+}
+
+/** Catch a returning page up before its socket opens: prove the stored token
+ * is still good (a refresh otherwise looks fine until the first run), and
+ * restore the run pill and log tail that the reload threw away. */
+async function restore(): Promise<boolean> {
+  try {
+    const st = await fetchStatus();
+    if (st.run) setRunState(st.run);
+    else runPill($("run-pill"), null);
+    appendLogs(st.log_tail);
+    return true;
+  } catch (e) {
+    if (e instanceof ApiFailure && e.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      showJoin("your session expired — join again");
+      return false;
+    }
+    return true; // offline or a server blip: the socket keeps retrying
+  }
 }
 
 // ------------------------------------------------------------------ websocket
@@ -240,16 +285,13 @@ async function stop(): Promise<void> {
 stopBtn.addEventListener("click", () => void stop());
 templateSel.addEventListener("change", onTemplatePick);
 
-interface SavedStudent { student_id: string; name: string }
-let saved: SavedStudent | null = null;
-try {
-  saved = JSON.parse(localStorage.getItem(STUDENT_KEY) ?? "null") as SavedStudent | null;
-} catch {
-  // corrupt storage must not blank the page — fall through to the join overlay
-}
 if (localStorage.getItem(TOKEN_KEY) && saved?.student_id) {
-  enter(saved.student_id, saved.name)
-    .catch(() => showJoin("could not restore your session — join again"));
+  const student = saved;
+  void (async () => {
+    // status first: it decides whether the stored token is still worth using,
+    // and seeds the log cursor so the socket's replay doesn't double-print
+    if (await restore()) await enter(student.student_id, student.name);
+  })();
 } else {
   showJoin();
 }
