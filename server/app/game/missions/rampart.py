@@ -10,6 +10,7 @@ from .. import hex
 from ..building import (
     CarrySlots,
     FerryTexts,
+    PlaceHints,
     PlaceTracker,
     SourceHints,
     TileSource,
@@ -49,6 +50,7 @@ class RampartMission(Mission):
         self.done = False
         self.last_announce = 0.0
         self.hints = SourceHints(self.carry, FERRY.full_say)
+        self.place_hints = PlaceHints(self.tm, self.carry, self.hints.throttle)
 
     # ------------------------------------------------------------- lifecycle
 
@@ -67,6 +69,7 @@ class RampartMission(Mission):
         self.done = False
         self.last_announce = 0.0
         self.hints.clear()
+        self.place_hints.clear()
         self.setup(world)
 
     # ------------------------------------------------------------------ tick
@@ -86,6 +89,7 @@ class RampartMission(Mission):
         tick_ferry(world, drones, self.carry, [self.quarry], dt, FERRY)
         self.hints.tick(world, drones, *QUARRY, dt)
         placed, refused = self.tracker.tick(drones, dt)
+        self.place_hints.tick(world, drones, dt)
         for p in placed:
             total = world.add_score(PLACE_POINTS, f"wall tile at {fmt_cell(p.cell)}",
                                     student_id=p.drone.student_id)

@@ -25,6 +25,7 @@ from ..building import (
     CarrySlots,
     DwellTracker,
     FerryTexts,
+    PlaceHints,
     PlaceTracker,
     SourceHints,
     TileSource,
@@ -111,6 +112,7 @@ class SiegeMission(Mission):
         self.last_announce = 0.0
         self.last_target = 0.0
         self.hints = SourceHints(self.carry, FERRY.full_say)
+        self.place_hints = PlaceHints(self.tm, self.carry, self.hints.throttle)
 
     # ------------------------------------------------------------- lifecycle
 
@@ -137,6 +139,7 @@ class SiegeMission(Mission):
         self.beams.clear()
         self.last_announce = self.last_target = 0.0
         self.hints.clear()
+        self.place_hints.clear()
         self.setup(world)
 
     # ------------------------------------------------------------------ tick
@@ -147,6 +150,7 @@ class SiegeMission(Mission):
         tick_ferry(world, drones, self.carry, [self.quarry], dt, FERRY)
         self.hints.tick(world, drones, *QUARRY, dt)
         placed, refused = self.tracker.tick(drones, dt)
+        self.place_hints.tick(world, drones, dt)
         for p in placed:
             self._squish(world, p)
             match = self.blueprints.check(self.tm, p.cell)

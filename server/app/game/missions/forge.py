@@ -11,6 +11,7 @@ from ..blueprints import BlueprintTracker, ring_blueprint
 from ..building import (
     CarrySlots,
     FerryTexts,
+    PlaceHints,
     PlaceTracker,
     SourceHints,
     TileSource,
@@ -43,6 +44,7 @@ class ForgeMission(Mission):
         self.furnaces: list[Axial] = []  # lit furnace ring centers
         self.last_announce = 0.0
         self.hints = SourceHints(self.carry, FERRY.full_say)
+        self.place_hints = PlaceHints(self.tm, self.carry, self.hints.throttle)
 
     # ------------------------------------------------------------- lifecycle
 
@@ -62,6 +64,7 @@ class ForgeMission(Mission):
         self.furnaces.clear()
         self.last_announce = 0.0
         self.hints.clear()
+        self.place_hints.clear()
         self.setup(world)
 
     # ------------------------------------------------------------------ tick
@@ -74,6 +77,7 @@ class ForgeMission(Mission):
         tick_ferry(world, drones, self.carry, [self.pit], dt, FERRY)
         self.hints.tick(world, drones, *CLAY_PIT, dt)
         placed, refused = self.tracker.tick(drones, dt)
+        self.place_hints.tick(world, drones, dt)
         for p in placed:
             world.add_score(PLACE_POINTS, "clay placed", student_id=p.drone.student_id)
             world.send_text(p.drone.id, "GAME: clay placed +1")

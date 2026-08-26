@@ -29,6 +29,8 @@ HINT_SUSTAIN = 1.5  # s of sustained wrongness before a hint speaks
 HINT_EVERY = 10.0  # s per drone per hint kind (cf. siege's TARGET_EVERY)
 # one phrasing everywhere a low hover is required — students learn it once
 TOO_HIGH_SAY = f"GAME: too high, get under {round(PICKUP_ALT)} m"
+STUCK_SPEED = 0.7  # m/s: slower than this horizontally = trying to hover
+STUCK_S = 2.0  # s hovering outside the band before the altitude hint
 
 _EPS = 1e-9  # dt accumulates in floats; N*dt may land a hair under N*dt exactly
 
@@ -119,6 +121,45 @@ class HoverHint:
 
     def clear(self) -> None:
         self.dwell.clear()
+
+
+class PlaceHints:
+    """Carrying, clearly hovering a placeable cell, but outside its altitude
+    band — the top student complaint ("tile won't place"): after STUCK_S,
+    say the altitude that works. The mission's `allowed` rule is deliberately
+    not consulted: descending into the band over a wrong cell surfaces the
+    mission's own refusal text, which is the better teacher."""
+
+    def __init__(self, tm: TileMap, carry: CarrySlots, throttle: HintThrottle) -> None:
+        self.tm = tm
+        self.carry = carry
+        self.throttle = throttle
+        self._acc: dict[str, float] = {}
+
+    def tick(self, world: WorldAPI, drones: Iterable[DroneView], dt: float) -> None:
+        seen: set[str] = set()
+        for d in drones:
+            material = self.carry.item(d.id)
+            if (material is None or not d.armed or d.crashed
+                    or math.hypot(d.vn, d.ve) >= STUCK_SPEED):
+                continue
+            cell = hover_cell(d)
+            low, high = place_window(self.tm, cell)
+            if low <= d.alt <= high or not self.tm.can_place(cell, material)[0]:
+                continue
+            seen.add(d.id)
+            self._acc[d.id] = self._acc.get(d.id, 0.0) + dt
+            if self._acc[d.id] >= STUCK_S - _EPS:
+                self._acc[d.id] = 0.0
+                if self.throttle.ready(f"place:{d.id}", world.now):
+                    world.send_text(
+                        d.id, f"GAME: hover {hover_alt_hint(self.tm, cell)} m to place")
+        for drone_id in list(self._acc):  # condition broke: restart the clock
+            if drone_id not in seen:
+                del self._acc[drone_id]
+
+    def clear(self) -> None:
+        self._acc.clear()
 
 
 class SourceHints:

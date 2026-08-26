@@ -9,11 +9,13 @@ from app.game.building import (
     PLACE_CLEAR,
     PLACE_DWELL,
     PLACE_WINDOW,
+    STUCK_S,
     TOO_HIGH_SAY,
     CarrySlots,
     DwellTracker,
     HintThrottle,
     HoverHint,
+    PlaceHints,
     PlaceTracker,
     SourceHints,
     TileSource,
@@ -304,3 +306,38 @@ def test_source_hints_speak_both_ways():
     full = view("d1", n=0.0, e=0.0, alt=1.0)
     run_hint(world, hints, [full], 0, 0, HINT_SUSTAIN + 0.2)
     assert ("d1", "GAME: hands full, place on the wall") in world.texts
+
+
+def run_place_hints(world, hints, drones, seconds, dt=0.1):
+    for _ in range(int(seconds / dt)):
+        world.now += dt
+        hints.tick(world, drones, dt)
+
+
+def test_place_hint_when_hovering_out_of_band():
+    world, tm, carry = FakeWorld(), TileMap(), CarrySlots()
+    hints = PlaceHints(tm, carry, HintThrottle())
+    carry.give("d0", "steel")
+    d = view(alt=20.0)  # way above the empty cell's placement band
+    run_place_hints(world, hints, [d], STUCK_S + 0.2)
+    hint = hover_alt_hint(tm, hex.world_to_axial(d.n, d.e))
+    assert (f"GAME: hover {hint} m to place" in [t for _, t in world.texts])
+
+
+def test_place_hint_silent_while_moving():
+    world, tm, carry = FakeWorld(), TileMap(), CarrySlots()
+    hints = PlaceHints(tm, carry, HintThrottle())
+    carry.give("d0", "steel")
+    d = replace(view(alt=20.0), vn=2.0)  # transiting, not trying to place
+    run_place_hints(world, hints, [d], STUCK_S + 0.2)
+    assert world.texts == []
+
+
+def test_place_hint_silent_over_keepout():
+    world, tm, carry = FakeWorld(), TileMap(), CarrySlots()
+    tm.set_keep_out([(0.0, 0.0)])
+    hints = PlaceHints(tm, carry, HintThrottle())
+    carry.give("d0", "steel")
+    d = view(alt=20.0)  # over the keep-out cell: no altitude would work
+    run_place_hints(world, hints, [d], STUCK_S + 0.2)
+    assert world.texts == []
