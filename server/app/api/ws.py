@@ -193,6 +193,9 @@ async def _serve(ws: WebSocket, client: Client) -> None:
 async def ws_viewer(ws: WebSocket) -> None:
     service = ws.app.state.service
     if ws.query_params.get("code", "") != service.settings.room_code:
+        # accept first: a close before the handshake reaches the browser as a
+        # bare 1006, so the page can't tell "wrong code" from "server down"
+        await ws.accept()
         await ws.close(code=4403)
         return
     await ws.accept()
@@ -204,6 +207,7 @@ async def ws_student(ws: WebSocket) -> None:
     service = ws.app.state.service
     student = service.registry.by_token(ws.query_params.get("token", ""))
     if student is None:
+        await ws.accept()  # so the page sees 4401 and re-joins, not a silent retry loop
         await ws.close(code=4401)
         return
     await ws.accept()
