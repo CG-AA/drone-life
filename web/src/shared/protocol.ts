@@ -115,10 +115,16 @@ export interface LogLine {
   line: string;
 }
 
+/** Why a run ended (app/runner/manager.py END_REASONS); null until it has. */
+export type RunEndReason =
+  | "done" | "error" | "timeout" | "stopped" | "replaced"
+  | "start_failed" | "runner_failed";
+
 export interface RunState {
   run_id: string;
   state: "starting" | "running" | "exited";
   exit_code: number | null;
+  reason: RunEndReason | null;
 }
 
 // ---------------- REST payloads (routes_public.py / routes_admin.py) --------

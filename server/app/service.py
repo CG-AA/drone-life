@@ -39,6 +39,15 @@ BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder", "bot_siege"}
 SNAPSHOT_INTERVAL = 30.0
 MISSION_EVERY = P.TICK_HZ // P.MISSION_HZ  # mission + WS run every Nth sim tick
 
+# What the projector says when a run ends. "exit -9" means nothing across a room.
+EXIT_PHRASE = {
+    "done": "finished",
+    "timeout": "hit the time limit",
+    "stopped": "was stopped",
+    "start_failed": "could not start",
+    "runner_failed": "hit a sandbox problem — instructor needed",
+}
+
 
 class KinematicBackend(DroneBackend):
     """v1 drone backend: our kinematic sim + MAVLink gateway."""
@@ -285,8 +294,14 @@ class DroneLifeService:
     def _on_run_event(self, student_id: str, payload: dict) -> None:
         if self.hub is not None:
             self.hub.send_run_state(student_id, payload)
-        if payload["state"] == "exited":
-            student = self.registry.students.get(student_id)
-            name = student.name if student else student_id
-            self.bus.emit("script_exit", f"{name}'s script exited (code {payload['exit_code']})",
-                          student_id=student_id, t=self.world.t)
+        if payload["state"] != "exited":
+            return
+        reason = payload["reason"]
+        if reason == "replaced":
+            return  # the new run's own lines say it better; don't spam the feed
+        student = self.registry.students.get(student_id)
+        name = student.name if student else student_id
+        # "error" keeps its code: that number is the student's debugging handle
+        phrase = EXIT_PHRASE.get(reason, f"exited (code {payload['exit_code']})")
+        self.bus.emit("script_exit", f"{name}'s script {phrase}",
+                      student_id=student_id, t=self.world.t)

@@ -85,7 +85,7 @@ async function run(): Promise<void> {
   btn.disabled = true;
   try {
     await submitCode(editor.code);
-    runPill($("run-pill"), { run_id: "", state: "starting", exit_code: null });
+    runPill($("run-pill"), { run_id: "", state: "starting", exit_code: null, reason: null });
     $("run-hint").textContent = "watch the sky view — and the log pane on the right";
   } catch (e) {
     if (e instanceof ApiFailure && e.error.code === "syntax") {

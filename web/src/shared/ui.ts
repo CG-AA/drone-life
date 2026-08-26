@@ -85,16 +85,28 @@ export function armedConfirm(btn: HTMLButtonElement, armedLabel: string,
   });
 }
 
+const END_LABEL: Record<string, string> = {
+  done: "finished",
+  timeout: "timed out",
+  stopped: "stopped",
+  replaced: "replaced",
+  start_failed: "failed to start",
+  runner_failed: "sandbox error",
+};
+
+/** Pill text for a run. An exit code alone doesn't say what happened, so prefer
+ * the server's reason; "error" and an older server fall back to the code. */
+export function runLabel(rs: RunState | null): string {
+  if (rs === null) return "idle";
+  if (rs.state !== "exited") return rs.state;
+  const label = rs.reason ? END_LABEL[rs.reason] : undefined;
+  if (label) return label;
+  return rs.exit_code === null ? "exited" : `exited (${rs.exit_code})`;
+}
+
 /** Render a run state into a .pill element (pill classes live in theme.css). */
 export function runPill(el: HTMLElement, rs: RunState | null): void {
-  if (rs === null) {
-    el.textContent = "idle";
-    el.className = "pill";
-  } else if (rs.state === "exited") {
-    el.textContent = rs.exit_code === null ? "exited" : `exited (${rs.exit_code})`;
-    el.className = "pill exited";
-  } else {
-    el.textContent = rs.state;
-    el.className = "pill running";
-  }
+  el.textContent = runLabel(rs);
+  if (rs === null) el.className = "pill";
+  else el.className = rs.state === "exited" ? "pill exited" : "pill running";
 }
