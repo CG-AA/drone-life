@@ -34,6 +34,9 @@ sudo tee /etc/drone-life.env <<'EOF'
 ROOM_CODE=pick-something-short
 ADMIN_TOKEN=long-random-string
 MISSION=delivery
+# the OCI VM's address as the lab server sees it — without this every student
+# shares one rate-limit bucket; see "OCI VM reverse proxy" below
+FORWARDED_ALLOW_IPS=10.0.0.5
 EOF
 sudo chmod 600 /etc/drone-life.env
 ```
@@ -63,6 +66,12 @@ target and the systemd unit).
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
 | `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts, guards room-code guessing |
 | `ALLOW_DEFAULT_SECRETS` | `false` | dev only: boot on the placeholder `ROOM_CODE`/`ADMIN_TOKEN` |
+
+One variable in `/etc/drone-life.env` is **not** a `config.py` setting:
+`FORWARDED_ALLOW_IPS` is read by uvicorn itself (it is the default for
+`--forwarded-allow-ips`; pydantic ignores it). It is the comma-separated list
+of peers whose `X-Forwarded-For` header is believed — IPs or CIDRs, defaulting
+to `127.0.0.1`. Set it to the proxy's address, never to `*`.
 
 The server **refuses to start** when `ROOM_CODE` or `ADMIN_TOKEN` is still the
 placeholder (`classroom` / `change-me`) or is empty — uvicorn aborts with the
@@ -112,6 +121,20 @@ server {
 ```
 
 Lab-server firewall: allow 8000 **only** from the OCI VM's address.
+
+**Pair that firewall rule with `FORWARDED_ALLOW_IPS`** (`/etc/drone-life.env`,
+same address). `--proxy-headers` is already on in the systemd unit, but uvicorn
+only believes `X-Forwarded-For` from peers in that list — default `127.0.0.1`,
+which the proxy is not. Until it is set, every request looks like it came from
+the proxy, so the per-IP join limit becomes one *class-wide* bucket and a single
+prankster hitting the join endpoint locks the whole room out. The firewall rule
+is what makes trusting the header safe: nobody else can reach port 8000 to
+forge one.
+
+Residual risk worth knowing: if the whole class sits behind one school NAT,
+even a correct `X-Forwarded-For` shows one address for everyone. Raise the
+ceiling for the day (`JOIN_RATE_LIMIT_PER_MINUTE=120` in the env file) rather
+than keying the limiter on anything else a client can set.
 
 ## Workshop-day runbook
 
