@@ -15,6 +15,8 @@ admin — the prompts below mark the switches.
 sudo useradd -m dronelife
 sudo loginctl enable-linger dronelife     # rootless podman under systemd needs this
 sudo install -d -o dronelife -g dronelife /opt/drone-life   # dronelife can't mkdir in /opt
+# (already cloned /opt/drone-life as another user in an earlier attempt?
+#  sudo chown -R dronelife:dronelife /opt/drone-life — or uv/npm hit EACCES)
 
 # 2. rootless podman prerequisites (still admin — usermod needs root)
 grep dronelife /etc/subuid /etc/subgid    # must show a range in BOTH files; if not:
@@ -26,7 +28,8 @@ sudo -iu dronelife
 podman system migrate                     # once, after any subuid/subgid change
 git clone <repo> /opt/drone-life && cd /opt/drone-life
 curl -LsSf https://astral.sh/uv/install.sh | sh     # uv → ~/.local/bin
-source ~/.local/bin/env                   # put uv on PATH in this shell
+. ~/.local/bin/env                        # put uv on PATH in this shell
+# (`.`, not `source`: useradd gave dronelife plain /bin/sh, where source doesn't exist)
 cd server && uv sync && cd ..
 # node ≥ 20, only needed to build the frontend (or build web/dist elsewhere and copy)
 cd web && npm ci && npm run build && cd ..
