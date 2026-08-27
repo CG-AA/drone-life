@@ -115,14 +115,40 @@ def crowd(count: int) -> list:
 
 
 def test_crate_count_scales_with_pilots_staggered():
+    # 7 crates for 21 pilots, 3 of them from setup: four staggered top-ups, so
+    # the gap assertion below has something to be true about
     mission, world = make()
-    world.views = crowd(4 * PILOTS_PER_CRATE)  # target: 4 crates
-    world.run(mission, 10 * SPAWN_STAGGER_S)
-    assert len(mission.crates) == 4
+    world.views = crowd(7 * PILOTS_PER_CRATE)
+    world.run(mission, 20 * SPAWN_STAGGER_S)
+    assert len(mission.crates) == 7
     spawns = [ev["t"] for ev in world.events
               if ev["kind"] == "crate_spawn" and ev["t"] > 0]  # setup batch excluded
+    assert len(spawns) == 4, "nothing staggered means nothing to check"
     gaps = [b - a for a, b in pairwise(spawns)]
     assert all(g >= SPAWN_STAGGER_S - 0.101 for g in gaps), gaps
+
+
+def test_carried_crates_do_not_count_as_supply():
+    """The starvation bug: the target counted every crate, carried ones
+    included, so a full class flying the last crates home left nothing on the
+    ground and nothing spawned to replace them."""
+    mission, world = make()
+    world.views = crowd(3 * PILOTS_PER_CRATE)  # target: 3 on the ground
+    world.run(mission, 4 * SPAWN_STAGGER_S)
+    assert len(mission.crates) == CRATE_COUNT
+
+    # every crate goes up: one pilot per crate, hovering low over it
+    grabbers = [view(f"g{i}", n=c.n, e=c.e, alt=1.5)
+                for i, c in enumerate(mission.crates.values())]
+    world.views = crowd(3 * PILOTS_PER_CRATE) + grabbers
+    world.run(mission, PICKUP_DWELL + 0.3)
+    assert all(mission.carry.item(g.id) for g in grabbers), "the supply is in the air"
+
+    # ...and the ground refills under them, one staggered crate at a time
+    world.run(mission, 8 * SPAWN_STAGGER_S)
+    ground = mission._desired(world)  # the grabbers are pilots too
+    assert mission._on_ground() == ground
+    assert len(mission.crates) == ground + len(grabbers), "carried crates are still crates"
 
 
 def test_crate_count_capped():

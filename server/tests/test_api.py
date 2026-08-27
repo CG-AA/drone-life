@@ -51,10 +51,10 @@ async def test_submit_without_runner_image_is_503_with_a_fix(client, monkeypatch
     """The instructor's fix (`make image`) must reach the student's screen —
     otherwise a missing image is a container that dies with exit 125 in a log
     pane nobody reads."""
-    async def no_image(self) -> bool:
-        return False
+    async def no_image(self) -> str | None:
+        return f"runner image {self.s.runner_image} is not built — instructor: run `make image`"
 
-    monkeypatch.setattr(RunnerManager, "_image_ok", no_image)
+    monkeypatch.setattr(RunnerManager, "_image_probe", no_image)
     token = (await join(client))["token"]
     r = await client.post("/api/v1/submit", json={"code": "print('hi')\n"},
                           headers={"Authorization": f"Bearer {token}"})
@@ -64,10 +64,10 @@ async def test_submit_without_runner_image_is_503_with_a_fix(client, monkeypatch
 
 
 async def test_bots_without_runner_image_is_503(client, monkeypatch):
-    async def no_image(self) -> bool:
-        return False
+    async def no_image(self) -> str | None:
+        return "runner image is not built — instructor: run `make image`"
 
-    monkeypatch.setattr(RunnerManager, "_image_ok", no_image)
+    monkeypatch.setattr(RunnerManager, "_image_probe", no_image)
     r = await client.post("/api/v1/admin/bots", headers=ADMIN,
                           json={"count": 1, "mode": "container", "script": "bot_patrol"})
     assert r.status_code == 503

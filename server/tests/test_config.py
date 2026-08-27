@@ -25,6 +25,20 @@ def test_placeholder_and_empty_secrets_refused(tmp_path, overrides, expected):
     assert refusal is not None and expected in refusal
 
 
+def test_secrets_are_stripped_so_the_env_file_cannot_lock_the_room(tmp_path):
+    """systemd's EnvironmentFile does not trim, and every compare strips what
+    the browser sent — `ROOM_CODE=abc ` would 403 the whole class while the
+    guard and preflight both saw a real value."""
+    settings = make_settings(tmp_path, room_code="abc \t", admin_token=" tok\n")
+    assert settings.room_code == "abc" and settings.admin_token == "tok"
+    assert check_secrets(settings) is None
+
+
+def test_a_whitespace_only_secret_is_empty_not_real(tmp_path):
+    refusal = check_secrets(make_settings(tmp_path, room_code="  \t "))
+    assert refusal is not None and "ROOM_CODE" in refusal
+
+
 def test_both_bad_names_both(tmp_path):
     refusal = check_secrets(make_settings(tmp_path, room_code="classroom", admin_token="change-me"))
     assert refusal is not None and "ROOM_CODE" in refusal and "ADMIN_TOKEN" in refusal
