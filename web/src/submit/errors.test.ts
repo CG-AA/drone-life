@@ -30,6 +30,22 @@ it("hides the runner exception behind an instructor-shaped message", () => {
   expect(v.text).toContain("instructor");
 });
 
+it("keeps the instructor's fix, which is the only part anyone can act on", () => {
+  const v = describeError(fail("runner",
+    "could not start your drone box: runner image drone-life-runner:latest is not "
+    + "built — instructor: run `make image`", 503), "submit");
+  expect(v.text).toContain("make image");
+  expect(v.text).not.toContain("drone-life-runner:latest"); // still no server noise
+});
+
+it("does not leak a python exception even when a fix is appended", () => {
+  const v = describeError(fail("runner",
+    "could not start your drone box: podman could not be run ([Errno 2] No such file "
+    + "or directory) — instructor: run `make preflight`", 503), "submit");
+  expect(v.text).not.toContain("Errno");
+  expect(v.text).toContain("make preflight");
+});
+
 it("offers a way back in when the session expired", () => {
   const v = describeError(fail("auth", "join first (bad or missing token)", 401),
     "submit");
@@ -40,6 +56,15 @@ it("blames the class, not the student, for the join rate limit", () => {
   const v = describeError(fail("rate", "too many join attempts; wait a minute", 429),
     "join");
   expect(v.text).toContain("whole class");
+  expect(v.actions.map((a) => a.kind)).toContain("retry");
+});
+
+it("tells a student pressing Run too fast that it is their own doing", () => {
+  // the same code, the other limiter: submitting is capped per student
+  const v = describeError(fail("rate", "submitting too fast — wait a few seconds", 429),
+    "submit");
+  expect(v.text).not.toContain("whole class");
+  expect(v.text).toContain("Run too fast");
   expect(v.actions.map((a) => a.kind)).toContain("retry");
 });
 

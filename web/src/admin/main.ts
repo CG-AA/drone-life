@@ -73,8 +73,13 @@ async function poll(): Promise<void> {
 function renderRoster(roster: RosterStudent[]): void {
   const now = Date.now();
   ages = updateAges(ages, roster, now);
-  const students = orderRoster(roster, ages, now);
   const body = $("roster-body");
+  // "really kill?" is armed on the button element, and this rebuilds every row
+  // from scratch — redrawing now would disarm it under the instructor's second
+  // click, which at a 3 s poll is most of the time. It disarms itself after
+  // 3 s; the next poll redraws then. Ages keep advancing meanwhile.
+  if (body.querySelector("button.confirm") !== null) return;
+  const students = orderRoster(roster, ages, now);
   body.textContent = "";
   if (students.length === 0) {
     const td = document.createElement("td");

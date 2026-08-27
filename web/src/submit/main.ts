@@ -301,7 +301,7 @@ if (localStorage.getItem(TOKEN_KEY) && saved?.student_id) {
     // status first: it decides whether the stored token is still worth using,
     // and seeds the log cursor so the socket's replay doesn't double-print
     if (await restore()) await enter(student.student_id, student.name);
-  })();
+  })().catch(() => showJoin("could not restore your session — join again"));
 } else {
   showJoin();
 }
