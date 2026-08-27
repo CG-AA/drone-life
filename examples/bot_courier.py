@@ -27,6 +27,8 @@ def scan() -> None:
             carrying = True
         if "delivered" in ev:
             carrying = False
+        if "crate lost" in ev:
+            carrying = False  # crashed with it: the game says so, believe it
         m = re.search(r"crate (\d+) taken", ev)
         if m:
             crates.pop(m.group(1), None)

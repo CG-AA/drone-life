@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
@@ -41,6 +42,14 @@ class Settings(BaseSettings):
     join_rate_limit_per_minute: int = 30  # per IP, guards room-code guessing
     submit_rate_limit_per_minute: int = 10  # per student, guards container churn
 
+    @field_validator("room_code", "admin_token")
+    @classmethod
+    def _strip_secret(cls, v: str) -> str:
+        """A systemd EnvironmentFile does not trim, and every client-side compare
+        strips what the browser sent — so `ROOM_CODE=abc ` would 403 the whole
+        class while the startup guard and preflight both saw a real value."""
+        return v.strip()
+
     @property
     def abs_state_dir(self) -> Path:
         return self.state_dir if self.state_dir.is_absolute() else SERVER_DIR / self.state_dir
@@ -54,12 +63,13 @@ def check_secrets(settings: Settings) -> str | None:
     """Refusal message when the access-control secrets are placeholders, else None.
 
     Empty is worse than the default: a blank ROOM_CODE matches a blank submission,
-    so anyone gets in. Called from the lifespan — see main.py.
+    so anyone gets in (Settings strips both, so whitespace is empty). Called from
+    the lifespan — see main.py, and from preflight so both agree.
     """
     bad = []
-    if not settings.room_code.strip() or settings.room_code == DEFAULT_ROOM_CODE:
+    if not settings.room_code or settings.room_code == DEFAULT_ROOM_CODE:
         bad.append("ROOM_CODE")
-    if not settings.admin_token.strip() or settings.admin_token == DEFAULT_ADMIN_TOKEN:
+    if not settings.admin_token or settings.admin_token == DEFAULT_ADMIN_TOKEN:
         bad.append("ADMIN_TOKEN")
     if not bad or settings.allow_default_secrets:
         return None

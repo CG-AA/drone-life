@@ -14,12 +14,29 @@ from .mission import SEV_INFO, Entity, Mission, MissionConfig
 
 log = logging.getLogger(__name__)
 
+ERROR_EMIT_EVERY = 30.0  # the feed ring is 200-deep; a 10 Hz bug must not flood it
+MILESTONE_EVERY = 100  # team-score marks worth a feed celebration
+
 # lifecycle events worth showing the whole class
 _FEED_WORTHY = {
     "crashed": "{name} crashed!",
     "respawned": "{name} is back on their pad",
     "orphan_rtl": "{name}'s script ended — drone flying home",
 }
+
+
+def milestone_crossed(prev: int, points: int, total: int) -> int | None:
+    """The century mark to celebrate, or None. Upward crossings only, so a dip
+    (siege's keep falling) never celebrates — and neither does climbing back out
+    of the red, where floor division would otherwise "pass 0 points".
+    Shared with tests/support/harness.py: one rule, one place.
+    """
+    if points <= 0:
+        return None
+    mark = total // MILESTONE_EVERY * MILESTONE_EVERY
+    if mark <= 0 or max(prev, 0) // MILESTONE_EVERY >= total // MILESTONE_EVERY:
+        return None
+    return mark
 
 
 class _API:
@@ -45,10 +62,8 @@ class _API:
         total = self._engine.score
         self._engine.bus.emit("score", f"{points:+d}: {reason}", student_id=student_id,
                               data={"points": points, "total": total}, t=self.now)
-        # upward century crossings get a celebration line on the projector;
-        # a mark re-earned after a dip (siege's keep) celebrates again
-        if points > 0 and prev // MILESTONE_EVERY < total // MILESTONE_EVERY:
-            mark = total // MILESTONE_EVERY * MILESTONE_EVERY
+        mark = milestone_crossed(prev, points, total)
+        if mark is not None:
             self._engine.bus.emit("milestone", f"team passes {mark} points!",
                                   data={"total": total}, t=self.now)
         return total
@@ -59,10 +74,6 @@ class _API:
     def broadcast_text(self, text: str, severity: int = SEV_INFO) -> None:
         for view in self._views:
             self._engine.backend.send_text(view.id, text, severity)
-
-
-ERROR_EMIT_EVERY = 30.0  # the feed ring is 200-deep; a 10 Hz bug must not flood it
-MILESTONE_EVERY = 100  # team-score marks worth a feed celebration
 
 
 class GameEngine:

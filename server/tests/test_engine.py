@@ -114,6 +114,27 @@ def test_milestone_never_fires_on_a_loss():
     assert len(milestones(engine)) == 1, "losses never celebrate"
 
 
+def test_climbing_out_of_the_red_is_not_a_milestone():
+    """Siege can drive the team negative (the keep is -25 each fall). Floor
+    division put the first point back in the black at "team passes 0 points!" —
+    a celebration for being broke."""
+    engine = make_engine(QuietMission())
+    engine.api.add_score(-25, "keep fell")
+    engine.api.add_score(2, "creep down")  # -23: still red, still crossing 0//100
+    assert milestones(engine) == []
+    engine.api.add_score(30, "wave clear")  # +7: black, but nowhere near 100
+    assert milestones(engine) == []
+    engine.api.add_score(95, "long haul")  # 102: the real first century
+    assert [ev["msg"] for ev in milestones(engine)] == ["team passes 100 points!"]
+
+
+def test_deep_in_the_red_a_gain_that_stays_red_never_celebrates():
+    engine = make_engine(QuietMission())
+    engine.api.add_score(-150, "a bad round")
+    engine.api.add_score(100, "recovery")  # -50: crosses -100//100, still a loss
+    assert milestones(engine) == []
+
+
 def test_milestone_recelebrates_a_recrossed_mark():
     engine = make_engine(QuietMission())
     engine.api.add_score(105, "head start")

@@ -23,8 +23,10 @@ export class GameSocket {
   private closed = false;
 
   onStatus: (up: boolean) => void = () => {};
-  /** Called when the server refuses the connection (bad code/token). */
-  onRejected: (code: number) => void = () => {};
+  /** Called when the server refuses the connection (bad code/token). Takes no
+   * code: the refusal happens before the upgrade is accepted, so the browser
+   * only ever reports 1006 — verify() is what actually tells us. */
+  onRejected: () => void = () => {};
   /** Asked when a socket dies before it ever opened. The server refuses a bad
    * code or token *before* accepting the upgrade, so the browser reports a
    * failed handshake — no close code survives that, and 1006 alone can't tell
@@ -75,20 +77,25 @@ export class GameSocket {
       if (!msg) return;
       this.handlers.get(msg.type)?.(msg.data as never, msg.t);
     };
-    sock.onclose = (ev) => {
+    sock.onclose = () => {
       if (this.ws !== sock) return;
       window.clearInterval(this.pingTimer);
       window.clearInterval(this.watchdogTimer);
-      this.onStatus(false);
-      if (ev.code === 4401 || ev.code === 4403) {
-        this.onRejected(ev.code);
-        return;
-      }
+      // a close we asked for is not a connection the page lost: telling the
+      // caller "down" here leaves a stale banner over a healthy replacement
       if (this.closed) return;
+      this.onStatus(false);
       const retry = (): void => {
-        if (this.closed || this.ws !== sock) return;
-        window.setTimeout(() => this.connect(), this.backoff);
+        const delay = this.backoff;
         this.backoff = Math.min(this.backoff * 1.7, 5000);
+        // the guard has to run when the timer FIRES, not when it is set:
+        // close() during the wait must not be undone by a late wakeup, and
+        // connect() clears `closed`, so a zombie would reconnect with a dead
+        // credential and never stop trying
+        window.setTimeout(() => {
+          if (this.closed || this.ws !== sock) return;
+          this.connect();
+        }, delay);
       };
       if (opened || !this.verify) {
         retry();
@@ -96,7 +103,7 @@ export class GameSocket {
       }
       // a handshake that never opened may be a refusal wearing 1006; ask
       void this.verify().then(
-        (rejected) => rejected ? this.onRejected(ev.code) : retry(),
+        (rejected) => rejected ? this.onRejected() : retry(),
         () => retry(), // couldn't ask: assume the server, not the credential
       );
     };

@@ -119,3 +119,19 @@ async def test_a_dead_driver_is_never_reported_healthy(service):
 
     health = service.health()
     assert health["driver_alive"] is False and health["ok"] is False
+
+
+def test_every_run_end_reason_the_projector_can_meet_has_a_phrase():
+    """service.EXIT_PHRASE is a third copy of manager.END_REASONS (the web's
+    END_LABEL is the second, pinned by ui.test.ts). The two deliberate
+    omissions are the whole point of the check — anything else is a feed line
+    reading "exited (code None)".
+    """
+    from app.runner.manager import END_REASONS
+    from app.service import EXIT_PHRASE
+
+    # "error" renders its exit code (the student's debugging handle); a
+    # "replaced" run never reaches the feed — service returns before it.
+    unphrased = set(END_REASONS) - set(EXIT_PHRASE)
+    assert unphrased == {"error", "replaced"}
+    assert set(EXIT_PHRASE) <= set(END_REASONS)

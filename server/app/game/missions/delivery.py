@@ -38,7 +38,7 @@ SPAWN_MARGIN = 15.0  # keep away from arena walls
 DROPOFF_CELL: Axial = (0, 0)
 DROPOFF = hex.axial_to_world(DROPOFF_CELL)
 
-FULL_SAY = "GAME: hands full, drop at N 0 E 0"
+FULL_SAY = f"GAME: hands full, drop at {fmt_world(*DROPOFF)}"
 EMPTY_SAY = "GAME: no crate! grab one first"
 LOST_SAY = "GAME: crate lost, grab another"
 EMPTY_HINT_SUSTAIN = 3.0  # generous: a fresh deliverer lingering isn't nagged
@@ -94,10 +94,16 @@ class DeliveryMission(Mission):
         self.setup(world)
 
     def _desired(self, world: WorldAPI) -> int:
-        """Crate population scales with the room: enough that a full class is
+        """Grabbable crates scale with the room: enough that a full class is
         never starved, few enough that a rehearsal with 3 bots feels the same."""
         pilots = sum(1 for d in world.drones() if d.connected)
         return min(CRATE_MAX, max(CRATE_COUNT, math.ceil(pilots / PILOTS_PER_CRATE)))
+
+    def _on_ground(self) -> int:
+        """Only a crate nobody is carrying can be flown to. Counting the whole
+        population starved a full class: at 20 pilots the target is 7, and once
+        7 were in the air nothing on the ground was ever topped up."""
+        return sum(1 for c in self.crates.values() if c.carried_by is None)
 
     def _spawn_crate(self, world: WorldAPI) -> None:
         half = world.config.arena_half - SPAWN_MARGIN
@@ -136,7 +142,7 @@ class DeliveryMission(Mission):
         drones = {d.id: d for d in world.drones()}
 
         # the room grew: top up toward the scaled target, one crate at a time
-        if (len(self.crates) < self._desired(world)
+        if (self._on_ground() < self._desired(world)
                 and world.now - self.last_spawn >= SPAWN_STAGGER_S):
             self._spawn_crate(world)
 
@@ -146,7 +152,7 @@ class DeliveryMission(Mission):
                 self._announce(world, crate)
 
         # carrier crashed or vanished before delivering: a fresh crate spawns
-        # (unless the room shrank and we're above target — then it drains)
+        # (unless the ground is already at the room's target)
         for drone_id, crate_id in self.carry.sync_losses(drones.values()):
             lost = self.crates.pop(crate_id, None)
             if lost is None:
@@ -157,7 +163,7 @@ class DeliveryMission(Mission):
                              student_id=d.student_id if d else None)
             if d is not None:
                 world.send_text(d.id, LOST_SAY)
-            if len(self.crates) < self._desired(world):
+            if self._on_ground() < self._desired(world):
                 self._spawn_crate(world)
 
         # ground crates: hover low + dwell to pick up (one crate per drone)
@@ -173,7 +179,9 @@ class DeliveryMission(Mission):
                 self.carry.give(winner.id, crate.id)
                 world.emit_event("pickup", f"{winner.name} picked up crate {crate.id}",
                                  student_id=winner.student_id)
-                world.send_text(winner.id, f"GAME: got crate {crate.id}! drop at N 0 E 0")
+                world.send_text(winner.id,
+                                f"GAME: got crate {crate.id}! "
+                                f"drop at {fmt_world(*DROPOFF)}")
                 world.broadcast_text(f"GAME: crate {crate.id} taken")
 
         # the dropoff runs one dwell for whoever is carrying
@@ -190,7 +198,7 @@ class DeliveryMission(Mission):
                                  f"{winner.name} delivered crate {delivered.id}! +{POINTS}",
                                  student_id=winner.student_id, data={"points": POINTS})
                 world.send_text(winner.id, f"GAME: delivered! +{POINTS} (team {total})")
-                if len(self.crates) < self._desired(world):
+                if self._on_ground() < self._desired(world):
                     self._spawn_crate(world)
 
     # -------------------------------------------------------------- viewer

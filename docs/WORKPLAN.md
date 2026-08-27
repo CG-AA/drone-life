@@ -1,6 +1,9 @@
 # Workshop work plan — tracks, worktrees, tasks
 
 Disposable planning doc for the final days before the workshop. Delete after.
+**Status: all four tracks merged (PRs #7–#10, 2026-08-27). What the converge
+review found still open is at the bottom — that list is the only reason this
+file is still here.**
 
 ## The layout: four worktrees, four track branches
 
@@ -156,3 +159,45 @@ The judgment-heavy track — keep this one for yourself.
 Security, realworld, and frontend tasks above are specified tightly enough
 to hand to someone else (or a Claude session per worktree) verbatim.
 Gameplay needs your taste and a rehearsal loop — that's the focus track.
+
+---
+
+## Convergence status — 2026-08-27
+
+All four track branches are merged. A review across the merge fixed what the
+lanes could not see from inside their own worktree: a viewer that read a
+rate-limit as a wrong room code, a Stop button that painted the student red, a
+kill-confirm the roster poll disarmed, a socket that reconnected itself after
+being closed, a preflight that passed a config the server refuses, a podman
+failure reported as a missing image, a milestone that celebrated "0 points",
+crate supply that counted crates nobody could reach, and a student handout
+full of coordinates the game never says.
+
+### Still open (needs the lab server or a call, not a patch)
+
+- **T1.2 X-Forwarded-For** — the design shipped as docs + a systemd comment;
+  no code keys on it. `FORWARDED_ALLOW_IPS` is now checked by `make preflight`
+  and called out in DEPLOY, which closes the silent-misconfiguration half.
+- **T2.2 failure drills** — the runbook table exists; the drills themselves
+  (kill podman mid-run, kill the server mid-class, yank the network) have no
+  recorded run. The `XDG_RUNTIME_DIR` bug is evidence one drill happened and
+  found something.
+- **T2.3 `make load LOAD_BOTS=20`** — never run on the lab hardware.
+- **T3.2 delivery balance** — the numbers in SESSION_PLAN §9 have no
+  reproducible artifact: `make load` flies `bot_patrol` and measures overruns,
+  not delivery throughput.
+- **T3.7 siege tuning** — the rehearsal (8 bots, 3.5 min) never reached wave 7,
+  which the plan itself names as where the difficulty question starts. Siege is
+  115 of the day's 240 minutes.
+- **Hint coverage** — "not over the crate" (low but off-target) and siege's
+  "too high over a creep" are still silent. A judgment call about how much the
+  game should nag, not a bug.
+- **Ownership map** — breached three times (security twice into `ws.py`,
+  frontend once into `viewer/entities/`). No damage; the merge resolution
+  dropped realworld's `ws.py` work in favour of security's, deliberately.
+
+### Deliberately not adopted
+
+`--network none` sandboxes (branch `claude/lattice-pads-depth-sort`, since
+deleted). The threat model's outbound-internet decision in `docs/DEPLOY.md`
+stands as written for this workshop.
