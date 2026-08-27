@@ -28,11 +28,15 @@ cd web && npm ci && npm run build && cd ..
 # 4. the sandbox image
 make image
 
-# 5. config
+# 5. config — the server refuses to start on the placeholder values, so fill
+#    these in for real (ADMIN_TOKEN: `openssl rand -base64 24`)
 sudo tee /etc/drone-life.env <<'EOF'
 ROOM_CODE=pick-something-short
 ADMIN_TOKEN=long-random-string
 MISSION=delivery
+# the OCI VM's address as the lab server sees it — without this every student
+# shares one rate-limit bucket; see "OCI VM reverse proxy" below
+FORWARDED_ALLOW_IPS=10.0.0.5
 EOF
 sudo chmod 600 /etc/drone-life.env
 ```
@@ -60,7 +64,21 @@ target and the systemd unit).
 | `RUN_MAX_SECONDS` | `900` | wall-clock cap per script run |
 | `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`) |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
-| `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts, guards room-code guessing |
+| `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |
+| `SUBMIT_RATE_LIMIT_PER_MINUTE` | `10` | per-student script submissions, guards container churn |
+| `ALLOW_DEFAULT_SECRETS` | `false` | dev only: boot on the placeholder `ROOM_CODE`/`ADMIN_TOKEN` |
+
+One variable in `/etc/drone-life.env` is **not** a `config.py` setting:
+`FORWARDED_ALLOW_IPS` is read by uvicorn itself (it is the default for
+`--forwarded-allow-ips`; pydantic ignores it). It is the comma-separated list
+of peers whose `X-Forwarded-For` header is believed — IPs or CIDRs, defaulting
+to `127.0.0.1`. Set it to the proxy's address, never to `*`.
+
+The server **refuses to start** when `ROOM_CODE` or `ADMIN_TOKEN` is still the
+placeholder (`classroom` / `change-me`) or is empty — uvicorn aborts with the
+reason on stderr and exits non-zero, so a misconfigured unit fails loudly at
+`systemctl start` instead of quietly serving an open room. `make dev-server`
+sets `ALLOW_DEFAULT_SECRETS=1`; `make run` deliberately does not.
 
 ## systemd
 
@@ -105,6 +123,20 @@ server {
 
 Lab-server firewall: allow 8000 **only** from the OCI VM's address.
 
+**Pair that firewall rule with `FORWARDED_ALLOW_IPS`** (`/etc/drone-life.env`,
+same address). `--proxy-headers` is already on in the systemd unit, but uvicorn
+only believes `X-Forwarded-For` from peers in that list — default `127.0.0.1`,
+which the proxy is not. Until it is set, every request looks like it came from
+the proxy, so the per-IP join limit becomes one *class-wide* bucket and a single
+prankster hitting the join endpoint locks the whole room out. The firewall rule
+is what makes trusting the header safe: nobody else can reach port 8000 to
+forge one.
+
+Residual risk worth knowing: if the whole class sits behind one school NAT,
+even a correct `X-Forwarded-For` shows one address for everyone. Raise the
+ceiling for the day (`JOIN_RATE_LIMIT_PER_MINUTE=120` in the env file) rather
+than keying the limiter on anything else a client can set.
+
 ## Workshop-day runbook
 
 ```bash
@@ -133,6 +165,8 @@ skips the container run when you only want the fast checks.
 - Between class sessions: `make reset` (kills all scripts, respawns drones,
   fresh crates + score). `server/state/` keeps the roster across restarts —
   delete it for a completely fresh class.
+- Minute-by-minute session plan (mission order, transitions, bots, balance
+  knobs): `docs/SESSION_PLAN.md`.
 
 ## When things break
 
@@ -201,10 +235,66 @@ Footguns:
 
 ## Threat model notes
 
-- Student code runs in rootless podman: no caps, read-only rootfs, 256 MB /
-  0.5 CPU / 64 pids, 15 min wall cap, only mount is their own script (ro).
-- `allow_host_loopback` means containers can reach host loopback *ports* —
-  i.e. other drones' MAVLink and the API. Accepted for a supervised classroom:
-  the API requires tokens, MAVLink "hijacking" another drone is visible on the
-  projector, and the room code gates joining at all.
-- Join endpoint is rate-limited per IP against room-code guessing.
+The setting is a supervised classroom on a lab server, reachable from the
+internet through the OCI VM. The adversary we design for is a bored student
+with a Python prompt, not a targeted attacker — but the box is internet-facing,
+so the boundaries below are the ones that must actually hold.
+
+**The sandbox.** Student code runs in rootless podman: all capabilities
+dropped, `no-new-privileges`, read-only rootfs with only a 16 MB `/tmp`,
+256 MB / 0.5 CPU / 64 pids, a 15 min wall cap, non-root uid, and the only
+mount is their own script (read-only, 0644). `container_argv` holds that
+policy in one function; `tests/test_podman_argv.py` pins every flag and
+`tests/test_e2e_sandbox.py` verifies from inside a real container that the
+flags actually take effect.
+
+**Containers reach host loopback — accepted.** `allow_host_loopback` is how a
+script reaches its drone's MAVLink port, but it exposes *every* loopback port
+on the lab box, including other students' drones and the API. Accepted for a
+supervised classroom: the API needs tokens, the room code gates joining, and
+flying someone else's drone is instantly visible on the projector. Do not run
+unrelated loopback-only services on this host during the workshop.
+
+**Containers reach the internet — accepted.** slirp4netns NATs the sandbox to
+the whole internet; loopback access is the *addition*, not the limit. A student
+can `pip install --target /tmp`, phone home, or post data outward. Restricting
+it was considered and rejected: `--network=none` breaks the MAVLink connection
+students' scripts are built around, an internal netavark network loses host
+loopback with it, and a host firewall rule keyed on the service uid also cuts
+the server's own egress. What bounds the risk instead: the room is supervised,
+runs are capped at 15 minutes and 0.5 CPU, submissions are rate-limited, and
+each student's latest script sits server-side at
+`state/scripts/<student-id>/current.py` (each submit overwrites it, so it is a
+snapshot of what is running, not an audit trail). If a future deployment needs
+egress blocked, do it in
+the host firewall against the container network, and expect to test it: an
+over-broad rule silently breaks every student's drone connection.
+
+**Secrets.** The server refuses to start on the placeholder or empty
+`ROOM_CODE` / `ADMIN_TOKEN` (`ALLOW_DEFAULT_SECRETS=1` overrides, dev only).
+All secret compares — admin token, room code on join/`/world`/`/ws/viewer`,
+and the student bearer token — are constant-time.
+
+**Rate limits.** Joins are limited per IP, and wrong room codes on `/world` and
+`/ws/viewer` spend the same budget, so none of the three is a free guessing
+oracle. Once an address hits the ceiling those two endpoints refuse *every*
+request from it, including one carrying the right code: answering correct
+codes while declining to charge for wrong ones would leave the guessing
+unbounded, only with a 429 in place of a 403. A correct code costs nothing
+while the address is under its ceiling, so the projector is unaffected.
+This depends on `FORWARDED_ALLOW_IPS` being set (see the proxy section)
+— without it the whole class shares one bucket. Submissions are capped per
+student, and each run's log output is capped at ~50 lines/s to keep a runaway
+`print` loop from drowning the hub. Admin auth is deliberately *not* limited:
+the token is long and random and compared in constant time, and a limiter there
+would mostly hand a prankster behind the shared NAT a way to lock the
+instructor out mid-class.
+
+**WebSocket credentials travel in the URL.** `/ws/viewer?code=` and
+`/ws/student?token=` put the room code and student tokens in query strings,
+where the OCI VM's nginx access log records them. Accepted for a workshop;
+keep those logs private and rotate the room code between classes.
+
+**`/healthz` is unauthenticated** on purpose, so the runbook and any monitor
+can check it. It returns counters only — drones, ticks, overruns, score — no
+names and no tokens.

@@ -71,6 +71,13 @@ STATUSTEXT is 50 chars and students regex it. Every text starts with
 (or `building.fmt_cell(cell)` for cells) — and ends confirmations with `!`.
 Keep the grammar and a parser written for one mission transfers to the next.
 
+The prefix, the length cap, and the position shape are checked on **every**
+text the harness sees (`check_text` runs inside `FakeWorld.send_text` /
+`broadcast_text`), so any tested code path is covered; the trailing-`!`
+clause is style, reviewed by humans. Texts with unbounded interpolations
+(ids, totals) deserve a widest-case `check_text` test — the wire truncates
+silently.
+
 ## Events — register your kinds
 
 Every `emit_event` kind must be listed in `server/app/game/events.py`
@@ -115,6 +122,12 @@ frame **[enforced]**. Kinds in play today, and who renders them
   `tick_ferry(world, drones, carry, sources, dt, FerryTexts(...))` which runs
   the whole standard preamble. See rampart for guided placement, forge for
   free placement.
+- **`building.py` hints** — the dwell trackers skip wrong drones silently;
+  these speak up: `SourceHints` (too-high / hands-full nags at a pickup
+  point), `PlaceHints` (right cell, wrong altitude), composed from
+  `HoverHint` + `HintThrottle` (sustain before speaking, per-drone cooldown).
+  A mission with a pickup point should tick a `SourceHints` next to its
+  `tick_ferry` call — students doing it wrong deserve a next action.
 - **`blueprints.py`** — relative hex patterns that become structures when
   tiles complete them (`ring_blueprint`, `BlueprintTracker`); matching is
   anchored at the placed cell and rotation-invariant. Forge's furnace and

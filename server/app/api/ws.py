@@ -20,6 +20,8 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from .auth import constant_time_eq
+
 log = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -192,10 +194,17 @@ async def _serve(ws: WebSocket, client: Client) -> None:
 @router.websocket("/ws/viewer")
 async def ws_viewer(ws: WebSocket) -> None:
     service = ws.app.state.service
-    if ws.query_params.get("code", "") != service.settings.room_code:
-        # accept first: a close before the handshake reaches the browser as a
-        # bare 1006, so the page can't tell "wrong code" from "server down"
-        await ws.accept()
+    # wrong codes spend the join budget, and once it is gone every connection
+    # from that address is refused — including one bearing the right code, so
+    # guessing here cannot outlive the ceiling (see routes_public.world)
+    ip = ws.client.host if ws.client else "?"
+    limiter = ws.app.state.join_limiter
+    code = ws.query_params.get("code", "").strip()
+    if limiter.blocked(ip):
+        await ws.close(code=4403)
+        return
+    if not constant_time_eq(code, service.settings.room_code):
+        limiter.allow(ip)
         await ws.close(code=4403)
         return
     await ws.accept()
@@ -207,7 +216,6 @@ async def ws_student(ws: WebSocket) -> None:
     service = ws.app.state.service
     student = service.registry.by_token(ws.query_params.get("token", ""))
     if student is None:
-        await ws.accept()  # so the page sees 4401 and re-joins, not a silent retry loop
         await ws.close(code=4401)
         return
     await ws.accept()

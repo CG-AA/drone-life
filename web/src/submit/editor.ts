@@ -1,8 +1,10 @@
 /** CodeMirror 6 python editor. */
 
 import { python } from "@codemirror/lang-python";
+import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, basicSetup } from "codemirror";
+import { diagnosticRange } from "./position";
 
 const DRAFT_KEY = "dl_draft";
 
@@ -17,6 +19,7 @@ export class Editor {
         basicSetup,
         python(),
         oneDark,
+        lintGutter(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             try {
@@ -38,6 +41,7 @@ export class Editor {
     this.view.dispatch({
       changes: { from: 0, to: this.view.state.doc.length, insert: code },
     });
+    this.clearDiagnostics(); // the marked position belonged to the old text
   }
 
   get isEmpty(): boolean {
@@ -52,5 +56,20 @@ export class Editor {
       scrollIntoView: true,
     });
     this.view.focus();
+  }
+
+  /** Mark where the parser gave up and put the cursor there. The marker
+   * outlives the banner, so a student who scrolls away can still find it. */
+  showSyntaxError(line: number, col: number, msg: string): void {
+    const range = diagnosticRange(this.view.state.doc, line, col);
+    this.view.dispatch(setDiagnostics(this.view.state, [
+      { from: range.from, to: range.to, severity: "error", message: msg },
+    ]));
+    this.view.dispatch({ selection: { anchor: range.from }, scrollIntoView: true });
+    this.view.focus();
+  }
+
+  clearDiagnostics(): void {
+    this.view.dispatch(setDiagnostics(this.view.state, []));
   }
 }

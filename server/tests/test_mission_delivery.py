@@ -1,14 +1,28 @@
 """Delivery mission rules through the WorldAPI seam — no MAVLink, no sim."""
 
+import math
 from dataclasses import replace
+from itertools import pairwise
 
+from app.game import hex
+from app.game.building import HINT_EVERY, HINT_SUSTAIN, TOO_HIGH_SAY
+from app.game.mission import MissionConfig
 from app.game.missions.delivery import (
+    CRATE_COUNT,
+    CRATE_MAX,
     DROP_DWELL,
+    EMPTY_HINT_SUSTAIN,
+    EMPTY_SAY,
+    FULL_SAY,
+    LOST_SAY,
+    MIN_SPAWN_DIST,
     PICKUP_DWELL,
+    PILOTS_PER_CRATE,
     POINTS,
+    SPAWN_STAGGER_S,
     DeliveryMission,
 )
-from tests.support.harness import FakeWorld, view
+from tests.support.harness import FakeWorld, check_text, view
 
 
 def make() -> tuple[DeliveryMission, FakeWorld]:
@@ -90,3 +104,137 @@ def test_reset_clears_and_respawns():
     mission.reset(world)
     assert set(mission.crates) == {"1", "2", "3"}, "crate numbering restarts"
     assert mission.next_id == 4
+
+
+# --------------------------------------------------- roster-scaled crate flow
+
+def crowd(count: int) -> list:
+    """Connected pilots parked well away from crates: on the pad row, too
+    high to trigger any dwell."""
+    return [view(f"d{i}", n=-90.0, e=float(3 * i), alt=10.0) for i in range(count)]
+
+
+def test_crate_count_scales_with_pilots_staggered():
+    mission, world = make()
+    world.views = crowd(4 * PILOTS_PER_CRATE)  # target: 4 crates
+    world.run(mission, 10 * SPAWN_STAGGER_S)
+    assert len(mission.crates) == 4
+    spawns = [ev["t"] for ev in world.events
+              if ev["kind"] == "crate_spawn" and ev["t"] > 0]  # setup batch excluded
+    gaps = [b - a for a, b in pairwise(spawns)]
+    assert all(g >= SPAWN_STAGGER_S - 0.101 for g in gaps), gaps
+
+
+def test_crate_count_capped():
+    mission, world = make()
+    world.views = crowd(30)
+    world.run(mission, 30 * SPAWN_STAGGER_S)
+    assert len(mission.crates) == CRATE_MAX
+
+
+def test_crate_count_drains_when_pilots_leave():
+    mission, world = make()
+    world.views = crowd(4 * PILOTS_PER_CRATE)
+    world.run(mission, 10 * SPAWN_STAGGER_S)
+    assert len(mission.crates) == 4
+    crate = next(iter(mission.crates.values()))
+    world.views = [view(n=crate.n, e=crate.e, alt=1.5)]  # the room emptied
+    world.run(mission, PICKUP_DWELL + 0.3)
+    assert crate.carried_by == "d0"
+    world.views = [replace(view(n=crate.n, e=crate.e), crashed=True, armed=False)]
+    world.run(mission, 4 * SPAWN_STAGGER_S)
+    assert len(mission.crates) == CRATE_COUNT, "no respawn above the shrunk target"
+
+
+def test_spawn_keeps_min_dist_with_full_pad_row():
+    mission = DeliveryMission()
+    world = FakeWorld()
+    world.config = MissionConfig(arena_half=100, alt_max=60,
+                                 pads=[hex.pad_cell(i) for i in range(20)])
+    world.start(mission)
+    world.views = crowd(3 * CRATE_MAX)
+    world.run(mission, (CRATE_MAX + 2) * SPAWN_STAGGER_S)
+    assert len(mission.crates) == CRATE_MAX
+    keep_away = [(0.0, 0.0), *world.config.pad_positions()]
+    crates = list(mission.crates.values())
+    for i, c in enumerate(crates):
+        others = [(o.n, o.e) for o in crates[:i]] + keep_away
+        assert all(math.hypot(c.n - n, c.e - e) >= MIN_SPAWN_DIST - 1e-9
+                   for n, e in others), f"crate {c.id} spawned too close"
+
+
+def test_spawn_under_pressure_picks_the_most_isolated_sample():
+    # an arena so tight that no sample can honor MIN_SPAWN_DIST: the sampler
+    # must fall back to the best draw seen, not whatever came 200th
+    mission = DeliveryMission()
+    world = FakeWorld()
+    world.config = MissionConfig(arena_half=18, alt_max=60, pads=[hex.pad_cell(0)])
+    world.start(mission)
+    assert len(mission.crates) == CRATE_COUNT
+    first = mission.crates["1"]
+    # spawn box is ±3 around the dropoff; the best of 200 draws is far out in
+    # the corner — a "last sample wins" fallback lands anywhere, often < 2 m
+    assert math.hypot(first.n, first.e) >= 3.0
+
+
+def test_worst_case_texts_fit_the_wire():
+    # crate ids are unbounded within a session and the sim truncates at 50
+    # chars silently — pin the formats at their widest
+    check_text("GAME: crate 9999 at N -100 E -100")
+    check_text("GAME: got crate 9999! drop at N 0 E 0")
+    check_text("GAME: crate 9999 taken")
+    check_text(f"GAME: delivered! +{POINTS} (team 100000)")
+
+
+# ------------------------------------------------------------------- hints
+
+def test_too_high_over_crate_hints_and_throttles():
+    mission, world = make()
+    crate = next(iter(mission.crates.values()))
+    world.views = [view(n=crate.n, e=crate.e, alt=10.0)]  # hovering, too high
+    world.run(mission, 25)
+    nags = [t for target, t in world.texts if target == "d0" and t == TOO_HIGH_SAY]
+    assert nags, "a sustained too-high hover must be told what to fix"
+    assert 1 <= len(nags) <= 1 + 25 // HINT_EVERY, "nag paced, not per-tick"
+
+
+def test_hands_full_over_a_crate_hints():
+    mission, world = make()
+    crates = list(mission.crates.values())
+    first, second = crates[0], crates[1]
+    world.views = [view(n=first.n, e=first.e, alt=1.5)]
+    world.run(mission, PICKUP_DWELL + 0.3)
+    assert first.carried_by == "d0"
+    world.views = [view(n=second.n, e=second.e, alt=1.5)]  # greedy: try another
+    world.run(mission, HINT_SUSTAIN + 0.3)
+    assert ("d0", FULL_SAY) in world.texts
+
+
+def test_empty_handed_at_dropoff_hints():
+    mission, world = make()
+    world.views = [view(n=0.0, e=0.0, alt=1.5)]
+    world.run(mission, EMPTY_HINT_SUSTAIN + 0.3)
+    assert ("d0", EMPTY_SAY) in world.texts
+
+
+def test_fresh_deliverer_is_not_nagged():
+    mission, world = make()
+    crate = next(iter(mission.crates.values()))
+    world.views = [view(n=crate.n, e=crate.e, alt=1.5)]
+    world.run(mission, PICKUP_DWELL + 0.3)
+    world.views = [view(n=0.0, e=0.0, alt=1.5)]
+    world.run(mission, DROP_DWELL + 0.3)
+    assert world.score == POINTS
+    world.run(mission, 2.0)  # linger a moment after delivering
+    assert ("d0", EMPTY_SAY) not in world.texts
+
+
+def test_carrier_crash_texts_the_loser():
+    mission, world = make()
+    crate = next(iter(mission.crates.values()))
+    world.views = [view(n=crate.n, e=crate.e, alt=1.5)]
+    world.run(mission, PICKUP_DWELL + 0.3)
+    assert crate.carried_by == "d0"
+    world.views = [replace(view(n=crate.n, e=crate.e), crashed=True, armed=False)]
+    world.run(mission, 0.2)
+    assert ("d0", LOST_SAY) in world.texts

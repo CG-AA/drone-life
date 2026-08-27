@@ -25,6 +25,13 @@ PLACE_DWELL = 1.5  # s hovering over one cell, inside its height window
 PLACE_CLEAR = 0.4  # m a drone must clear a new stack top by (also the crush rule)
 PLACE_WINDOW = 3.0  # m above the new stack top where placing works
 
+HINT_SUSTAIN = 1.5  # s of sustained wrongness before a hint speaks
+HINT_EVERY = 10.0  # s per drone per hint kind (cf. siege's TARGET_EVERY)
+# one phrasing everywhere a low hover is required — students learn it once
+TOO_HIGH_SAY = f"GAME: too high, get under {round(PICKUP_ALT)} m"
+STUCK_SPEED = 0.7  # m/s: slower than this horizontally = trying to hover
+STUCK_S = 2.0  # s hovering outside the band before the altitude hint
+
 _EPS = 1e-9  # dt accumulates in floats; N*dt may land a hair under N*dt exactly
 
 
@@ -68,6 +75,118 @@ class DwellTracker:
 
 def _pickup_dwell() -> DwellTracker:
     return DwellTracker(PICKUP_RADIUS, PICKUP_ALT, PICKUP_DWELL)
+
+
+# ------------------------------------------------------------------- hints
+# The dwell trackers silently skip a drone that is too high or ineligible —
+# correct mechanics, invisible to the student doing it wrong. These speak up.
+
+@dataclass
+class HintThrottle:
+    """Per-key cooldown so a hint nags, at most, every `every` seconds."""
+
+    every: float = HINT_EVERY
+    _last: dict[str, float] = field(default_factory=dict)
+
+    def ready(self, key: str, now: float) -> bool:
+        last = self._last.get(key)
+        if last is not None and now - last < self.every:
+            return False
+        self._last[key] = now
+        return True
+
+    def clear(self) -> None:
+        self._last.clear()
+
+
+class HoverHint:
+    """One nag at one point: a drone matching `wrong` that hovers (n, e) for
+    `sustain` seconds hears `say` — a drone just transiting the circle never
+    does. Throttled per drone through the shared HintThrottle."""
+
+    def __init__(self, radius: float, wrong: Callable[[DroneView], bool],
+                 say: str, kind: str, throttle: HintThrottle,
+                 sustain: float = HINT_SUSTAIN) -> None:
+        self.wrong = wrong
+        self.say = say
+        self.kind = kind
+        self.throttle = throttle
+        self.dwell = DwellTracker(radius, float("inf"), sustain)
+
+    def tick(self, world: WorldAPI, drones: Iterable[DroneView],
+             n: float, e: float, dt: float) -> None:
+        hit = self.dwell.update(drones, n, e, dt, eligible=self.wrong)
+        if hit is not None and self.throttle.ready(f"{self.kind}:{hit.id}", world.now):
+            world.send_text(hit.id, self.say)
+
+    def clear(self) -> None:
+        self.dwell.clear()
+
+
+class PlaceHints:
+    """Carrying, clearly hovering a placeable cell, but outside its altitude
+    band — the top student complaint ("tile won't place"): after STUCK_S,
+    say the altitude that works. The mission's `allowed` rule is deliberately
+    not consulted: descending into the band over a wrong cell surfaces the
+    mission's own refusal text, which is the better teacher."""
+
+    def __init__(self, tm: TileMap, carry: CarrySlots, throttle: HintThrottle) -> None:
+        self.tm = tm
+        self.carry = carry
+        self.throttle = throttle
+        self._acc: dict[str, float] = {}
+
+    def tick(self, world: WorldAPI, drones: Iterable[DroneView], dt: float) -> None:
+        seen: set[str] = set()
+        for d in drones:
+            material = self.carry.item(d.id)
+            if (material is None or not d.armed or d.crashed
+                    or math.hypot(d.vn, d.ve) >= STUCK_SPEED):
+                continue
+            cell = hover_cell(d)
+            low, high = place_window(self.tm, cell)
+            if low <= d.alt <= high or not self.tm.can_place(cell, material)[0]:
+                continue
+            seen.add(d.id)
+            self._acc[d.id] = self._acc.get(d.id, 0.0) + dt
+            if self._acc[d.id] >= STUCK_S - _EPS:
+                self._acc[d.id] = 0.0
+                if self.throttle.ready(f"place:{d.id}", world.now):
+                    world.send_text(
+                        d.id, f"GAME: hover {hover_alt_hint(self.tm, cell)} m to place")
+        for drone_id in list(self._acc):  # condition broke: restart the clock
+            if drone_id not in seen:
+                del self._acc[drone_id]
+
+    def clear(self) -> None:
+        self._acc.clear()
+
+
+class SourceHints:
+    """The two standard nags at a pickup point: hovering it empty-handed but
+    too high, and hovering it low with hands already full."""
+
+    def __init__(self, carry: CarrySlots, full_say: str,
+                 radius: float = PICKUP_RADIUS,
+                 throttle: HintThrottle | None = None) -> None:
+        self.throttle = throttle if throttle is not None else HintThrottle()
+        self.high = HoverHint(
+            radius, lambda d: carry.item(d.id) is None and d.alt > PICKUP_ALT,
+            TOO_HIGH_SAY, "high", self.throttle)
+        self.full = HoverHint(
+            radius, lambda d: carry.item(d.id) is not None and d.alt <= PICKUP_ALT,
+            full_say, "full", self.throttle)
+
+    def tick(self, world: WorldAPI, drones: Iterable[DroneView],
+             n: float, e: float, dt: float) -> None:
+        drones = list(drones)
+        self.high.tick(world, drones, n, e, dt)
+        self.full.tick(world, drones, n, e, dt)
+
+    def clear(self) -> None:
+        self.throttle.clear()
+        self.high.clear()
+        self.full.clear()
 
 
 @dataclass
@@ -254,6 +373,7 @@ class FerryTexts:
     material: str  # feed noun: "steel", "clay"
     lost_say: str  # "GAME: steel lost, grab another"
     got_say: str  # "GAME: got steel, place on the wall"
+    full_say: str  # "GAME: hands full, place on the wall"
 
 
 def tick_ferry(world: WorldAPI, drones: Iterable[DroneView], carry: CarrySlots,

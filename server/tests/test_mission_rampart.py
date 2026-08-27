@@ -3,8 +3,15 @@
 from dataclasses import replace
 
 from app.game import hex
-from app.game.building import PICKUP_DWELL, PLACE_DWELL, hover_alt_hint
+from app.game.building import (
+    HINT_SUSTAIN,
+    PICKUP_DWELL,
+    PLACE_DWELL,
+    TOO_HIGH_SAY,
+    hover_alt_hint,
+)
 from app.game.missions.rampart import (
+    FERRY,
     PLACE_POINTS,
     QUARRY,
     WALL_BONUS,
@@ -105,3 +112,17 @@ def test_reset_rebuilds_the_same_map_object():
     assert mission.tile_map() is tm
     assert mission.built() == 0
     assert mission.carry.item("d0") is None
+
+
+def test_hands_full_at_the_quarry_hints():
+    mission, world = make()
+    pick_up(mission, world)  # d0 now carries steel, still hovering the quarry
+    world.run(mission, HINT_SUSTAIN + 0.3)
+    assert ("d0", FERRY.full_say) in world.texts
+
+
+def test_too_high_at_the_quarry_hints():
+    mission, world = make()
+    world.views = [view(n=QUARRY[0], e=QUARRY[1], alt=12.0)]
+    world.run(mission, HINT_SUSTAIN + 0.3)
+    assert ("d0", TOO_HIGH_SAY) in world.texts

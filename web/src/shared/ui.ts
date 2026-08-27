@@ -4,6 +4,9 @@
 
 import { ApiFailure } from "./http";
 import type { RunState } from "./protocol";
+import { endLabel, pillLabel, runClass } from "./runstate";
+
+export { END_LABEL } from "./runstate";
 
 /** getElementById that throws on a missing id — a typo fails loudly at boot. */
 export function $(id: string): HTMLElement {
@@ -49,13 +52,18 @@ export async function guarded(btn: HTMLButtonElement, action: () => Promise<unkn
   }
 }
 
-/** A freshly created button wired through guarded() — for table rows. */
+/** A freshly created button wired through guarded() — for table rows. Pass
+ * armedLabel to make it a two-step press (see armedConfirm below); rows that
+ * destroy a student's work should. */
 export function actionButton(label: string, action: () => Promise<unknown>,
-                             failMsg: string, onSuccess?: () => void): HTMLButtonElement {
+                             failMsg: string, onSuccess?: () => void,
+                             armedLabel?: string): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.textContent = label;
-  b.addEventListener("click", () => void guarded(b, action, failMsg, onSuccess));
+  const fire = (): void => void guarded(b, action, failMsg, onSuccess);
+  if (armedLabel === undefined) b.addEventListener("click", fire);
+  else armedConfirm(b, armedLabel, fire);
   return b;
 }
 
@@ -85,30 +93,61 @@ export function armedConfirm(btn: HTMLButtonElement, armedLabel: string,
   });
 }
 
-/** Pinned to manager.py's END_REASONS by ui.test.ts — "error" is absent on
- * purpose: it renders its exit code, which is the student's debugging handle. */
-export const END_LABEL: Record<string, string> = {
-  done: "finished",
-  timeout: "timed out",
-  stopped: "stopped",
-  replaced: "replaced",
-  start_failed: "failed to start",
-  runner_failed: "sandbox error",
-};
+/** A destructive press that a stray click cannot reach: the button is
+ * replaced by "type <word>", and only that word fires it. For the actions
+ * whose blast radius is the whole class, where armedConfirm's two clicks are
+ * two clicks in the same place. */
+export function typedConfirm(btn: HTMLButtonElement, word: string,
+                             fire: () => void): void {
+  const box = document.createElement("span");
+  box.className = "typed-confirm hidden";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = `type ${word}`;
+  input.setAttribute("aria-label", `type ${word} to confirm`);
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "cancel";
+  box.append(input, cancel);
+  btn.after(box);
 
-/** Pill text for a run. An exit code alone doesn't say what happened, so prefer
- * the server's reason; "error" and an older server fall back to the code. */
-export function runLabel(rs: RunState | null): string {
-  if (rs === null) return "idle";
-  if (rs.state !== "exited") return rs.state;
-  const label = rs.reason ? END_LABEL[rs.reason] : undefined;
-  if (label) return label;
-  return rs.exit_code === null ? "exited" : `exited (${rs.exit_code})`;
+  const close = (): void => {
+    box.classList.add("hidden");
+    btn.classList.remove("hidden");
+    input.value = "";
+  };
+  cancel.addEventListener("click", close);
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") { close(); return; }
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    if (input.value.trim().toLowerCase() !== word.toLowerCase()) {
+      input.select();
+      return;
+    }
+    close();
+    fire();
+  });
+  btn.addEventListener("click", () => {
+    btn.classList.add("hidden");
+    box.classList.remove("hidden");
+    input.focus();
+  });
 }
 
-/** Render a run state into a .pill element (pill classes live in theme.css). */
-export function runPill(el: HTMLElement, rs: RunState | null): void {
-  el.textContent = runLabel(rs);
-  if (rs === null) el.className = "pill";
-  else el.className = rs.state === "exited" ? "pill exited" : "pill running";
+/** Pill text for a run with no age to show: the live state while it runs, and
+ * why it stopped once it has. */
+export function runLabel(rs: RunState | null): string {
+  const cls = runClass(rs);
+  if (cls === "idle") return "idle";
+  if (cls === "done" || cls === "failed") return endLabel(rs);
+  return cls;
+}
+
+/** Render a run state into a .pill element (pill classes live in theme.css).
+ * With an age, the pill also says how long it has been that way. */
+export function runPill(el: HTMLElement, rs: RunState | null, age?: number): void {
+  const cls = runClass(rs);
+  el.textContent = age === undefined ? runLabel(rs) : pillLabel(rs, age);
+  el.className = cls === "idle" ? "pill" : `pill ${cls}`;
 }

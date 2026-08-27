@@ -14,9 +14,11 @@ LOAD_BOTS ?= 10
 
 .PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load lint lint-fix preflight bots reset clean
 
+# ALLOW_DEFAULT_SECRETS: dev boots on the placeholder room code/admin token above.
+# `make run` deliberately does not set it — production refuses the defaults.
 dev-server:
 	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
-		uv run uvicorn app.main:app --reload --port 8000
+		ALLOW_DEFAULT_SECRETS=1 uv run uvicorn app.main:app --reload --port 8000
 
 dev-web:
 	cd web && npm run dev

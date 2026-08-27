@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hmac
 import time
 from collections import deque
+from collections.abc import Callable
 
 from fastapi import Header, HTTPException, Request
 
@@ -13,6 +15,22 @@ from ..service import DroneLifeService
 
 def err(status: int, code: str, msg: str, **extra) -> HTTPException:
     return HTTPException(status, detail={"code": code, "msg": msg, **extra})
+
+
+def constant_time_eq(a: str, b: str) -> bool:
+    """Timing-safe equality for secrets (room codes, admin tokens).
+
+    The encode matters: compare_digest raises TypeError on non-ASCII str, so a
+    student pasting an accented room code would get a 500 instead of a 403.
+    surrogatepass covers the rest — a JSON body may carry a lone surrogate
+    (`{"room_code": "\\ud800"}`), which plain .encode() refuses.
+    """
+    return hmac.compare_digest(_utf8(a), _utf8(b))
+
+
+def _utf8(value: str) -> bytes:
+    """Bytes for any str a client can send — never raises."""
+    return value.encode("utf-8", "surrogatepass")
 
 
 def get_service(request: Request) -> DroneLifeService:
@@ -28,19 +46,27 @@ def require_student(request: Request, authorization: str = Header("")) -> Studen
 
 
 def require_admin(request: Request, x_admin_token: str = Header("")) -> None:
-    if x_admin_token != request.app.state.service.settings.admin_token:
+    if not constant_time_eq(x_admin_token, request.app.state.service.settings.admin_token):
         raise err(403, "auth", "bad admin token")
 
 
 class RateLimiter:
-    """Tiny sliding-window per-key limiter (join endpoint / room-code guessing)."""
+    """Tiny sliding-window per-key limiter (room-code guessing, submit spam).
 
-    def __init__(self, per_minute: int) -> None:
+    Keys are caller-supplied (client IPs, student ids), so stale ones are swept
+    once a minute — otherwise the dict grows for the life of the process.
+    """
+
+    def __init__(self, per_minute: int, clock: Callable[[], float] = time.monotonic) -> None:
         self.per_minute = per_minute
+        self.clock = clock
         self.hits: dict[str, deque[float]] = {}
+        self._last_sweep = clock()
 
     def allow(self, key: str) -> bool:
-        now = time.monotonic()
+        now = self.clock()
+        if now - self._last_sweep > 60:
+            self._sweep(now)
         window = self.hits.setdefault(key, deque())
         while window and now - window[0] > 60:
             window.popleft()
@@ -48,3 +74,22 @@ class RateLimiter:
             return False
         window.append(now)
         return True
+
+    def blocked(self, key: str) -> bool:
+        """Whether this key is at its ceiling — a peek that spends nothing.
+
+        Lets a caller refuse *every* request from a key that has been guessing,
+        including correct ones: answering correct-vs-wrong while refusing to
+        charge for it would leave the endpoint an oracle with no ceiling at all.
+        """
+        window = self.hits.get(key)
+        if not window:
+            return False
+        now = self.clock()
+        return sum(1 for hit in window if now - hit <= 60) >= self.per_minute
+
+    def _sweep(self, now: float) -> None:
+        self._last_sweep = now
+        stale = [key for key, window in self.hits.items() if not window or now - window[-1] > 60]
+        for key in stale:
+            del self.hits[key]

@@ -1,9 +1,11 @@
-"""WebSocket handshake: a rejection must arrive as its own close code.
+"""WebSocket handshake: a rejection is refused before the upgrade.
 
-Closing before the handshake completes reaches a browser as a plain 1006,
-indistinguishable from a dead server — so the submit page retried a dead
-token forever instead of showing the join form. These tests drive the ASGI
-websocket protocol directly; httpx has no WebSocket transport.
+An unauthorized connection never reaches accept(), so the browser sees a
+failed handshake rather than an open socket — the page tells that apart from
+a dead server with the /world probe in ws.ts (`verify`), not with a close
+code, because no application code survives a handshake that never opened.
+These tests drive the ASGI websocket protocol directly, so they can assert
+the absence of the accept frame; httpx has no WebSocket transport.
 """
 
 import asyncio
@@ -45,19 +47,19 @@ def frames(sent: list[dict]) -> list[dict]:
     return [json.loads(m["text"]) for m in sent if m["type"] == "websocket.send"]
 
 
-async def test_viewer_with_a_bad_room_code_is_accepted_then_closed_4403(tmp_path):
+async def test_viewer_with_a_bad_room_code_is_closed_unaccepted_4403(tmp_path):
     async with running_app(make_settings(tmp_path)) as app:
         sent = await ws_session(app, "/ws/viewer", "code=not-the-code")
 
-    assert [m["type"] for m in sent] == ["websocket.accept", "websocket.close"]
+    assert [m["type"] for m in sent] == ["websocket.close"]
     assert sent[-1]["code"] == 4403
 
 
-async def test_student_with_a_stale_token_is_accepted_then_closed_4401(tmp_path):
+async def test_student_with_a_stale_token_is_closed_unaccepted_4401(tmp_path):
     async with running_app(make_settings(tmp_path)) as app:
         sent = await ws_session(app, "/ws/student", "token=long-expired")
 
-    assert [m["type"] for m in sent] == ["websocket.accept", "websocket.close"]
+    assert [m["type"] for m in sent] == ["websocket.close"]
     assert sent[-1]["code"] == 4401
 
 

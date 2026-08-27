@@ -1,0 +1,51 @@
+"""The startup guard: the server must refuse placeholder access-control secrets."""
+
+import pytest
+
+from app.config import check_secrets
+from app.main import create_app
+from tests.conftest import make_settings
+
+
+def test_real_secrets_pass(tmp_path):
+    assert check_secrets(make_settings(tmp_path)) is None
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({"room_code": "classroom"}, "ROOM_CODE"),
+        ({"admin_token": "change-me"}, "ADMIN_TOKEN"),
+        ({"room_code": ""}, "ROOM_CODE"),
+        ({"admin_token": "   "}, "ADMIN_TOKEN"),
+    ],
+)
+def test_placeholder_and_empty_secrets_refused(tmp_path, overrides, expected):
+    refusal = check_secrets(make_settings(tmp_path, **overrides))
+    assert refusal is not None and expected in refusal
+
+
+def test_both_bad_names_both(tmp_path):
+    refusal = check_secrets(make_settings(tmp_path, room_code="classroom", admin_token="change-me"))
+    assert refusal is not None and "ROOM_CODE" in refusal and "ADMIN_TOKEN" in refusal
+
+
+def test_escape_hatch_allows_defaults(tmp_path):
+    settings = make_settings(
+        tmp_path, room_code="classroom", admin_token="change-me", allow_default_secrets=True
+    )
+    assert check_secrets(settings) is None
+
+
+async def test_lifespan_refuses_default_secrets(tmp_path):
+    """Uvicorn aborts startup when the lifespan raises — that is the loud refusal."""
+    app = create_app(make_settings(tmp_path, room_code="classroom"))
+    with pytest.raises(RuntimeError, match="ROOM_CODE"):
+        async with app.router.lifespan_context(app):
+            pass  # pragma: no cover — bring-up must not get this far
+
+
+async def test_lifespan_starts_with_real_secrets(tmp_path):
+    app = create_app(make_settings(tmp_path))
+    async with app.router.lifespan_context(app):
+        assert app.state.service.world is not None

@@ -6,13 +6,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 
+# placeholders the startup guard refuses to run on — see check_secrets()
+DEFAULT_ROOM_CODE = "classroom"
+DEFAULT_ADMIN_TOKEN = "change-me"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # access control — MUST be overridden for any internet-reachable deploy
-    room_code: str = "classroom"
-    admin_token: str = "change-me"
+    room_code: str = DEFAULT_ROOM_CODE
+    admin_token: str = DEFAULT_ADMIN_TOKEN
+    allow_default_secrets: bool = False  # dev only: boot anyway on the placeholders
 
     # (the HTTP bind address/port are uvicorn CLI flags — see the Makefile)
 
@@ -34,6 +39,7 @@ class Settings(BaseSettings):
     static_dir: Path = Path("../web/dist")
 
     join_rate_limit_per_minute: int = 30  # per IP, guards room-code guessing
+    submit_rate_limit_per_minute: int = 10  # per student, guards container churn
 
     @property
     def abs_state_dir(self) -> Path:
@@ -42,3 +48,22 @@ class Settings(BaseSettings):
     @property
     def abs_static_dir(self) -> Path:
         return self.static_dir if self.static_dir.is_absolute() else SERVER_DIR / self.static_dir
+
+
+def check_secrets(settings: Settings) -> str | None:
+    """Refusal message when the access-control secrets are placeholders, else None.
+
+    Empty is worse than the default: a blank ROOM_CODE matches a blank submission,
+    so anyone gets in. Called from the lifespan — see main.py.
+    """
+    bad = []
+    if not settings.room_code.strip() or settings.room_code == DEFAULT_ROOM_CODE:
+        bad.append("ROOM_CODE")
+    if not settings.admin_token.strip() or settings.admin_token == DEFAULT_ADMIN_TOKEN:
+        bad.append("ADMIN_TOKEN")
+    if not bad or settings.allow_default_secrets:
+        return None
+    return (
+        f"refusing to start: default or empty {' and '.join(bad)} — set real values "
+        "in the environment, or ALLOW_DEFAULT_SECRETS=1 for local dev"
+    )
