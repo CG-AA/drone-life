@@ -8,7 +8,10 @@ Type=simple
 User=dronelife
 WorkingDirectory=/opt/drone-life/server
 EnvironmentFile=/etc/drone-life.env
-# uv installed in the service user's home
+# uv installed in the service user's home.
+# --proxy-headers only believes X-Forwarded-For from peers listed in
+# FORWARDED_ALLOW_IPS (set it in the EnvironmentFile above) — without that the
+# per-IP join limit collapses into one bucket for the whole class.
 ExecStart=/home/dronelife/.local/bin/uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 Restart=on-failure
 RestartSec=3
