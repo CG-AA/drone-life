@@ -7,38 +7,48 @@ construction; student containers reach it through slirp4netns host-loopback
 
 ## One-time setup
 
+Steps 1–2 run as your admin account, steps 3–4 as `dronelife`, step 5 back as
+admin — the prompts below mark the switches.
+
 ```bash
-# 1. a dedicated non-root user
+# 1. a dedicated non-root user (admin account)
 sudo useradd -m dronelife
 sudo loginctl enable-linger dronelife     # rootless podman under systemd needs this
+sudo install -d -o dronelife -g dronelife /opt/drone-life   # dronelife can't mkdir in /opt
 
-# 2. verify rootless podman prerequisites (as dronelife)
-grep dronelife /etc/subuid /etc/subgid    # must have ranges; add with usermod --add-subuids
-podman system migrate                      # once, after any subuid change
-command -v slirp4netns                     # required for the container network mode
+# 2. rootless podman prerequisites (still admin — usermod needs root)
+grep dronelife /etc/subuid /etc/subgid    # must show a range in BOTH files; if not:
+#   sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 dronelife
+command -v slirp4netns                    # required for the container network mode
 
-# 3. code + toolchain
+# 3. code + toolchain (as dronelife)
 sudo -iu dronelife
+podman system migrate                     # once, after any subuid/subgid change
 git clone <repo> /opt/drone-life && cd /opt/drone-life
-curl -LsSf https://astral.sh/uv/install.sh | sh     # uv
+curl -LsSf https://astral.sh/uv/install.sh | sh     # uv → ~/.local/bin
+source ~/.local/bin/env                   # put uv on PATH in this shell
 cd server && uv sync && cd ..
-# node only needed to build the frontend (or build web/dist elsewhere and copy)
+# node ≥ 20, only needed to build the frontend (or build web/dist elsewhere and copy)
 cd web && npm ci && npm run build && cd ..
 
-# 4. the sandbox image
+# 4. the sandbox image (still dronelife — the rootless image store is per-user)
 make image
+exit                                      # back to the admin account
 
-# 5. config — the server refuses to start on the placeholder values, so fill
-#    these in for real (ADMIN_TOKEN: `openssl rand -base64 24`)
-sudo tee /etc/drone-life.env <<'EOF'
-ROOM_CODE=pick-something-short
-ADMIN_TOKEN=long-random-string
+# 5. config. The generated ADMIN_TOKEN is real — keep it. Swap ROOM_CODE for
+#    something students can type from the projector. Don't hand-type either:
+#    the startup guard only rejects the literal defaults (`classroom` /
+#    `change-me`) and empty — any other weak value boots without complaint.
+sudo tee /etc/drone-life.env <<EOF
+ROOM_CODE=$(openssl rand -hex 4)
+ADMIN_TOKEN=$(openssl rand -base64 24)
 MISSION=delivery
 # the OCI VM's address as the lab server sees it — without this every student
 # shares one rate-limit bucket; see "OCI VM reverse proxy" below
 FORWARDED_ALLOW_IPS=10.0.0.5
 EOF
-sudo chmod 600 /etc/drone-life.env
+sudo chown root:dronelife /etc/drone-life.env
+sudo chmod 640 /etc/drone-life.env   # dronelife must read it: preflight sources it
 ```
 
 ## Configuration reference
