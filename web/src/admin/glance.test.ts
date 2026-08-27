@@ -6,7 +6,7 @@ import type { RosterStudent, RunState } from "../shared/protocol";
 import { ageMs, attention, orderRoster, updateAges } from "./glance";
 
 const run = (state: RunState["state"], exit: number | null = null,
-             id = "r1"): RunState => ({ run_id: id, state, exit_code: exit });
+             id = "r1"): RunState => ({ run_id: id, state, exit_code: exit, reason: null });
 
 const student = (o: Partial<RosterStudent> & { student_id: string }): RosterStudent =>
   ({ name: o.student_id, slot: 0, sysid: 1, run: null, connected: true,

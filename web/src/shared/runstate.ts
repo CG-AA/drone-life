@@ -16,13 +16,31 @@ export function runClass(rs: RunState | null): RunClass {
   return rs.exit_code === null || rs.exit_code === 0 ? "done" : "failed";
 }
 
-/** Short enough for a table cell: "running 12m", "exited (137)". */
+/** Pinned to manager.py's END_REASONS by ui.test.ts — "error" is absent on
+ * purpose: it renders its exit code, which is the student's debugging handle. */
+export const END_LABEL: Record<string, string> = {
+  done: "finished",
+  timeout: "timed out",
+  stopped: "stopped",
+  replaced: "replaced",
+  start_failed: "failed to start",
+  runner_failed: "sandbox error",
+};
+
+/** How an ended run reads. An exit code alone doesn't say what happened, so
+ * prefer the server's reason; "error" and an older server fall back to the
+ * code, which is what the student debugs against. */
+export function endLabel(rs: RunState | null): string {
+  const label = rs?.reason ? END_LABEL[rs.reason] : undefined;
+  if (label) return label;
+  return rs?.exit_code ? `exited (${rs.exit_code})` : "exited";
+}
+
+/** Short enough for a table cell: "running 12m", "timed out", "exited (137)". */
 export function pillLabel(rs: RunState | null, age: number): string {
   const cls = runClass(rs);
   if (cls === "idle") return "idle";
-  if (cls === "done" || cls === "failed") {
-    return rs?.exit_code ? `exited (${rs.exit_code})` : "exited";
-  }
+  if (cls === "done" || cls === "failed") return endLabel(rs);
   return `${cls} ${formatAge(age)}`;
 }
 

@@ -10,8 +10,9 @@ HOST ?= 127.0.0.1:8000
 N ?= 5
 MODE ?= local
 SCRIPT ?= bot_patrol
+LOAD_BOTS ?= 10
 
-.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load lint lint-fix bots reset clean
+.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load lint lint-fix preflight bots reset clean
 
 # ALLOW_DEFAULT_SECRETS: dev boots on the placeholder room code/admin token above.
 # `make run` deliberately does not set it — production refuses the defaults.
@@ -57,8 +58,9 @@ typecheck:
 e2e:
 	cd server && uv run pytest -q -m e2e
 
+# rehearse the real class size on the real hardware: make load LOAD_BOTS=20
 load:
-	cd server && uv run pytest -q -m load
+	cd server && LOAD_BOTS=$(LOAD_BOTS) uv run pytest -q -m load
 
 lint:
 	cd server && uv run ruff check app tests
@@ -66,6 +68,10 @@ lint:
 
 lint-fix:
 	cd server && uv run ruff check --fix app tests
+
+# workshop morning: can this box actually run a class? (--no-smoke skips the test container)
+preflight:
+	cd server && uv run python -m app.preflight $(PREFLIGHT_ARGS)
 
 # spawn demo bots: make bots N=10 MODE=container SCRIPT=bot_courier
 bots:

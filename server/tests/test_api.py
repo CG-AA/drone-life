@@ -3,6 +3,7 @@
 import httpx
 import pytest
 
+from app.runner.manager import RunnerManager
 from tests.conftest import make_settings, running_app
 
 ADMIN = {"X-Admin-Token": "test-admin"}
@@ -44,6 +45,33 @@ async def test_submit_syntax_gate(client):
     assert r.status_code == 400
     error = r.json()["error"]
     assert error["code"] == "syntax" and error["line"] >= 1
+
+
+async def test_submit_without_runner_image_is_503_with_a_fix(client, monkeypatch):
+    """The instructor's fix (`make image`) must reach the student's screen —
+    otherwise a missing image is a container that dies with exit 125 in a log
+    pane nobody reads."""
+    async def no_image(self) -> bool:
+        return False
+
+    monkeypatch.setattr(RunnerManager, "_image_ok", no_image)
+    token = (await join(client))["token"]
+    r = await client.post("/api/v1/submit", json={"code": "print('hi')\n"},
+                          headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 503
+    error = r.json()["error"]
+    assert error["code"] == "runner" and "make image" in error["msg"]
+
+
+async def test_bots_without_runner_image_is_503(client, monkeypatch):
+    async def no_image(self) -> bool:
+        return False
+
+    monkeypatch.setattr(RunnerManager, "_image_ok", no_image)
+    r = await client.post("/api/v1/admin/bots", headers=ADMIN,
+                          json={"count": 1, "mode": "container", "script": "bot_patrol"})
+    assert r.status_code == 503
+    assert r.json()["error"]["code"] == "runner"
 
 
 async def test_status_and_world(client):
@@ -118,8 +146,14 @@ async def test_admin_bots_partial_fill_and_reset_clears_them(client):
 
 
 async def test_healthz(client):
+    """The admin console reads these keys — dropping one breaks it silently."""
     r = await client.get("/healthz")
-    assert r.status_code == 200 and r.json()["ok"] is True
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert set(body) == {"ok", "drones", "ticks", "overruns", "score", "mission",
+                         "students", "uptime_s", "driver_alive", "last_tick_age_s",
+                         "driver_errors"}
 
 
 async def test_rampart_tiles_and_terrain_wiring(tmp_path):

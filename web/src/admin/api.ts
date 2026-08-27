@@ -2,7 +2,7 @@
  * deliberately not localStorage, since instructor machines are often shared. */
 
 import { request } from "../shared/http";
-import type { BotsResult, Roster } from "../shared/protocol";
+import type { BotsResult, Health, Roster } from "../shared/protocol";
 
 export { ApiFailure } from "../shared/http";
 
@@ -17,6 +17,8 @@ function admin<T>(method: string, path: string, body?: unknown): Promise<T> {
 }
 
 export const fetchRoster = () => admin<Roster>("GET", "/students");
+// /healthz sits outside the admin router and takes no token
+export const fetchHealth = () => request<Health>("GET", "/healthz", {});
 export const killScript = (studentId: string) =>
   admin<{ stopped: boolean }>("POST", "/kill", { student_id: studentId });
 export const kickStudent = (studentId: string) =>

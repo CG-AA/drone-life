@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from ..runner.manager import RunnerError
 from ..service import DroneLifeService
 from .auth import err, get_service, require_admin
 
@@ -66,6 +67,8 @@ async def bots(body: BotsBody, service: DroneLifeService = Depends(get_service))
         result = await service.spawn_bots(count, body.script, body.mode)
     except ValueError as exc:
         raise err(400, "script", str(exc)) from exc
+    except RunnerError as exc:
+        raise err(503, "runner", f"could not start bot containers: {exc}") from exc
     if result["room_full"] and not result["started"]:
         raise err(409, "room_full", "no free slots for bots")
     return result

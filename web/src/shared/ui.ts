@@ -4,8 +4,9 @@
 
 import { ApiFailure } from "./http";
 import type { RunState } from "./protocol";
-import type { RunClass } from "./runstate";
-import { pillLabel, runClass } from "./runstate";
+import { endLabel, pillLabel, runClass } from "./runstate";
+
+export { END_LABEL } from "./runstate";
 
 /** getElementById that throws on a missing id — a typo fails loudly at boot. */
 export function $(id: string): HTMLElement {
@@ -134,20 +135,19 @@ export function typedConfirm(btn: HTMLButtonElement, word: string,
   });
 }
 
+/** Pill text for a run with no age to show: the live state while it runs, and
+ * why it stopped once it has. */
+export function runLabel(rs: RunState | null): string {
+  const cls = runClass(rs);
+  if (cls === "idle") return "idle";
+  if (cls === "done" || cls === "failed") return endLabel(rs);
+  return cls;
+}
+
 /** Render a run state into a .pill element (pill classes live in theme.css).
  * With an age, the pill also says how long it has been that way. */
 export function runPill(el: HTMLElement, rs: RunState | null, age?: number): void {
   const cls = runClass(rs);
-  el.textContent = age === undefined
-    ? plainLabel(rs, cls)
-    : pillLabel(rs, age);
+  el.textContent = age === undefined ? runLabel(rs) : pillLabel(rs, age);
   el.className = cls === "idle" ? "pill" : `pill ${cls}`;
-}
-
-function plainLabel(rs: RunState | null, cls: RunClass): string {
-  if (cls === "idle") return "idle";
-  if (cls === "done" || cls === "failed") {
-    return rs?.exit_code ? `exited (${rs.exit_code})` : "exited";
-  }
-  return cls;
 }

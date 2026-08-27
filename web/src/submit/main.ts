@@ -174,7 +174,7 @@ async function run(): Promise<void> {
   try {
     await submitCode(code);
     editor.clearDiagnostics();
-    runPill($("run-pill"), { run_id: "", state: "starting", exit_code: null });
+    runPill($("run-pill"), { run_id: "", state: "starting", exit_code: null, reason: null });
     $("run-hint").textContent = "watch the sky view — and the log pane on the right";
   } catch (e) {
     const view = describeError(e, "submit");

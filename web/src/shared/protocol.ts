@@ -115,10 +115,16 @@ export interface LogLine {
   line: string;
 }
 
+/** Why a run ended (app/runner/manager.py END_REASONS); null until it has. */
+export type RunEndReason =
+  | "done" | "error" | "timeout" | "stopped" | "replaced"
+  | "start_failed" | "runner_failed";
+
 export interface RunState {
   run_id: string;
   state: "starting" | "running" | "exited";
   exit_code: number | null;
+  reason: RunEndReason | null;
 }
 
 // ---------------- REST payloads (routes_public.py / routes_admin.py) --------
@@ -158,6 +164,21 @@ export interface Roster {
   score: number;
   mission: string;
   epoch: number;
+}
+
+/** GET /healthz (service.health()) — unauthenticated, no podman probes in it. */
+export interface Health {
+  ok: boolean;
+  drones: number;
+  ticks: number;
+  overruns: number;
+  score: number;
+  mission: string;
+  students: number;
+  uptime_s: number;
+  driver_alive: boolean;
+  last_tick_age_s: number;
+  driver_errors: number;
 }
 
 export interface BotsResult {

@@ -6,7 +6,7 @@ import type { RunState } from "./protocol";
 import { formatAge, pillLabel, runClass } from "./runstate";
 
 const run = (state: RunState["state"], exit: number | null = null): RunState =>
-  ({ run_id: "r1", state, exit_code: exit });
+  ({ run_id: "r1", state, exit_code: exit, reason: null });
 
 it("separates a clean exit from a crash", () => {
   expect(runClass(null)).toBe("idle");

@@ -4,13 +4,15 @@
 
 import type { BotsResult, RosterStudent } from "../shared/protocol";
 import { $, actionButton, banner, guarded, runPill, typedConfirm } from "../shared/ui";
-import { ApiFailure, clearToken, fetchRoster, getToken, kickStudent, killScript,
+import { ApiFailure, clearToken, fetchHealth, fetchRoster, getToken, kickStudent, killScript,
   resetWorld, setToken, spawnBots } from "./api";
+import { formatHealth, type HealthSample } from "./health";
 import { ageMs, attention, orderRoster, updateAges } from "./glance";
 
 const POLL_MS = 3000;
 
 let pollTimer = 0;
+let lastHealth: HealthSample | null = null;
 /** When each student entered their current run state. The server sends no
  * timestamps, so this is the only way to tell a long run from a stuck one. */
 let ages = new Map<string, number>();
@@ -43,9 +45,15 @@ async function handleToken(ev: Event): Promise<void> {
 async function poll(): Promise<void> {
   window.clearTimeout(pollTimer);
   try {
-    const roster = await fetchRoster();
+    // the roster is what unsticks a student — never lose it over the health line
+    const [roster, health] = await Promise.all([fetchRoster(), fetchHealth().catch(() => null)]);
     $("summary").textContent =
       `mission ${roster.mission} — score ${roster.score} — ${roster.students.length} in the sky`;
+    const now = Date.now();
+    const line = $("health-line");
+    line.textContent = health === null ? "" : formatHealth(health, lastHealth, now);
+    line.classList.toggle("danger", health !== null && !health.ok);
+    lastHealth = health === null ? null : { ticks: health.ticks, at: now };
     renderRoster(roster.students);
     banner("");
   } catch (e) {
@@ -55,6 +63,8 @@ async function poll(): Promise<void> {
       throw e;
     }
     $("summary").textContent = "server unreachable — retrying…";
+    $("health-line").textContent = "";
+    lastHealth = null; // a gap in the samples would fake a tick rate
   } finally {
     if (getToken()) pollTimer = window.setTimeout(() => void poll(), POLL_MS);
   }
