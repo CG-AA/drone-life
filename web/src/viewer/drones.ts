@@ -28,7 +28,13 @@ class DroneVis {
     this.color = slotColor(state.sysid);
     this.tag = new Text({
       text: state.name,
-      style: { fontFamily: FONT_UI, fontSize: 13, fill: this.color, fontWeight: "700" },
+      // the dark stroke is what makes a name readable when the drone flies
+      // over a steel stack — tile tops are nearly white, so colored fill
+      // alone drops to ~1.5:1 there
+      style: {
+        fontFamily: FONT_UI, fontSize: 15, fill: this.color, fontWeight: "700",
+        stroke: { color: COLORS.ink, width: 3 },
+      },
       resolution: scene.textResolution,
     });
     this.tag.anchor.set(0.5, 0);

@@ -89,8 +89,23 @@ a { color: var(--accent); }
   background: var(--border-strong);
   font-weight: 700;
 }
+/* five states, because "exited" alone can't say whether that was the plan */
+.pill.starting { background: var(--border-strong); color: var(--warn); }
 .pill.running { background: var(--ok-panel); color: var(--ok); }
-.pill.exited { background: var(--danger-panel); color: var(--danger-text); }
+.pill.done { background: var(--border-strong); color: var(--text-muted); }
+.pill.failed { background: var(--danger-panel); color: var(--danger-text); }
+
+/* type-to-confirm: replaces its button in place, so the row doesn't jump */
+.typed-confirm { display: inline-flex; gap: 6px; align-items: center; }
+.typed-confirm input {
+  width: 9ch;
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--danger);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}
 
 /* full-screen gate used by every page (room code / join / admin token) */
 #join-overlay {

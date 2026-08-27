@@ -3,33 +3,84 @@
 import type { DroneState, LogLine, RunState, WorldData } from "../shared/protocol";
 import { $, armedConfirm, banner, guarded, runPill } from "../shared/ui";
 import { GameSocket } from "../shared/ws";
-import { ApiFailure, STUDENT_KEY, TOKEN_KEY, fetchTemplate, join, resetMine,
-  stopRun, submitCode } from "./api";
+import { ApiFailure, CODE_KEY, STUDENT_KEY, TOKEN_KEY, fetchStatus, fetchTemplate,
+  join, resetMine, stopRun, submitCode } from "./api";
 import { Editor } from "./editor";
+import type { ErrorView } from "./errors";
+import { codeTooBig, describeError, tooBigText } from "./errors";
+import type { LogCursor } from "./logmerge";
+import { freshLines } from "./logmerge";
 
 const editor = new Editor($("editor"));
 let studentId = "";
 let ws: GameSocket | null = null;
 let scriptRunning = false;
 
+interface SavedStudent { student_id: string; name: string }
+let saved: SavedStudent | null = null;
+try {
+  saved = JSON.parse(localStorage.getItem(STUDENT_KEY) ?? "null") as SavedStudent | null;
+} catch {
+  // corrupt storage must not blank the page — fall through to the join overlay
+}
+
 // ------------------------------------------------------------------ join flow
 
 function showJoin(error = ""): void {
   $("join-overlay").classList.remove("hidden");
   $("join-error").textContent = error;
+  const nameEl = $("join-name") as HTMLInputElement;
+  const codeEl = $("join-code") as HTMLInputElement;
+  // coming back after an expiry should not mean retyping what we know
+  if (!nameEl.value) nameEl.value = saved?.name ?? "";
+  if (!codeEl.value) codeEl.value = localStorage.getItem(CODE_KEY) ?? "";
+  const empty = [nameEl, codeEl].find((el) => !el.value);
+  (empty ?? nameEl).focus();
+}
+
+/** Render a mapped failure into the banner, wiring up whatever it offers. */
+function showError(view: ErrorView, retry?: () => void): void {
+  const actions: Array<[string, () => void]> = [];
+  for (const a of view.actions) {
+    if (a.kind === "rejoin") {
+      actions.push([a.label, () => {
+        localStorage.removeItem(TOKEN_KEY);
+        banner("");
+        showJoin("your session expired — join again");
+      }]);
+    } else if (a.kind === "retry" && retry) {
+      actions.push([a.label, retry]);
+    } else if (a.kind === "dismiss") {
+      actions.push([a.label, () => banner("")]);
+    }
+  }
+  banner(view.text, { info: view.tone === "info", actions });
 }
 
 async function handleJoin(ev: Event): Promise<void> {
   ev.preventDefault();
   const name = ($("join-name") as HTMLInputElement).value.trim();
   const code = ($("join-code") as HTMLInputElement).value.trim();
-  if (!name || !code) return;
+  if (!name || !code) {
+    showJoin("type your name and the room code, then press join");
+    return;
+  }
   try {
     const info = await join(code, name);
+    saved = { student_id: info.student_id, name: info.name };
     $("join-overlay").classList.add("hidden");
     await enter(info.student_id, info.name);
+    if (info.rejoined) {
+      // the server matches on name, so this is also what a student sees when
+      // they take someone else's drone by typing their name
+      banner(`welcome back, ${info.name} — you're back on your drone. `
+        + "Not you? join again with a different name.", {
+        info: true,
+        actions: [["not me", () => { banner(""); showJoin(); }]],
+      });
+    }
   } catch (e) {
-    showJoin(e instanceof ApiFailure ? e.error.msg : "could not reach the server");
+    showJoin(describeError(e, "join").text);
   }
 }
 
@@ -47,6 +98,26 @@ async function enter(id: string, name: string): Promise<void> {
   connectWs();
 }
 
+/** Catch a returning page up before its socket opens: prove the stored token
+ * is still good (a refresh otherwise looks fine until the first run), and
+ * restore the run pill and log tail that the reload threw away. */
+async function restore(): Promise<boolean> {
+  try {
+    const st = await fetchStatus();
+    if (st.run) setRunState(st.run);
+    else runPill($("run-pill"), null);
+    appendLogs(st.log_tail);
+    return true;
+  } catch (e) {
+    if (e instanceof ApiFailure && e.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      showJoin("your session expired — join again");
+      return false;
+    }
+    return true; // offline or a server blip: the socket keeps retrying
+  }
+}
+
 // ------------------------------------------------------------------ websocket
 
 function connectWs(): void {
@@ -59,9 +130,19 @@ function connectWs(): void {
   });
   ws.on<{ lines: LogLine[] }>("log", (d) => appendLogs(d.lines));
   ws.on<RunState>("run_state", (d) => setRunState(d));
+  // a dead token is refused before the upgrade is accepted, so the socket
+  // reports a failed handshake with no code to read; /status can say which
+  ws.verify = async () => {
+    try {
+      await fetchStatus();
+      return false;
+    } catch (e) {
+      return e instanceof ApiFailure && e.status === 401;
+    }
+  };
   ws.onRejected = () => {
     localStorage.removeItem(TOKEN_KEY);
-    showJoin("session expired — join again");
+    showJoin("your session expired — join again");
   };
   ws.onSkew = () => banner("this page is out of date — refresh to reconnect");
   let wasDown = false;
@@ -81,19 +162,24 @@ function connectWs(): void {
 
 async function run(): Promise<void> {
   banner("");
+  const code = editor.code;
+  // the server would reject it anyway; refusing here saves the round trip
+  const oversize = codeTooBig(code);
+  if (oversize !== null) {
+    banner(tooBigText(oversize));
+    return;
+  }
   const btn = $("run-btn") as HTMLButtonElement;
   btn.disabled = true;
   try {
-    await submitCode(editor.code);
+    await submitCode(code);
+    editor.clearDiagnostics();
     runPill($("run-pill"), { run_id: "", state: "starting", exit_code: null });
     $("run-hint").textContent = "watch the sky view — and the log pane on the right";
   } catch (e) {
-    if (e instanceof ApiFailure && e.error.code === "syntax") {
-      banner(`line ${e.error.line}: ${e.error.msg}`);
-      if (e.error.line) editor.gotoLine(e.error.line);
-    } else {
-      banner(e instanceof ApiFailure ? e.error.msg : "server unreachable");
-    }
+    const view = describeError(e, "submit");
+    showError(view, () => void run());
+    if (view.goto) editor.showSyntaxError(view.goto.line, view.goto.col, view.text);
   } finally {
     btn.disabled = false;
   }
@@ -102,6 +188,12 @@ async function run(): Promise<void> {
 function setRunState(rs: RunState): void {
   scriptRunning = rs.state === "starting" || rs.state === "running";
   runPill($("run-pill"), rs);
+  // a missing sandbox image never reaches the API as an error — the container
+  // starts, dies, and the reason is in the log pane. Say where to look.
+  if (rs.state === "exited" && rs.exit_code !== null && rs.exit_code !== 0) {
+    $("run-hint").textContent =
+      "your script ended with an error — the reason is in the log pane";
+  }
 }
 
 // reset kills a running script, so make a running reset a two-step press
@@ -121,7 +213,7 @@ function onTemplatePick(): void {
   const apply = (): void => {
     void fetchTemplate(variant)
       .then((code) => { editor.setCode(code); banner(""); })
-      .catch(() => banner(`could not load the ${variant} template`));
+      .catch((e: unknown) => showError(describeError(e, "template"), apply));
   };
   if (editor.isEmpty) {
     apply();
@@ -136,8 +228,15 @@ function onTemplatePick(): void {
 // ---------------------------------------------------------------------- panes
 
 const logPane = $("log-pane");
+let logCursor: LogCursor | null = null;
 
-function appendLogs(lines: LogLine[]): void {
+function appendLogs(batch: LogLine[]): void {
+  // every reconnect re-sends the tail of the ring buffer; render only what is
+  // actually new, or a bad afternoon of wifi doubles the pane
+  const merged = freshLines(batch, logCursor);
+  logCursor = merged.cursor;
+  const lines = merged.fresh;
+  if (lines.length === 0) return;
   const stickToBottom =
     logPane.scrollTop + logPane.clientHeight > logPane.scrollHeight - 40;
   for (const line of lines) {
@@ -179,20 +278,30 @@ function updateStrip(me: DroneState): void {
 
 $("join-form").addEventListener("submit", handleJoin);
 $("run-btn").addEventListener("click", () => void run());
-$("stop-btn").addEventListener("click", () => void guarded(
-  $("stop-btn") as HTMLButtonElement, stopRun, "could not stop the script"));
+
+const stopBtn = $("stop-btn") as HTMLButtonElement;
+async function stop(): Promise<void> {
+  if (stopBtn.disabled) return;
+  stopBtn.disabled = true;
+  try {
+    await stopRun();
+    banner("");
+  } catch (e) {
+    showError(describeError(e, "stop"), () => void stop());
+  } finally {
+    stopBtn.disabled = false;
+  }
+}
+stopBtn.addEventListener("click", () => void stop());
 templateSel.addEventListener("change", onTemplatePick);
 
-interface SavedStudent { student_id: string; name: string }
-let saved: SavedStudent | null = null;
-try {
-  saved = JSON.parse(localStorage.getItem(STUDENT_KEY) ?? "null") as SavedStudent | null;
-} catch {
-  // corrupt storage must not blank the page — fall through to the join overlay
-}
 if (localStorage.getItem(TOKEN_KEY) && saved?.student_id) {
-  enter(saved.student_id, saved.name)
-    .catch(() => showJoin("could not restore your session — join again"));
+  const student = saved;
+  void (async () => {
+    // status first: it decides whether the stored token is still worth using,
+    // and seeds the log cursor so the socket's replay doesn't double-print
+    if (await restore()) await enter(student.student_id, student.name);
+  })();
 } else {
   showJoin();
 }

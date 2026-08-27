@@ -2,7 +2,9 @@
 
 import type { EntityState, EventData, HelloData, TilesData, WorldData }
   from "../shared/protocol";
+import { ApiFailure, request } from "../shared/http";
 import { GameSocket } from "../shared/ws";
+import { attractView } from "./attract";
 import { CameraController } from "./controls";
 import { DroneRenderer } from "./drones";
 import { EntityRenderer } from "./entities";
@@ -12,6 +14,8 @@ import { Scene } from "./scene";
 import { TerrainRenderer } from "./terrain";
 
 const CODE_KEY = "dl_room_code";
+/** Set just before the reload a refused code triggers, read once after it. */
+const REJECTED_KEY = "dl_code_rejected";
 const CURSOR_IDLE_MS = 3000;
 const HINT_MS = 8000;
 
@@ -39,10 +43,11 @@ interface Frame {
   at: number; // performance.now() when received
 }
 
-async function askRoomCode(): Promise<string> {
+async function askRoomCode(error = ""): Promise<string> {
   const overlay = document.getElementById("join-overlay")!;
   const form = document.getElementById("code-form") as HTMLFormElement;
   const input = document.getElementById("code-input") as HTMLInputElement;
+  document.getElementById("join-error")!.textContent = error;
   overlay.classList.remove("hidden");
   input.focus();
   return new Promise((resolve) => {
@@ -65,11 +70,29 @@ async function boot(): Promise<void> {
   const entityR = new EntityRenderer(scene);
   const terrainR = new TerrainRenderer(scene);
 
-  let code = localStorage.getItem(CODE_KEY);
+  // a refused code clears itself and reloads; the flag survives that reload so
+  // the operator learns why they are back at the prompt
+  const refused = sessionStorage.getItem(REJECTED_KEY) !== null;
+  sessionStorage.removeItem(REJECTED_KEY);
+  let code = refused ? null : localStorage.getItem(CODE_KEY);
   if (!code) {
-    code = await askRoomCode();
+    code = await askRoomCode(refused
+      ? "that room code was refused — check with your instructor"
+      : "");
     localStorage.setItem(CODE_KEY, code);
   }
+
+  // pre-class attract screen: shown while the sky is empty, so students can
+  // join without being told the code
+  const attract = document.getElementById("attract")!;
+  let connected = false;
+  let droneCount = 0;
+  const showAttract = (): void => {
+    const v = attractView(connected, droneCount, code, location.origin);
+    document.getElementById("attract-url")!.textContent = v.joinUrl;
+    document.getElementById("attract-code")!.textContent = v.code;
+    attract.classList.toggle("hidden", !v.show);
+  };
 
   let prev: Frame | null = null;
   let cur: Frame | null = null;
@@ -99,11 +122,33 @@ async function boot(): Promise<void> {
     cur = { data: d, at: performance.now() };
     hud.setScore(d.score);
     scene.drawPads(d.pads);
+    droneCount = d.drones.length;
+    showAttract();
   });
   ws.on<TilesData>("tiles", (d) => terrainR.set(d));
   ws.on<EventData>("event", (ev) => hud.addEvent(ev));
-  ws.onStatus = (up) => hud.setConn(up);
+  ws.onStatus = (up) => {
+    hud.setConn(up);
+    connected = up;
+    document.body.classList.toggle("disconnected", !up);
+    showAttract();
+    // a projector that has been sitting for hours has long since faded the
+    // hint; whoever just walked up to it deserves to see the controls again
+    if (up) reshowHint();
+  };
+  // the server refuses a bad code before accepting the upgrade, so the socket
+  // can only report a failed handshake; this asks the REST route what the
+  // socket cannot say
+  ws.verify = async () => {
+    try {
+      await request("GET", `/api/v1/world?code=${encodeURIComponent(code)}`, {});
+      return false;
+    } catch (e) {
+      return e instanceof ApiFailure && e.status === 403;
+    }
+  };
   ws.onRejected = () => {
+    sessionStorage.setItem(REJECTED_KEY, "1");
     localStorage.removeItem(CODE_KEY);
     location.reload();
   };
@@ -116,7 +161,14 @@ async function boot(): Promise<void> {
   projectorControls();
   const hint = document.getElementById("nav-hint");
   const hintText = hint?.textContent ?? "";
-  window.setTimeout(() => hint?.classList.add("gone"), HINT_MS);
+  let hintTimer = 0;
+  const reshowHint = (): void => {
+    if (!hint || controls.following) return;
+    hint.classList.remove("gone");
+    window.clearTimeout(hintTimer);
+    hintTimer = window.setTimeout(() => hint.classList.add("gone"), HINT_MS);
+  };
+  reshowHint();
   let shownFollow: string | null = null;
 
   /** Surface who we are following, and get out of the way once we stop. */

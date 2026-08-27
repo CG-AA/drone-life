@@ -133,6 +133,16 @@ export interface JoinInfo {
   rejoined: boolean;
 }
 
+/** GET /api/v1/status — what a returning page needs to catch up before its
+ * socket opens. `drone` is deliberately loose: the world frame refreshes the
+ * strip a moment later, and this view carries a subset of DroneState. */
+export interface StatusInfo {
+  student_id: string;
+  run: RunState | null;
+  drone: unknown;
+  log_tail: LogLine[];
+}
+
 export interface RosterStudent {
   student_id: string;
   name: string;

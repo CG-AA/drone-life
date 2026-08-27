@@ -3,13 +3,17 @@
  * the sessionStorage token. */
 
 import type { BotsResult, RosterStudent } from "../shared/protocol";
-import { $, actionButton, armedConfirm, banner, guarded, runPill } from "../shared/ui";
+import { $, actionButton, banner, guarded, runPill, typedConfirm } from "../shared/ui";
 import { ApiFailure, clearToken, fetchRoster, getToken, kickStudent, killScript,
   resetWorld, setToken, spawnBots } from "./api";
+import { ageMs, attention, orderRoster, updateAges } from "./glance";
 
 const POLL_MS = 3000;
 
 let pollTimer = 0;
+/** When each student entered their current run state. The server sends no
+ * timestamps, so this is the only way to tell a long run from a stuck one. */
+let ages = new Map<string, number>();
 
 // ------------------------------------------------------------------ token gate
 
@@ -56,7 +60,10 @@ async function poll(): Promise<void> {
   }
 }
 
-function renderRoster(students: RosterStudent[]): void {
+function renderRoster(roster: RosterStudent[]): void {
+  const now = Date.now();
+  ages = updateAges(ages, roster, now);
+  const students = orderRoster(roster, ages, now);
   const body = $("roster-body");
   body.textContent = "";
   if (students.length === 0) {
@@ -69,6 +76,9 @@ function renderRoster(students: RosterStudent[]): void {
   }
   for (const s of students) {
     const tr = document.createElement("tr");
+    const age = ageMs(ages, s, now);
+    const attn = attention(s, age);
+    if (attn !== "none") tr.className = `attn-${attn}`;
 
     const name = tr.insertCell();
     name.textContent = s.name;
@@ -79,7 +89,7 @@ function renderRoster(students: RosterStudent[]): void {
 
     const run = tr.insertCell();
     const pill = document.createElement("span");
-    runPill(pill, s.run);
+    runPill(pill, s.run, age);
     run.appendChild(pill);
 
     const link = tr.insertCell();
@@ -90,11 +100,13 @@ function renderRoster(students: RosterStudent[]): void {
 
     const actions = tr.insertCell();
     actions.className = "actions";
+    // both throw away work the student can't get back, and the rows reorder
+    // under the cursor as states change — one click must not be enough
     actions.append(
       actionButton("kill script", () => killScript(s.student_id),
-        `could not stop ${s.name}'s script`, () => void poll()),
+        `could not stop ${s.name}'s script`, () => void poll(), "really kill?"),
       actionButton("kick", () => kickStudent(s.student_id),
-        `could not kick ${s.name}`, () => void poll()),
+        `could not kick ${s.name}`, () => void poll(), "really kick?"),
     );
 
     body.appendChild(tr);
@@ -103,9 +115,10 @@ function renderRoster(students: RosterStudent[]): void {
 
 // -------------------------------------------------------------------- controls
 
-// reset wipes the whole class's world, so make it a two-step press
+// reset throws away the whole class's world at once — the one action worth
+// making someone type, since two clicks land in the same place as one
 const resetBtn = $("reset-world-btn") as HTMLButtonElement;
-armedConfirm(resetBtn, "really reset everyone?", () =>
+typedConfirm(resetBtn, "reset", () =>
   void guarded(resetBtn, resetWorld, "reset failed", () => void poll()));
 
 $("bots-form").addEventListener("submit", (ev) => {

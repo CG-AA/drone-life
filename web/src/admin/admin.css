@@ -53,7 +53,8 @@
 #bots-count { width: 4.5rem; }
 #bots-script { width: 9rem; }
 
-#reset-world-btn { margin-left: auto; }
+/* the confirm input takes the button's place, so it inherits its position */
+#reset-world-btn, #controls .typed-confirm { margin-left: auto; }
 button.danger { background: var(--danger); color: var(--danger-bg); }
 button.danger.confirm { background: var(--warn); }
 
@@ -76,3 +77,13 @@ button.danger.confirm { background: var(--warn); }
 
 .link-dot::before { content: "●"; margin-right: 5px; color: var(--danger); }
 .link-dot.up::before { color: var(--ok); }
+
+/* rows that want the instructor to walk over: the bar carries the meaning,
+   the tint just draws the eye, so this survives a projector and colorblindness */
+#roster tr.attn-failed td, #roster tr.attn-crashed td {
+  background: rgba(255, 92, 92, 0.09);
+}
+#roster tr.attn-stuck td { background: rgba(255, 179, 71, 0.08); }
+#roster tr.attn-failed td:first-child { box-shadow: inset 4px 0 var(--danger); }
+#roster tr.attn-crashed td:first-child { box-shadow: inset 4px 0 var(--danger-soft); }
+#roster tr.attn-stuck td:first-child { box-shadow: inset 4px 0 var(--warn); }
