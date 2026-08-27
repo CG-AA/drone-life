@@ -75,8 +75,10 @@ The prefix, the length cap, and the position shape are checked on **every**
 text the harness sees (`check_text` runs inside `FakeWorld.send_text` /
 `broadcast_text`), so any tested code path is covered; the trailing-`!`
 clause is style, reviewed by humans. Texts with unbounded interpolations
-(ids, totals) deserve a widest-case `check_text` test — the wire truncates
-silently.
+(ids, totals) are only covered for the values a test happens to produce, so
+write a widest-case `check_text` test yourself (see
+`test_mission_delivery.py::test_worst_case_texts_fit_the_wire`) — nothing
+enforces it, and the wire truncates silently.
 
 ## Events — register your kinds
 
@@ -127,7 +129,9 @@ frame **[enforced]**. Kinds in play today, and who renders them
   point), `PlaceHints` (right cell, wrong altitude), composed from
   `HoverHint` + `HintThrottle` (sustain before speaking, per-drone cooldown).
   A mission with a pickup point should tick a `SourceHints` next to its
-  `tick_ferry` call — students doing it wrong deserve a next action.
+  `tick_ferry` call — students doing it wrong deserve a next action. (A
+  convention, not a checked rule: no test can tell a deliberate silence from a
+  forgotten one.)
 - **`blueprints.py`** — relative hex patterns that become structures when
   tiles complete them (`ring_blueprint`, `BlueprintTracker`); matching is
   anchored at the placed cell and rotation-invariant. Forge's furnace and

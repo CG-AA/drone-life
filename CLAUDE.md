@@ -8,12 +8,13 @@ drones with real pymavlink scripts; missions are server-side plugins.
 
 ```bash
 make test          # server pytest + web vitest — must stay green
-make lint          # ruff (server); make lint-fix applies autofixes
-make typecheck     # tsc --noEmit (web)
+make lint          # ruff (server) + eslint (web); lint-fix autofixes ruff only
+make typecheck     # tsc --noEmit (web) + mypy (server)
 make build         # tsc + vite build
 make e2e           # needs podman + `make image` — SKIP in podman-less sandboxes
 make load          # timing-sensitive, local only
 make dev-server    # http://localhost:8000  (MISSION=<name> selects content)
+make preflight     # workshop-morning environment check (podman, image, secrets…)
 ```
 
 Server deps: `cd server && uv sync` (Python 3.12, uv-managed).

@@ -61,7 +61,8 @@ See the Layout table in `README.md`. Rules of thumb:
 ```bash
 make test          # default suite: server pytest + web vitest
 make e2e           # needs podman + `make image`
-make load          # timing-sensitive: run on a quiet machine
+make load          # timing-sensitive: run on a quiet machine (LOAD_BOTS=20 for class size)
+make preflight     # not a test: checks the box a workshop is about to run on
 ```
 
 - Mission tests use `tests/support/harness.py` (`FakeWorld`, `view`,

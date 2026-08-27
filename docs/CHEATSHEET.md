@@ -37,7 +37,7 @@ gives you `"crate 3 at N 12 E -40"` (prefix stripped). Every position is
 | `hands full, …` | deliver/place what you carry first (capacity: 1) |
 | `no crate! grab one first` | you're at the dropoff empty-handed |
 | `quarry at …` / `got steel …` | building games: same hover-low pickup |
-| `wall gap at N 10 E -55 hover 4` | go there, hover **at 4 m**, 1.5 s |
+| `wall gap at N 9 E -62 hover 4` | go there, hover **at 4 m**, 1.5 s |
 | `hover 6 m to place` | right cell, wrong altitude — use the number |
 | `creep at N 12 E -40` | siege: hover low on it 1.5 s → zap (+2) |
 | `stack 3 steel = watchtower` | 3 tiles, one cell → auto-turret (+15) |
@@ -54,6 +54,10 @@ gives you `"crate 3 at N 12 E -40"` (prefix stripped). Every position is
 4. **`CRASH: hit a wall`** — tiles are solid from the side. Fly over the top
    (walls max out at 8 m) — you respawn on your pad after 5 s.
 5. **`syntax error, line N`** (red) — the editor jumps to the line. Fix, Run.
+
+Bonus sixth: **drone stops dead at ±100 m** — that's the arena edge. The log
+says `DRONE: bounds: clamped at arena edge`, but it is not a `GAME:` line, so
+`drone.events()` never mentions it.
 
 Stuck anyway? **reset drone** stops your script and puts you back on your
 pad. Full guide: `STUDENT_GUIDE.md`.

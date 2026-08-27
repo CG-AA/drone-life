@@ -60,10 +60,12 @@ idles silently.
 
 ```bash
 make test       # server (pytest, incl. real-mavutil flights) + web (vitest)
-make typecheck  # web: tsc --noEmit
-make lint       # server: ruff check   (make lint-fix applies the autofixes)
+make typecheck  # web: tsc --noEmit + server: mypy
+make lint       # server: ruff + web: eslint   (make lint-fix applies ruff's autofixes)
 make e2e        # real podman container completes a delivery end-to-end
 make load       # 10 bots, 60 s: tick overruns <1%, world feed ≥9 Hz
+                # rehearse the real class size: make load LOAD_BOTS=20
+make preflight  # workshop morning: can this box actually run a class?
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint + tests + typecheck + build on every
@@ -83,7 +85,7 @@ PR; `make kill-dev` / `make kill-prod` stop stray dev or prod instances.
 | `web/src/admin/` | instructor console: roster, kill/kick, reset, bots |
 | `examples/` | `dronelife.py` helper, student templates, demo bots |
 | `runner/` | Containerfile for the student-script sandbox image |
-| `docs/` | STUDENT_GUIDE (handout), MISSIONS (author guide), DEPLOY (lab server + OCI proxy) |
+| `docs/` | STUDENT_GUIDE + CHEATSHEET (handouts), MISSIONS (author guide), DEPLOY (lab server + OCI proxy), SESSION_PLAN (the instructor's day) |
 
 ## Gotchas we already hit for you
 
