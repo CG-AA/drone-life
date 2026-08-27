@@ -25,7 +25,9 @@ from ..building import (
     CarrySlots,
     DwellTracker,
     FerryTexts,
+    PlaceHints,
     PlaceTracker,
+    SourceHints,
     TileSource,
     fmt_cell,
     tick_ferry,
@@ -67,7 +69,8 @@ ZAP_DWELL = 1.5
 TARGET_EVERY = 3.0  # per-drone nearest-creep hint
 ANNOUNCE_EVERY = 20.0
 FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
-                   "GAME: got steel, wall or tower it")
+                   "GAME: got steel, wall or tower it",
+                   "GAME: hands full, wall or tower it")
 
 _HINTS = ("GAME: stack 3 steel = watchtower",
           "GAME: hover low on a creep to zap it")
@@ -108,6 +111,8 @@ class SiegeMission(Mission):
         self._hint = 0
         self.last_announce = 0.0
         self.last_target = 0.0
+        self.hints = SourceHints(self.carry, FERRY.full_say)
+        self.place_hints = PlaceHints(self.tm, self.carry, self.hints.throttle)
 
     # ------------------------------------------------------------- lifecycle
 
@@ -133,6 +138,8 @@ class SiegeMission(Mission):
         self.pending, self.spawn_timer = 0, 0.0
         self.beams.clear()
         self.last_announce = self.last_target = 0.0
+        self.hints.clear()
+        self.place_hints.clear()
         self.setup(world)
 
     # ------------------------------------------------------------------ tick
@@ -141,7 +148,9 @@ class SiegeMission(Mission):
         drones = list(world.drones())
 
         tick_ferry(world, drones, self.carry, [self.quarry], dt, FERRY)
+        self.hints.tick(world, drones, *QUARRY, dt)
         placed, refused = self.tracker.tick(drones, dt)
+        self.place_hints.tick(world, drones, dt)
         for p in placed:
             self._squish(world, p)
             match = self.blueprints.check(self.tm, p.cell)

@@ -4,12 +4,20 @@ from dataclasses import replace
 
 from app.game import hex
 from app.game.building import (
+    HINT_EVERY,
+    HINT_SUSTAIN,
     PLACE_CLEAR,
     PLACE_DWELL,
     PLACE_WINDOW,
+    STUCK_S,
+    TOO_HIGH_SAY,
     CarrySlots,
     DwellTracker,
+    HintThrottle,
+    HoverHint,
+    PlaceHints,
     PlaceTracker,
+    SourceHints,
     TileSource,
     crush_ok,
     fmt_cell,
@@ -18,7 +26,7 @@ from app.game.building import (
     tick_sources,
 )
 from app.game.tiles import TILE_HEIGHT, TileMap
-from tests.support.harness import view
+from tests.support.harness import FakeWorld, view
 
 
 def run_dwell(tracker, drones, n, e, seconds, dt=0.1, eligible=None):
@@ -245,3 +253,91 @@ def test_source_pickup_and_depletion():
 
     carry.take("d0")
     assert run_sources([d], [source], carry, 3.0) == [], "the pile is spent"
+
+
+# --------------------------------------------------------------------- hints
+
+def run_hint(world, hint, drones, n, e, seconds, dt=0.1):
+    for _ in range(int(seconds / dt)):
+        world.now += dt
+        hint.tick(world, drones, n, e, dt)
+
+
+def test_hint_throttle_gates_per_key():
+    th = HintThrottle(every=10.0)
+    assert th.ready("high:d0", 0.0)
+    assert not th.ready("high:d0", 5.0)
+    assert th.ready("full:d0", 5.0), "other hint kinds have their own clock"
+    assert th.ready("high:d0", 10.0)
+
+
+def test_hover_hint_needs_sustain_then_throttles():
+    world = FakeWorld()
+    hint = HoverHint(2.0, lambda d: d.alt > 3.0, TOO_HIGH_SAY, "high", HintThrottle())
+    d = view(alt=10.0)
+    run_hint(world, hint, [d], 0, 0, HINT_SUSTAIN * 0.7)
+    assert world.texts == [], "a moment of wrongness is not worth a nag"
+    run_hint(world, hint, [d], 0, 0, HINT_SUSTAIN)
+    assert world.texts == [("d0", TOO_HIGH_SAY)]
+    run_hint(world, hint, [d], 0, 0, HINT_SUSTAIN + 0.2)
+    assert len(world.texts) == 1, "no re-nag inside the throttle window"
+    run_hint(world, hint, [d], 0, 0, HINT_EVERY)
+    assert len(world.texts) == 2, "a persistent offender is re-nagged"
+
+
+def test_hover_hint_ignores_transiting_drone():
+    world = FakeWorld()
+    hint = HoverHint(2.0, lambda d: True, TOO_HIGH_SAY, "high", HintThrottle())
+    d = view(alt=10.0)
+    run_hint(world, hint, [d], 0, 0, HINT_SUSTAIN * 0.7)  # crosses the circle...
+    run_hint(world, hint, [d], 50, 50, 0.3)  # ...and is gone before sustain
+    run_hint(world, hint, [d], 0, 0, HINT_SUSTAIN * 0.7)  # crosses again
+    assert world.texts == [], "leaving the circle resets the sustain clock"
+
+
+def test_source_hints_speak_both_ways():
+    world = FakeWorld()
+    carry = CarrySlots()
+    hints = SourceHints(carry, "GAME: hands full, place on the wall")
+    too_high = view("d0", n=0.0, e=0.0, alt=10.0)
+    run_hint(world, hints, [too_high], 0, 0, HINT_SUSTAIN + 0.2)
+    assert ("d0", TOO_HIGH_SAY) in world.texts
+    carry.give("d1", "steel")
+    full = view("d1", n=0.0, e=0.0, alt=1.0)
+    run_hint(world, hints, [full], 0, 0, HINT_SUSTAIN + 0.2)
+    assert ("d1", "GAME: hands full, place on the wall") in world.texts
+
+
+def run_place_hints(world, hints, drones, seconds, dt=0.1):
+    for _ in range(int(seconds / dt)):
+        world.now += dt
+        hints.tick(world, drones, dt)
+
+
+def test_place_hint_when_hovering_out_of_band():
+    world, tm, carry = FakeWorld(), TileMap(), CarrySlots()
+    hints = PlaceHints(tm, carry, HintThrottle())
+    carry.give("d0", "steel")
+    d = view(alt=20.0)  # way above the empty cell's placement band
+    run_place_hints(world, hints, [d], STUCK_S + 0.2)
+    hint = hover_alt_hint(tm, hex.world_to_axial(d.n, d.e))
+    assert (f"GAME: hover {hint} m to place" in [t for _, t in world.texts])
+
+
+def test_place_hint_silent_while_moving():
+    world, tm, carry = FakeWorld(), TileMap(), CarrySlots()
+    hints = PlaceHints(tm, carry, HintThrottle())
+    carry.give("d0", "steel")
+    d = replace(view(alt=20.0), vn=2.0)  # transiting, not trying to place
+    run_place_hints(world, hints, [d], STUCK_S + 0.2)
+    assert world.texts == []
+
+
+def test_place_hint_silent_over_keepout():
+    world, tm, carry = FakeWorld(), TileMap(), CarrySlots()
+    tm.set_keep_out([(0.0, 0.0)])
+    hints = PlaceHints(tm, carry, HintThrottle())
+    carry.give("d0", "steel")
+    d = view(alt=20.0)  # over the keep-out cell: no altitude would work
+    run_place_hints(world, hints, [d], STUCK_S + 0.2)
+    assert world.texts == []

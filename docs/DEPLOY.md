@@ -122,6 +122,8 @@ make reset HOST=localhost:8000 ADMIN_TOKEN=...      # clean slate between sessio
 - Between class sessions: `make reset` (kills all scripts, respawns drones,
   fresh crates + score). `server/state/` keeps the roster across restarts —
   delete it for a completely fresh class.
+- Minute-by-minute session plan (mission order, transitions, bots, balance
+  knobs): `docs/SESSION_PLAN.md`.
 
 ## Threat model notes
 

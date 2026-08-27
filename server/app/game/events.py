@@ -20,6 +20,7 @@ EVENT_KINDS: frozenset[str] = frozenset({
     "reset",
     "reset_mine",
     "score",
+    "milestone",
     "mission_error",
     # delivery
     "crate_spawn",

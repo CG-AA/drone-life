@@ -40,10 +40,18 @@ class _API:
         self._engine.bus.emit(kind, msg, student_id=student_id, data=data, t=self.now)
 
     def add_score(self, points: int, reason: str, student_id: str | None = None) -> int:
+        prev = self._engine.score
         self._engine.score += points
+        total = self._engine.score
         self._engine.bus.emit("score", f"{points:+d}: {reason}", student_id=student_id,
-                              data={"points": points, "total": self._engine.score}, t=self.now)
-        return self._engine.score
+                              data={"points": points, "total": total}, t=self.now)
+        # upward century crossings get a celebration line on the projector;
+        # a mark re-earned after a dip (siege's keep) celebrates again
+        if points > 0 and prev // MILESTONE_EVERY < total // MILESTONE_EVERY:
+            mark = total // MILESTONE_EVERY * MILESTONE_EVERY
+            self._engine.bus.emit("milestone", f"team passes {mark} points!",
+                                  data={"total": total}, t=self.now)
+        return total
 
     def send_text(self, drone_id: str, text: str, severity: int = SEV_INFO) -> None:
         self._engine.backend.send_text(drone_id, text, severity)
@@ -54,6 +62,7 @@ class _API:
 
 
 ERROR_EMIT_EVERY = 30.0  # the feed ring is 200-deep; a 10 Hz bug must not flood it
+MILESTONE_EVERY = 100  # team-score marks worth a feed celebration
 
 
 class GameEngine:

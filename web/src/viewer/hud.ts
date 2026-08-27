@@ -12,6 +12,7 @@ const FEED_TTL_MS = 45_000;
 export const EVENT_CLASS: Record<string, string> = {
   score: "score",
   delivery: "score",
+  milestone: "triumph",
   wave_clear: "triumph",
   wall_complete: "triumph",
   furnace_lit: "triumph",

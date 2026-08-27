@@ -1,0 +1,183 @@
+# Workshop session plan — freefly → delivery → siege
+
+The minute-by-minute run of a ~4 hour session for a mixed room (students +
+working engineers), up to 20 pilots. Freefly proves everyone can fly, delivery
+teaches the GAME-message loop, and **siege is the main event**, played in
+rounds. Companion docs: operational commands in `DEPLOY.md` (runbook),
+student-facing rules in `STUDENT_GUIDE.md`, the printed one-pager in
+`CHEATSHEET.md`.
+
+## 1. The arc at a glance
+
+| block | mission | why |
+|---|---|---|
+| warmup | `freefly` | the unedited template is a visible win; no way to fail |
+| teach | `delivery` | introduces `drone.events()`, goto loops, co-op scoring |
+| main | `siege` ×3 rounds | spends every skill under pressure; rounds give a "beat our record" ladder |
+
+Missions are boot-time (`MISSION=` env var): every arrow above is an env edit
+plus a restart — see the transition boxes in §5. Rehearse both boxes before
+the day; the failure modes (ghost bots, carried-over score) are surprising the
+first time.
+
+## 2. Timing (T = 240 min; scaling notes at the end)
+
+Warmup 45′ (welcome, first flight, freefly) · delivery 50′ · break 15′ ·
+**siege 115′** (intro + three rounds) · wrap 15′. Two of the transitions ride
+on natural seams (the break, the wrap); only freefly → delivery costs live
+minutes. Every SWITCH block budgets 5′ — rehearsed, the restart itself is
+under one minute; the rest is students pressing Run again.
+
+## 3. Before doors open (T−20)
+
+- `systemctl status drone-life` green; `MISSION=freefly` in `/etc/drone-life.env`.
+- Projector on `/` with the room code entered; admin console (`/admin`) open
+  on the instructor laptop.
+- Smoke: `make bots N=3 HOST=localhost:8000 ADMIN_TOKEN=...` → three drones
+  move on the projector → `make reset HOST=... ADMIN_TOKEN=...`.
+- A printed `CHEATSHEET.md` on every seat; STUDENT_GUIDE link visible.
+
+## 4. Minute-by-minute
+
+| clock | block | instructor | projector | students |
+|---|---|---|---|---|
+| −0:20 | boot + smoke | §3 checklist; end on `make reset` | arena + room code | trickle in, join |
+| 0:00 | welcome (10′) | the pitch: real pymavlink, one shared sky; join walkthrough on screen | join feed | join at `/submit` |
+| 0:10 | first flight (15′) | run the unedited template live; then "everyone press Run" | 20 drones climb and move | run template, unedited |
+| 0:25 | freefly play (20′) | tour `goto` / `move` / `position` / `events` from the cheat sheet; invite crashes — arena walls are soft | drones everywhere | change the numbers, break things safely |
+| 0:45 | SWITCH → delivery (5′) | **Box A** (§5) | restart, then crates appear | wait, then press Run again |
+| 0:50 | delivery I (25′) | narrate the first pickup and delivery; read the GAME hints aloud as they land in someone's log | score climbing, feed names | write the courier loop |
+| 1:15 | lull check | if the feed stalls: `make bots N=2 SCRIPT=bot_courier` as pace-setters; kick them from `/admin` once humans overtake | bots demonstrate the loop | copy what the bots do |
+| 1:20 | delivery II (15′) | call out names from the feed ("Alice delivered!"); tease the optimizations (nearest crate, `wait=False`) | milestones | optimize |
+| 1:35 | break (15′) | write the delivery total on the whiteboard; run **Box A** with `MISSION=siege` during the break | restart banner → keep + quarry | break |
+| 1:50 | siege intro (15′) | rules on screen: creeps → Keep, zap / squish / towers; "45 s grace — get a tower up"; assign nothing yet | keep, gates, quarry | read the siege block of the cheat sheet |
+| 2:05 | siege round 1 — learn (30′) | let it be chaos; narrate the first tower, first zap, first chewed wall; end round: `make reset`, record score + wave on the whiteboard | waves, towers, keep hp | fight however they like |
+| 2:35 | siege round 2 — coordinate (35′) | before Run: assign roles out loud — quarry ferries, tower builders, zappers; mid-round, point at the gate that's leaking | fewer leaks, higher waves | play a role |
+| 3:10 | siege round 3 — the record (35′) | "beat round 2." Engineers: hand out the §6 challenges; everyone else defends | record attempt | defend / automate |
+| 3:45 | wrap (15′) | scores ladder on the whiteboard; the pymavlink reveal (STUDENT_GUIDE table); "this exact code flies a real drone" | final feed | — |
+
+## 5. Transition procedures
+
+**Box A — fresh start** (used at every switch in the default plan):
+
+1. Edit the mission and restart. Prod:
+   `sudo sed -i 's/^MISSION=.*/MISSION=<name>/' /etc/drone-life.env && sudo systemctl restart drone-life`.
+   Dev: Ctrl-C the server, `MISSION=<name> make dev-server`.
+2. The restart restores roster **and score** from the snapshot — including any
+   `Bot-*` entries, which come back as ghost drones parked on pads (their
+   scripts died with the server).
+3. `make reset HOST=... ADMIN_TOKEN=...` — kills scripts, removes every
+   `Bot-*`, respawns drones, **zeroes the score**, fresh mission state.
+4. Announce: "press Run again" (the restart severed every script's MAVLink
+   connection; nothing resumes by itself).
+
+**Box B — carry the score across a switch** (alternative, for a cumulative
+day-total narrative):
+
+1. While still on the old mission, kick every `Bot-*` from `/admin` (a kick
+   snapshots immediately; bots left in the roster would ghost through).
+2. Env edit + restart as in Box A. Score carries over via the snapshot;
+   mission state does not (siege boots into its 45 s grace — correct).
+3. Do **not** `make reset`. Students press Run again.
+
+The default plan uses Box A everywhere and keeps the day's narrative on the
+whiteboard (per-block scores stay comparable). Use Box B only if you want one
+growing number all day.
+
+## 6. The engineers' strand (round 3, "for working engineers only")
+
+Hand these to anyone who finished the courier loop in one sitting. Each has a
+worked answer in the repo — don't reveal that until the wrap.
+
+1. **Drop the training wheels.** Re-write your flight in raw pymavlink — pick
+   *pymavlink* from the templates menu (`examples/template_pymavlink.py`).
+   Everything `dronelife` does is ~150 lines you can read.
+2. **Beat the house bot.** `examples/bot_siege.py` parses
+   `creep at N .. E ..` and leads the target 6 m toward the Keep, because the
+   callout is where the creep *was*. Write a zapper that out-kills it
+   (better lead model? intercept geometry? camp the gate?).
+3. **Tower placement as a graph problem.** Creeps walk a Dijkstra flow field
+   and *chew through* walls when blocked (`server/app/game/path.py`). Where do
+   3-steel towers actually pay off? Build the chokepoint, not the wall.
+4. **Event-driven flying.** Replace blocking `goto` with
+   `goto(..., wait=False)` + a `position()` / `events()` polling loop — a
+   drone that re-targets mid-flight when a fresher callout arrives.
+
+## 7. Pace-setter bots
+
+- Delivery lull: `make bots N=2 SCRIPT=bot_courier` — two bots quietly show
+  the full loop on the projector. Kick them from `/admin` once real deliveries
+  resume (they hold roster slots, and the cap is `MAX_STUDENTS`).
+- Siege lull: `make bots N=2 SCRIPT=bot_siege` — zappers only. **`bot_builder`
+  cannot demo building on siege**: it waits for rampart's `wall gap`
+  announcements, which siege never sends (verified in rehearsal — it grabs
+  steel and hovers forever). Building has to be demoed by a human: place
+  3 steel on one cell on the projector and let the tower speak for itself.
+- Never leave bots in during a "record" round — the record should be human.
+
+## 8. Contingencies
+
+- **Server dies mid-block**: systemd restarts it; snapshot is ≤ 30 s stale;
+  everyone presses Run again (that's the whole recovery).
+- **Mission misbehaving** (`mission bug in …` on the feed): fall back to
+  `MISSION=delivery` via Box A — it's the best-rehearsed content.
+- **Projector feed stuck**: refresh the tab; the viewer replays state on
+  connect.
+- **Every submit 503s**: the runner image is missing/broken — preflight
+  problem (see DEPLOY runbook), not a gameplay fix. Bots in `MODE=local`
+  still work for demos while it's fixed.
+- **A griefer**: `/admin` kill script, then kick if it continues.
+- **Whole class stalling in siege**: let the Keep fall once — it's −25 and it
+  rebuilds; narrate it as drama, then point at the leaking gate.
+- **Room joins slower than planned**: stretch freefly, shrink delivery II;
+  never shrink the siege intro — round 1 absorbs confusion, the intro doesn't.
+
+## 9. Balance knobs (numbers from the pre-workshop rehearsal)
+
+Delivery (all in `server/app/game/missions/delivery.py`): crate supply is
+roster-scaled — one crate per `PILOTS_PER_CRATE` (3) connected pilots,
+clamped to [`CRATE_COUNT` 3, `CRATE_MAX` 8], one top-up per
+`SPAWN_STAGGER_S` (2 s); value `POINTS` (10).
+
+Measured (20 × `bot_courier`, local mode, 7.8 min): **12.5 deliveries/min**,
+median crate wait **12.7 s** (a long tail to ~90 s when a crate spawns far
+from the pack — it spreads the room, leave it), score climbs linearly
+(no starvation flattening), 7 crates live for 20 pilots, tick overruns
+0.05 %. Twenty optimal bots are the *ceiling* — expect a human class at
+roughly a third of that rate, which sits mid-band. **Verdict: ship the
+defaults.** If a fast class ever floods it, raise `PILOTS_PER_CRATE` 3→4;
+if a slow one starves, lower `CRATE_MAX` won't help — lower
+`PILOTS_PER_CRATE` 3→2 instead.
+
+Siege (all in `server/app/game/missions/siege.py`): `GRACE_S` (45 — raise to
+60 for a first-timer room, or when the intro runs long), `BUILD_S` (20,
+between waves), `SPAWN_GAP` (1.5 s/creep), wave size
+`min(16, 4 + 2·(wave−1))`, speed `min(2.5, 1.5 + 0.1·(wave−1))`,
+`KILL_POINTS` 2 / `WAVE_BONUS` 10 / `TOWER_POINTS` 15 / `KEEP_FALL_POINTS`
+−25.
+
+Measured (8 × `bot_siege` + 2 × `bot_builder`, ~3.5 min): grace and the wave
+machine run exactly on the documented clocks — waves 1–3 in ~50 s per cycle
+(spawn + fight + 20 s build), all cleared by zaps alone, keep never hit.
+Eight optimal zappers trivialize early waves; a human room will bleed more,
+so the defaults stand. The interesting pressure starts once sizes reach the
+cap of 16 (wave 7) — reach it in a round before judging difficulty.
+
+## Scaling the plan to other lengths
+
+- **3 h**: drop delivery II and siege round 1's last 10 minutes; two siege
+  rounds instead of three.
+- **2 h**: 15′ warmup, 35′ delivery, one 40′ siege round, 10′ wrap — siege
+  stops being "the main event" and becomes the finale; consider `GRACE_S=60`.
+
+## Day −1 checklist (cannot be verified off the lab server)
+
+- [ ] `make preflight` / podman path: `make image`, `make e2e`, one
+      container-mode submit end-to-end from a real browser.
+- [ ] `make load` on the lab hardware (`MAX_STUDENTS=20`); overruns < 1% on
+      `/healthz`.
+- [ ] Both transition boxes on the real box (`/etc/drone-life.env` edit +
+      `systemctl restart` — time them; they're the 5′ SWITCH blocks).
+- [ ] Projector readability from 5 m; printed CHEATSHEET legible at desk.
+- [ ] Full dry run of §4 with 3 bots + one real phone/laptop as a fake
+      student (WORKPLAN day −1 freeze item).
