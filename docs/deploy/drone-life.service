@@ -16,7 +16,7 @@ ExecStart=/home/dronelife/.local/bin/uv run uvicorn app.main:app --host 0.0.0.0 
 Restart=on-failure
 RestartSec=3
 # rootless podman needs XDG_RUNTIME_DIR; systemd user lingering provides /run/user/<uid>
-Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=XDG_RUNTIME_DIR=/run/user/1001
 
 [Install]
 WantedBy=multi-user.target
