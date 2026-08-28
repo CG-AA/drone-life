@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
+from typing import Final
 
 from ...sim.backend import DroneView
 from .. import hex, path
@@ -57,7 +58,7 @@ GRACE_S = 45.0  # first-wave delay once a drone shows up: build one tower
 BUILD_S = 20.0  # breather between waves
 SPAWN_GAP = 1.5  # s between creeps of one wave
 
-KILL_POINTS = 2
+KILL_POINTS = 2  # a grunt's bounty (kept as the name the tests and docs know)
 WAVE_BONUS = 10  # a clean wave: nothing reached the Keep
 WAVE_BONUS_LEAKY = 5  # …and the consolation when something did
 TOWER_POINTS = 15
@@ -123,12 +124,82 @@ class Tower:
     kills: int = 0
 
 
-def _wave_size(wave: int) -> int:
-    return min(16, 4 + 2 * (wave - 1))
+# ------------------------------------------------------------------ creeps
+# One walker, several kinds: the roster is data. Grunts stay 1 hp so waves
+# 1-3 remain the teaching waves; hp pressure arrives with the brutes.
+
+@dataclass(frozen=True)
+class CreepKind:
+    name: str
+    hp: int
+    speed_mult: float  # x the wave's base speed
+    bounty: int
+    chew_rate: float  # x: brutes and sappers eat walls faster
+    keep_cost: int  # keep hits when one arrives
+    from_wave: int  # first wave it can appear in
+
+
+KINDS: Final[dict[str, CreepKind]] = {
+    "grunt": CreepKind("grunt", hp=1, speed_mult=1.0, bounty=2, chew_rate=1.0,
+                       keep_cost=1, from_wave=1),
+    "runner": CreepKind("runner", hp=1, speed_mult=1.5, bounty=2, chew_rate=1.0,
+                        keep_cost=1, from_wave=3),
+    "brute": CreepKind("brute", hp=3, speed_mult=0.65, bounty=5, chew_rate=2.0,
+                       keep_cost=1, from_wave=5),
+    "sapper": CreepKind("sapper", hp=2, speed_mult=1.0, bounty=3, chew_rate=3.0,
+                        keep_cost=1, from_wave=7),
+    "champion": CreepKind("champion", hp=8, speed_mult=0.6, bounty=20, chew_rate=2.0,
+                          keep_cost=3, from_wave=5),
+}
+ROSTER_KINDS = ("grunt", "runner", "brute", "sapper")  # champions come by their own rule
+# spawn shares per wave band (from wave N: % grunt, runner, brute, sapper)
+SHARES: tuple[tuple[int, tuple[int, int, int, int]], ...] = (
+    (1, (100, 0, 0, 0)),
+    (3, (70, 30, 0, 0)),
+    (5, (45, 30, 25, 0)),
+    (7, (35, 30, 25, 10)),
+    (10, (25, 30, 30, 15)),
+)
+
+WAVE_MAX = 20
+PILOTS_PER_CREEP = 4  # +1 creep per this many connected pilots
+
+
+def _wave_size(wave: int, pilots: int = 0) -> int:
+    """Waves grow with the wave number and with the room: eight optimal
+    zappers trivialised the first waves in rehearsal, so a full class meets
+    the cap sooner; a lone rehearsal drone still sees four."""
+    return min(WAVE_MAX, 4 + 2 * (wave - 1) + pilots // PILOTS_PER_CREEP)
 
 
 def _wave_speed(wave: int) -> float:
     return min(2.5, 1.5 + 0.1 * (wave - 1))
+
+
+def _shares(wave: int) -> tuple[int, int, int, int]:
+    out = SHARES[0][1]
+    for from_wave, shares in SHARES:
+        if wave >= from_wave:
+            out = shares
+    return out
+
+
+def _wave_roster(wave: int, size: int, rng: random.Random) -> list[str]:
+    """`size` kinds for this wave: shares rounded by largest remainder (so
+    the composition is exact and deterministic), then shuffled."""
+    shares = _shares(wave)
+    exact = [size * s / 100 for s in shares]
+    counts = [int(x) for x in exact]
+    for i in sorted(range(4), key=lambda i: exact[i] - counts[i], reverse=True)[
+            : size - sum(counts)]:
+        counts[i] += 1
+    roster = [k for k, c in zip(ROSTER_KINDS, counts, strict=True) for _ in range(c)]
+    rng.shuffle(roster)
+    return roster
+
+
+def _kill_reason(verb: str) -> str:
+    return {"zap": "zapped", "squish": "squished", "tower": "shot"}.get(verb, verb)
 
 
 class SiegeMission(Mission):
@@ -157,6 +228,7 @@ class SiegeMission(Mission):
         self.wave = 0
         self.gate = GATES[0]
         self.pending = 0  # creeps of the current wave not yet spawned
+        self.roster: list[str] = []  # …and their kinds, in spawn order
         self.spawn_timer = 0.0
         self.leaks = 0  # this wave's creeps that reached the Keep
         self.wave_kills = 0
@@ -199,6 +271,7 @@ class SiegeMission(Mission):
         self.keep_hp = KEEP_HP
         self.state, self.timer, self.wave = "grace", GRACE_S, 0
         self.pending, self.spawn_timer = 0, 0.0
+        self.roster.clear()
         self.leaks, self.wave_kills = 0, 0
         self.beams.clear()
         self.fx.clear()
@@ -270,7 +343,8 @@ class SiegeMission(Mission):
         for u in result.arrived:
             self.leaks += 1
             self._kill(world, u.uid, "leak")
-            self._keep_hit(world)
+            for _ in range(u.keep_cost):
+                self._keep_hit(world)
         for _u, cell in result.chews:
             if self.tm.remove_top(cell) is not None:
                 world.broadcast_text(f"GAME: wall chewed at {fmt_cell(cell)}",
@@ -292,9 +366,7 @@ class SiegeMission(Mission):
     def _squish(self, world: WorldAPI, p) -> None:
         for uid, u in list(self.creeps.items()):
             if u.cell == p.cell:
-                self._kill(world, uid, "squish")
-                world.add_score(KILL_POINTS, "creep squished", student_id=p.drone.student_id)
-                world.send_text(p.drone.id, f"GAME: squish! creep under tile +{KILL_POINTS}")
+                self._damage(world, uid, u.hp, "squish", p.drone)  # a tile is a tile
 
     def _fire_towers(self, world: WorldAPI) -> None:
         for cell in sorted(self.towers):
@@ -309,14 +381,13 @@ class SiegeMission(Mission):
                 continue
             u = self.creeps[target[1]]
             tower.last_shot = world.now
-            tower.kills += 1
             self._beam_seq += 1
             self.beams.append((f"beam{self._beam_seq}", world.now + BEAM_S,
                                (tn, te, self.tm.top_alt(cell)), (u.n, u.e, u.alt)))
-            self._kill(world, target[1], "tower")
-            # every 3 s per tower: scored quietly (the wave-clear line carries
-            # the tally) and credited to whoever raised the tower
-            world.add_score(KILL_POINTS, "tower kill", student_id=tower.builder, feed=False)
+            # one shot, one hp: a brute takes three. Kills score quietly (the
+            # wave-clear line carries the tally), credited to the builder
+            if self._damage(world, target[1], 1, "tower", None, student_id=tower.builder):
+                tower.kills += 1
 
     def _zap(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
         for uid, u in list(self.creeps.items()):
@@ -339,9 +410,32 @@ class SiegeMission(Mission):
             if winner is not None:
                 self._fx(world, "zap_arc", winner.n, winner.e, winner.alt, ZAP_ARC_S,
                          {"tn": u.n, "te": u.e, "talt": u.alt})
-                self._kill(world, uid, "zap")
-                world.add_score(KILL_POINTS, "creep zapped", student_id=winner.student_id)
-                world.send_text(winner.id, f"GAME: zap! creep down +{KILL_POINTS}")
+                # the dwell re-armed itself: another 1.5 s takes the next hp
+                self._damage(world, uid, 1, "zap", winner)
+
+    def _damage(self, world: WorldAPI, uid: int, dmg: int, verb: str,
+                drone: DroneView | None, student_id: str | None = None) -> bool:
+        """Hurt a creep; on death, pay its bounty and tell the drone that did
+        it. Returns True on a kill. Tower hits pass no drone (nobody hears a
+        text) but do pass the builder to credit."""
+        u = self.creeps.get(uid)
+        if u is None:
+            return False
+        u.hp -= dmg
+        if u.hp > 0:
+            if drone is not None and verb == "zap":
+                world.send_text(drone.id, f"GAME: zap! {u.kind} hp {u.hp}")
+            return False
+        self._kill(world, uid, verb)
+        who = drone.student_id if drone is not None else student_id
+        world.add_score(u.bounty, f"{u.kind} {_kill_reason(verb)}", student_id=who,
+                        feed=drone is not None)
+        if drone is not None:
+            if verb == "zap":
+                world.send_text(drone.id, f"GAME: zap! {u.kind} down +{u.bounty}")
+            elif verb == "squish":
+                world.send_text(drone.id, f"GAME: squish! {u.kind} under tile +{u.bounty}")
+        return True
 
     def _kill(self, world: WorldAPI, uid: int, verb: str) -> None:
         """Remove a creep; `verb` (zap | squish | tower | leak) colours the poof."""
@@ -413,7 +507,9 @@ class SiegeMission(Mission):
         self.state, self.wave = "active", wave
         self.stats.best_wave = max(self.stats.best_wave, wave)
         self.gate = self.rng.choice(GATES)
-        self.pending = _wave_size(wave)
+        pilots = sum(1 for d in world.drones() if d.connected)
+        self.roster = _wave_roster(wave, _wave_size(wave, pilots), self.rng)
+        self.pending = len(self.roster)
         self.leaks, self.wave_kills = 0, 0
         self.spawn_timer = 0.0
         world.emit_event("wave_start", f"wave {wave}: {self.pending} creeps")
@@ -423,9 +519,12 @@ class SiegeMission(Mission):
     def _spawn_creep(self) -> None:
         self._uid += 1
         self.pending -= 1
+        kind = KINDS[self.roster.pop(0) if self.roster else "grunt"]
         n, e = self.gate
-        self.creeps[self._uid] = GroundUnit(uid=self._uid, n=n, e=e,
-                                            speed=_wave_speed(self.wave))
+        self.creeps[self._uid] = GroundUnit(
+            uid=self._uid, n=n, e=e, speed=_wave_speed(self.wave) * kind.speed_mult,
+            kind=kind.name, hp=kind.hp, max_hp=kind.hp, bounty=kind.bounty,
+            keep_cost=kind.keep_cost, chew_rate=kind.chew_rate)
 
     def _check_towers(self, world: WorldAPI) -> None:
         for cell in [c for c in self.towers if self.tm.height(c) < TOWER_HEIGHT]:
@@ -477,7 +576,8 @@ class SiegeMission(Mission):
                self.quarry.entity()]
         for uid, u in self.creeps.items():
             out.append(Entity(id=f"creep{uid}", kind="troop", n=u.n, e=u.e, alt=u.alt,
-                              data={"dir": u.heading, "chewing": u.chewing}))
+                              data={"dir": u.heading, "chewing": u.chewing,
+                                    "kind": u.kind, "hp": u.hp, "max": u.max_hp}))
         for cell in self.towers:
             n, e = hex.axial_to_world(cell)
             out.append(Entity(id=f"tower_{cell[0]}_{cell[1]}", kind="tower",

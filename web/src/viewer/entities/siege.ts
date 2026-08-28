@@ -6,19 +6,60 @@ import { COLORS, REDUCED_MOTION } from "../../shared/theme";
 import { ALT_LIFT, project, projectGround } from "../iso";
 import { hexPoly, pulse, type KindRenderer } from "./base";
 
+/** Per-kind look: shape and size, never colour alone (a projector washes
+ * colour out first). Sizes carry a floor so a creep reads from the back row. */
+interface TroopLook { fill: number; edge: number; tick: number; r: number; sides: number }
+const TROOP_LOOK: Record<string, TroopLook> = {
+  grunt: { fill: 0xe14b4b, edge: 0x7c1f1f, tick: 0xffd0d0, r: 1.2, sides: 0 },
+  runner: { fill: 0xff9a3c, edge: 0x8a4a10, tick: 0xffe0b0, r: 0.9, sides: 3 },
+  brute: { fill: 0x9c1f2e, edge: 0x3d0a12, tick: 0xffb0b0, r: 1.9, sides: 6 },
+  sapper: { fill: 0xa25cff, edge: 0x4a1f8a, tick: 0xe6d0ff, r: 1.15, sides: 4 },
+  champion: { fill: 0xd91f5a, edge: 0x5a0a24, tick: 0xffd0e0, r: 2.6, sides: 8 },
+};
+
+function polyAround(cx: number, cy: number, r: number, sides: number, rot = 0): number[] {
+  const pts: number[] = [];
+  for (let k = 0; k < sides; k++) {
+    const a = rot + (Math.PI * 2 * k) / sides;
+    pts.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.75);
+  }
+  return pts;
+}
+
 export const troop: KindRenderer = {
   animated: true,
   draw(vis, ent, pose, drawAlt, s, timeMs) {
     const chewing = Boolean(ent.data.chewing);
+    const look = TROOP_LOOK[String(ent.data.kind ?? "grunt")] ?? TROOP_LOOK.grunt;
     const dir = (Number(ent.data.dir ?? 0) * Math.PI) / 180; // server sends degrees
     const jitter = chewing && !REDUCED_MOTION ? Math.sin(timeMs / 30) * s * 0.25 : 0;
     const bob = chewing || REDUCED_MOTION ? 0 : Math.abs(Math.sin(timeMs / 120)) * s * 0.35;
-    const r = Math.max(3.5, s * 1.1);
-    vis.g.circle(jitter, -bob, r).fill({ color: 0xe14b4b })
-      .stroke({ width: 1.5, color: 0x7c1f1f });
-    const tip = project(Math.cos(dir) * 1.8, Math.sin(dir) * 1.8, 0, s);
+    const r = Math.max(5, s * look.r);
+    if (look.sides === 0) {
+      vis.g.circle(jitter, -bob, r).fill({ color: look.fill })
+        .stroke({ width: 1.5, color: look.edge });
+    } else {
+      vis.g.poly(polyAround(jitter, -bob, r, look.sides, -Math.PI / 2))
+        .fill({ color: look.fill }).stroke({ width: 1.5, color: look.edge });
+    }
+    if (look.sides === 8) { // the champion wears a crown
+      const c = polyAround(jitter, -bob - r * 0.9, r * 0.55, 3, -Math.PI / 2);
+      vis.g.poly(c).fill({ color: COLORS.gold });
+    }
+    const reach = look.sides === 3 ? 2.6 : 1.8; // runners point further ahead
+    const tip = project(Math.cos(dir) * reach, Math.sin(dir) * reach, 0, s);
     vis.g.moveTo(jitter, -bob).lineTo(jitter + tip.x, -bob + tip.y)
-      .stroke({ width: 2, color: 0xffd0d0 });
+      .stroke({ width: 2, color: look.tick });
+    const hp = Number(ent.data.hp ?? 1);
+    const max = Number(ent.data.max ?? 1);
+    if (max > 1) { // hp pips over multi-hp creeps, keep-pip style but smaller
+      const w = Math.max(2.5, s * 0.5);
+      const x0 = jitter - ((max - 1) * (w + 1.5)) / 2;
+      for (let i = 0; i < max; i++) {
+        vis.g.rect(x0 + i * (w + 1.5) - w / 2, -bob - r - w * 1.8, w, w)
+          .fill({ color: i < hp ? COLORS.ok : 0x333344, alpha: 0.95 });
+      }
+    }
     if (drawAlt - pose.groundAlt > 0.3) { // airborne (e.g. knocked off a wall)
       const ground = project(pose.n, pose.e, pose.groundAlt, s);
       vis.shadow.ellipse(ground.x, ground.y, r, r * 0.5)

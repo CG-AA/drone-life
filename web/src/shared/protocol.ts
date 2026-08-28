@@ -61,7 +61,8 @@ export interface CrateData { carried_by?: string }
 export interface TileSourceData { material: string; remaining: number | null }
 export interface TileCarriedData { carried_by: string; material: string }
 export interface GhostTileData { material: string; need: number; have: number; size: number }
-export interface TroopData { dir: number; chewing: boolean }
+/** kind: grunt | runner | brute | sapper | champion (missions/siege.py KINDS) */
+export interface TroopData { dir: number; chewing: boolean; kind: string; hp: number; max: number }
 export interface KeepData { hp: number; max: number }
 export interface TowerData { range: number }
 export interface BeamData { tn: number; te: number; talt: number }

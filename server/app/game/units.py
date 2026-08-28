@@ -30,6 +30,13 @@ class GroundUnit:
     alt: float = 0.0  # rides stack tops (refreshed every step)
     chew_cell: Axial | None = None
     chew_acc: float = 0.0
+    # stats the owning mission sets per kind; the walker only reads chew_rate
+    kind: str = "grunt"
+    hp: int = 1
+    max_hp: int = 1
+    bounty: int = 2  # points for the kill
+    keep_cost: int = 1  # hits on the goal when it arrives
+    chew_rate: float = 1.0  # x: a 2.0 gnaws through a tile in half the time
 
     @property
     def cell(self) -> Axial:
@@ -92,7 +99,7 @@ def _chew(u: GroundUnit, target: Axial, dt: float, chew_s: float,
           result: StepResult) -> None:
     if target != u.chew_cell:
         u.chew_cell, u.chew_acc = target, 0.0  # new target: restart the clock
-    u.chew_acc += dt
+    u.chew_acc += dt * u.chew_rate
     if u.chew_acc >= chew_s - _EPS:
         u.chew_acc = 0.0
         result.chews.append((u, target))

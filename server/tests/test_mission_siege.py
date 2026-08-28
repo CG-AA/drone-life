@@ -11,11 +11,14 @@ from app.game.missions.siege import (
     KEEP_HIT_POINTS,
     KEEP_HP,
     KILL_POINTS,
+    KINDS,
     POOF_S,
     QUARRY,
+    TOWER_COOLDOWN,
     TOWER_POINTS,
     WAVE_BONUS,
     WAVE_BONUS_LEAKY,
+    WAVE_MAX,
     ZAP_ARC_S,
     ZAP_DWELL,
     SiegeMission,
@@ -233,7 +236,7 @@ def test_zap_kill():
     world.run(m, 2.0)
     assert not m.creeps
     assert world.score == before + KILL_POINTS
-    assert ("d0", f"GAME: zap! creep down +{KILL_POINTS}") in world.texts
+    assert ("d0", f"GAME: zap! grunt down +{KILL_POINTS}") in world.texts
     assert_grammar(world)
 
 
@@ -247,9 +250,117 @@ def test_squish_kill_commits_the_tile():
     assert m.tm.stack(cell) == ("steel",)
     assert not m.creeps, "the tile landed on it"
     assert world.score == before + KILL_POINTS
-    assert any("squish! creep under tile" in t for t in texts(world))
+    assert any("squish! grunt under tile +2" in t for t in texts(world))
     assert any("placed! tile at" in t for t in texts(world))
     assert_grammar(world)
+
+
+# ------------------------------------------------------------------- kinds
+
+def add_kind(m, cell, kind, uid=1):
+    k = KINDS[kind]
+    n, e = hex.axial_to_world(cell)
+    m.creeps[uid] = GroundUnit(uid=uid, n=n, e=e, speed=0.0, kind=k.name, hp=k.hp,
+                               max_hp=k.hp, bounty=k.bounty, keep_cost=k.keep_cost,
+                               chew_rate=k.chew_rate)
+    return m.creeps[uid]
+
+
+def test_brute_takes_three_tower_shots_then_pays_five():
+    world, m = make()
+    freeze_waves(m)
+    build_tower(world, m, (4, 1))
+    brute = add_kind(m, (4, 3), "brute")
+    before = world.score
+    world.run(m, 0.3)
+    assert brute.hp == 2 and m.creeps, "one shot, one hp"
+    world.run(m, TOWER_COOLDOWN * 2 + 0.3)
+    assert not m.creeps
+    assert world.score == before + KINDS["brute"].bounty
+    assert m.towers[(4, 1)].kills == 1 and m.stats.shot == 1
+
+
+def test_zap_rearms_between_hits_on_a_multi_hp_creep():
+    world, m = make()
+    freeze_waves(m)
+    sapper = add_kind(m, (4, 0), "sapper")  # 2 hp
+    world.views = [view("d0", n=sapper.n, e=sapper.e, alt=2.0)]
+    world.run(m, ZAP_DWELL + 0.2)
+    assert sapper.hp == 1 and m.creeps
+    assert ("d0", "GAME: zap! sapper hp 1") in world.texts
+    world.run(m, ZAP_DWELL + 0.2)
+    assert not m.creeps
+    assert ("d0", "GAME: zap! sapper down +3") in world.texts
+    assert_grammar(world)
+
+
+def test_squish_flattens_whatever_the_hp():
+    world, m = make()
+    freeze_waves(m)
+    add_kind(m, (4, 1), "brute")
+    before = world.score
+    place_tile(world, m, (4, 1))
+    assert not m.creeps and world.score == before + KINDS["brute"].bounty
+    assert any("squish! brute under tile +5" in t for t in texts(world))
+
+
+def test_champion_leak_costs_three_hits():
+    world, m = make()
+    freeze_waves(m)
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    champ = add_kind(m, (0, 1), "champion")
+    champ.speed = 3.0
+    for _ in range(60):
+        world.run(m, 0.1)
+        if not m.creeps:
+            break
+    assert m.keep_hp == KEEP_HP - 3 and m.stats.keep_hits == 3
+
+
+def test_wave_composition_follows_the_bands():
+    import random
+
+    from app.game.missions.siege import _wave_roster
+    rng = random.Random(3)
+    assert sorted(_wave_roster(1, 6, rng)) == ["grunt"] * 6
+    w3 = _wave_roster(3, 10, rng)
+    assert sorted(w3) == ["grunt"] * 7 + ["runner"] * 3
+    w6 = _wave_roster(6, 20, rng)
+    assert w6.count("brute") == 5 and w6.count("runner") == 6 and w6.count("grunt") == 9
+    w10 = _wave_roster(10, 20, rng)
+    assert {"grunt", "runner", "brute", "sapper"} <= set(w10) and len(w10) == 20
+    assert len(_wave_roster(10, 7, rng)) == 7, "largest remainder keeps the size exact"
+
+
+def test_wave_size_scales_with_pilots_and_clamps():
+    from app.game.missions.siege import _wave_size
+    assert _wave_size(1, 1) == 4 and _wave_size(1, 3) == 4
+    assert _wave_size(1, 8) == 6 and _wave_size(1, 20) == 9
+    assert _wave_size(7, 1) == 16 and _wave_size(9, 20) == WAVE_MAX
+    assert _wave_size(40, 40) == WAVE_MAX
+
+
+def test_a_full_room_gets_a_bigger_first_wave():
+    world, m = make()
+    world.views = [view(f"d{i}", n=-90.0, e=-76.0 + 8 * i) for i in range(8)]
+    world.run(m, GRACE_S + 1.0)
+    assert m.wave == 1 and len(m.creeps) + m.pending == 6
+    assert any("wave 1 at N" in t and "6 creeps" in t for t in texts(world))
+
+
+def test_spawned_creeps_carry_their_kind_stats_and_the_viewer_sees_them():
+    world, m = make()
+    m.wave = 5
+    m.roster = ["brute", "grunt"]
+    m.pending = 2
+    m._spawn_creep()
+    m._spawn_creep()
+    brute, grunt = m.creeps.values()
+    assert (brute.kind, brute.hp, brute.max_hp, brute.bounty, brute.chew_rate) == \
+        ("brute", 3, 3, 5, 2.0)
+    assert brute.speed < grunt.speed
+    troop = next(e for e in m.entities(world) if e.id == f"creep{brute.uid}")
+    assert troop.data["kind"] == "brute" and troop.data["hp"] == 3 and troop.data["max"] == 3
 
 
 # ------------------------------------------------------------------ towers
@@ -292,7 +403,7 @@ def test_tower_kill_credits_the_builder_silently():
     add_creep(m, (4, 3))
     world.run(m, 0.3)
     assert not m.creeps
-    assert world.scores[-1] == (KILL_POINTS, "tower kill", "s-d0")
+    assert world.scores[-1] == (KILL_POINTS, "grunt shot", "s-d0")
     assert m.towers[(4, 1)].kills == 1
     assert [ev["kind"] for ev in world.events] == [], "tower shots never post feed rows"
 
