@@ -17,12 +17,14 @@ is empty — an idle server can't bleed score.
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 
 from ...sim.backend import DroneView
 from .. import hex, path
 from ..blueprints import Blueprint, BlueprintTracker, Requirement
 from ..building import (
+    HINT_SUSTAIN,
     CarrySlots,
     DwellTracker,
     FerryTexts,
@@ -42,7 +44,8 @@ from ..units import GroundUnit, step_units
 KEEP_CELL: Axial = (0, 0)
 KEEP = hex.axial_to_world(KEEP_CELL)
 KEEP_HP = 10
-KEEP_FALL_POINTS = -25
+KEEP_HIT_POINTS = -1  # hits 1..9: a gradient, so ignoring the Keep is never free
+KEEP_FALL_POINTS = -25  # the 10th hit charges only this, then the Keep rebuilds
 QUARRY_CELL: Axial = (14, -11)  # ~(-50, 44)
 QUARRY = hex.axial_to_world(QUARRY_CELL)
 GATE_CELLS: tuple[Axial, ...] = ((-9, 19), (16, 0), (-16, 0))  # ~N 85, ~E 83, ~E -83
@@ -55,7 +58,8 @@ BUILD_S = 20.0  # breather between waves
 SPAWN_GAP = 1.5  # s between creeps of one wave
 
 KILL_POINTS = 2
-WAVE_BONUS = 10
+WAVE_BONUS = 10  # a clean wave: nothing reached the Keep
+WAVE_BONUS_LEAKY = 5  # …and the consolation when something did
 TOWER_POINTS = 15
 TOWER_BP = Blueprint("watchtower", (Requirement(0, 0, "steel", 3),))
 TOWER_HEIGHT = 3
@@ -79,7 +83,11 @@ FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
                    "GAME: hands full, wall or tower it")
 
 _HINTS = ("GAME: stack 3 steel = watchtower",
-          "GAME: hover low on a creep to zap it")
+          "GAME: hover low on a creep to zap it",
+          "GAME: 2-high walls turn creeps aside",
+          "GAME: drop a tile on a creep to squish it",
+          "GAME: clean wave +10, each leak costs -1",
+          "GAME: towers shoot 12 m, build by the path")
 
 
 @dataclass
@@ -111,6 +119,11 @@ class SiegeMission(Mission):
         self.towers: dict[Axial, Tower] = {}
         self.creeps: dict[int, GroundUnit] = {}
         self.zap: dict[int, DwellTracker] = {}  # creep uid -> hover dwell
+        self.zap_high: dict[int, DwellTracker] = {}  # creep uid -> too-high dwell (a hint)
+        # siege's own dice: reseeded from the engine's on every round, so the
+        # gate sequence differs between rounds yet stays reproducible per seed
+        self.rng = random.Random(0)
+        self.round = 0
         self.flow = path.flood(self.tm, KEEP_CELL, climb=CLIMB)
         self._flow_version = self.tm.version
         self.keep_hp = KEEP_HP
@@ -120,6 +133,8 @@ class SiegeMission(Mission):
         self.gate = GATES[0]
         self.pending = 0  # creeps of the current wave not yet spawned
         self.spawn_timer = 0.0
+        self.leaks = 0  # this wave's creeps that reached the Keep
+        self.wave_kills = 0
         self.beams: list[tuple[str, float, tuple, tuple]] = []  # id, expiry, src, dst
         # id, expiry, kind, (n, e, alt), data — see _fx
         self.fx: list[tuple[str, float, str, tuple[float, float, float], dict]] = []
@@ -136,6 +151,7 @@ class SiegeMission(Mission):
 
     def setup(self, world: WorldAPI) -> None:
         self.tm.set_keep_out([KEEP, QUARRY, *GATES])  # pads are engine-protected already
+        self.rng = random.Random(world.rng.getrandbits(32))
         self._announce(world)
 
     def tile_map(self) -> TileMap:
@@ -150,10 +166,13 @@ class SiegeMission(Mission):
         self.towers.clear()
         self.creeps.clear()
         self.zap.clear()
+        self.zap_high.clear()
+        self.round += 1
         self._reflood()
         self.keep_hp = KEEP_HP
         self.state, self.timer, self.wave = "grace", GRACE_S, 0
         self.pending, self.spawn_timer = 0, 0.0
+        self.leaks, self.wave_kills = 0, 0
         self.beams.clear()
         self.fx.clear()
         self.last_announce = self.last_target = 0.0
@@ -220,6 +239,7 @@ class SiegeMission(Mission):
 
         result = step_units(self.creeps.values(), self.tm, self.flow, dt, CHEW_S)
         for u in result.arrived:
+            self.leaks += 1
             self._kill(world, u.uid, "leak")
             self._keep_hit(world)
         for _u, cell in result.chews:
@@ -271,8 +291,21 @@ class SiegeMission(Mission):
 
     def _zap(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
         for uid, u in list(self.creeps.items()):
+            ceiling = u.alt + ZAP_ALT_ABOVE  # creeps on walls stay zappable
+            # the one silent wrong thing in siege: parked over a creep, too high
+            # to zap. Same shape as delivery's TOO_HIGH_SAY, per creep because
+            # the creep moves and the ceiling moves with it.
+            high = self.zap_high.setdefault(
+                uid, DwellTracker(ZAP_RADIUS, float("inf"), HINT_SUSTAIN))
+
+            def too_high(d: DroneView, c: float = ceiling) -> bool:
+                return d.alt > c
+
+            nag = high.update(drones, u.n, u.e, dt, eligible=too_high)
+            if nag is not None and self.hints.throttle.ready(f"zap_high:{nag.id}", world.now):
+                world.send_text(nag.id, f"GAME: drop under {round(ceiling)} m to zap")
             tracker = self.zap.setdefault(uid, DwellTracker(ZAP_RADIUS, 0.0, ZAP_DWELL))
-            tracker.max_alt = u.alt + ZAP_ALT_ABOVE  # creeps on walls stay zappable
+            tracker.max_alt = ceiling
             winner = tracker.update(drones, u.n, u.e, dt)
             if winner is not None:
                 self._fx(world, "zap_arc", winner.n, winner.e, winner.alt, ZAP_ARC_S,
@@ -285,7 +318,10 @@ class SiegeMission(Mission):
         """Remove a creep; `verb` (zap | squish | tower | leak) colours the poof."""
         u = self.creeps.pop(uid, None)
         self.zap.pop(uid, None)
+        self.zap_high.pop(uid, None)
         if u is not None:
+            if verb != "leak":
+                self.wave_kills += 1
             self._fx(world, "poof", u.n, u.e, u.alt, POOF_S, {"verb": verb})
 
     def _fx(self, world: WorldAPI, kind: str, n: float, e: float, alt: float,
@@ -296,8 +332,12 @@ class SiegeMission(Mission):
     def _keep_hit(self, world: WorldAPI) -> None:
         self.keep_hp -= 1
         if self.keep_hp > 0:
-            world.emit_event("keep_hit", f"the keep took a hit — hp {self.keep_hp}")
-            world.broadcast_text(f"GAME: keep hit! hp {self.keep_hp}", severity=SEV_WARNING)
+            world.add_score(KEEP_HIT_POINTS, "keep hit", feed=False)
+            world.emit_event("keep_hit",
+                             f"the keep took a hit — hp {self.keep_hp}, {KEEP_HIT_POINTS}",
+                             data={"points": KEEP_HIT_POINTS, "hp": self.keep_hp})
+            world.broadcast_text(f"GAME: keep hit! hp {self.keep_hp}, {KEEP_HIT_POINTS}",
+                                 severity=SEV_WARNING)
         else:
             self.keep_hp = KEEP_HP  # co-op never hard-fails: pay and rebuild
             world.add_score(KEEP_FALL_POINTS, "the keep fell", feed=False)
@@ -315,17 +355,26 @@ class SiegeMission(Mission):
             if self.timer <= 0:
                 self._start_wave(world, self.wave + 1)
         elif self.pending == 0 and not self.creeps:
-            world.add_score(WAVE_BONUS, f"wave {self.wave} cleared", feed=False)
-            world.emit_event("wave_clear", f"wave {self.wave} beaten! +{WAVE_BONUS}",
-                             data={"points": WAVE_BONUS})
-            world.broadcast_text(f"GAME: wave {self.wave} clear! +{WAVE_BONUS}")
+            bonus = WAVE_BONUS if self.leaks == 0 else WAVE_BONUS_LEAKY
+            world.add_score(bonus, f"wave {self.wave} cleared", feed=False)
+            world.emit_event(
+                "wave_clear",
+                f"wave {self.wave} beaten! {self.wave_kills} kills, "
+                f"{self.leaks} leaked, +{bonus}",
+                data={"points": bonus, "kills": self.wave_kills, "leaks": self.leaks})
+            if self.leaks == 0:
+                world.broadcast_text(f"GAME: wave {self.wave} clear! +{bonus}")
+            else:
+                world.broadcast_text(
+                    f"GAME: wave {self.wave} clear, {self.leaks} leaked +{bonus}")
             self.state, self.timer = "build", BUILD_S
             world.broadcast_text(f"GAME: wave {self.wave + 1} in {round(BUILD_S)}s, build!")
 
     def _start_wave(self, world: WorldAPI, wave: int) -> None:
         self.state, self.wave = "active", wave
-        self.gate = world.rng.choice(GATES)
+        self.gate = self.rng.choice(GATES)
         self.pending = _wave_size(wave)
+        self.leaks, self.wave_kills = 0, 0
         self.spawn_timer = 0.0
         world.emit_event("wave_start", f"wave {wave}: {self.pending} creeps")
         world.broadcast_text(

@@ -5,14 +5,17 @@ from app.game.building import HINT_SUSTAIN, PICKUP_DWELL, PLACE_DWELL
 from app.game.missions.siege import (
     BEAM_S,
     FERRY,
+    GATES,
     GRACE_S,
     KEEP_FALL_POINTS,
+    KEEP_HIT_POINTS,
     KEEP_HP,
     KILL_POINTS,
     POOF_S,
     QUARRY,
     TOWER_POINTS,
     WAVE_BONUS,
+    WAVE_BONUS_LEAKY,
     ZAP_ARC_S,
     ZAP_DWELL,
     SiegeMission,
@@ -122,10 +125,13 @@ def test_march_hits_the_keep():
     freeze_waves(m)
     world.views = [view("d0", n=-90.0, e=-76.0)]
     add_creep(m, (0, 2), speed=2.0)
+    before = world.score
     world.run(m, 8.0)
     assert m.keep_hp == KEEP_HP - 1
     assert not m.creeps, "the creep died on arrival"
-    assert any("keep hit! hp 9" in t for t in texts(world))
+    assert world.score == before + KEEP_HIT_POINTS, "every hit costs a little"
+    assert any("keep hit! hp 9, -1" in t for t in texts(world))
+    assert "score" not in [ev["kind"] for ev in world.events], "quietly"
     assert_grammar(world)
 
 
@@ -137,10 +143,80 @@ def test_keep_fall_costs_points_and_rebuilds():
     add_creep(m, (0, 2), speed=2.0)
     before = world.score
     world.run(m, 8.0)
-    assert world.score == before + KEEP_FALL_POINTS
+    assert world.score == before + KEEP_FALL_POINTS, "the falling hit charges only the fall"
     assert m.keep_hp == KEEP_HP, "restored at full hp"
     assert any("keep fell! -25, rebuilt" in t for t in texts(world))
     assert_grammar(world)
+
+
+def test_leaky_wave_pays_the_reduced_bonus():
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    m.state, m.wave, m.pending = "active", 3, 0
+    m.leaks, m.wave_kills = 2, 6
+    before = world.score
+    world.run(m, 0.3)
+    assert world.score == before + WAVE_BONUS_LEAKY
+    assert any("wave 3 clear, 2 leaked +5" in t for t in texts(world))
+    ev = next(ev for ev in world.events if ev["kind"] == "wave_clear")
+    assert ev["msg"] == "wave 3 beaten! 6 kills, 2 leaked, +5"
+    assert ev["data"] == {"points": 5, "kills": 6, "leaks": 2}
+    assert_grammar(world)
+
+
+def test_a_leak_counts_and_a_new_wave_forgets_it():
+    world, m = make()
+    freeze_waves(m)
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    add_creep(m, (0, 2), speed=2.0)
+    world.run(m, 8.0)
+    assert m.leaks == 1
+    m._start_wave(world, 2)
+    assert m.leaks == 0 and m.wave_kills == 0
+
+
+def test_too_high_over_a_creep_hints_and_throttles():
+    world, m = make()
+    freeze_waves(m)
+    creep = add_creep(m, (4, 0))
+    world.views = [view("d0", n=creep.n, e=creep.e, alt=9.0)]  # parked, too high to zap
+    world.run(m, HINT_SUSTAIN + 0.3)
+    assert m.creeps, "no zap from up there"
+    nags = [t for target, t in world.texts if target == "d0" and "to zap" in t]
+    assert nags == ["GAME: drop under 3 m to zap"]
+    world.run(m, 20.0)
+    nags = [t for target, t in world.texts if target == "d0" and "to zap" in t]
+    assert 2 <= len(nags) <= 3, "throttled to about one nag per 10 s"
+    world.views = [view("d0", n=creep.n, e=creep.e, alt=2.0)]  # took the hint
+    world.run(m, 2.0)
+    assert not m.creeps
+    assert_grammar(world)
+
+
+def test_hint_rotation_covers_every_tip():
+    from app.game.missions.siege import _HINTS
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    freeze_waves(m)
+    world.run(m, 20.0 * len(_HINTS) + 1)
+    said = [t for _target, t in world.texts]
+    assert all(any(h == t for t in said) for h in _HINTS)
+    assert len(_HINTS) >= 6 and len(set(_HINTS)) == len(_HINTS)
+    assert_grammar(world)
+
+
+def test_rounds_draw_different_gate_sequences():
+    world, m = make()
+    seqs = []
+    for _round in range(2):
+        seqs.append(tuple(GATES.index(m.gate) for _ in range(6)
+                          if not m._start_wave(world, 1)))
+        m.reset(world)
+    assert seqs[0] != seqs[1], "a new round rolls new gates"
+    # …and the same engine seed replays the same rounds
+    world2, m2 = make()
+    again = tuple(GATES.index(m2.gate) for _ in range(6) if not m2._start_wave(world2, 1))
+    assert again == seqs[0]
 
 
 # ------------------------------------------------------------ combat verbs
