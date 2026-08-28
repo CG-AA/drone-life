@@ -9,9 +9,12 @@ from app.game.missions.siege import (
     KEEP_FALL_POINTS,
     KEEP_HP,
     KILL_POINTS,
+    POOF_S,
     QUARRY,
     TOWER_POINTS,
     WAVE_BONUS,
+    ZAP_ARC_S,
+    ZAP_DWELL,
     SiegeMission,
 )
 from app.game.units import GroundUnit
@@ -242,6 +245,72 @@ def test_beams_expire_even_in_an_empty_room():
     world.run(m, BEAM_S + 1.0)
     assert m.beams == []
     assert not [e for e in m.entities(world) if e.kind == "beam"]
+
+
+def fx_kinds(world, m):
+    return sorted(e.kind for e in m.entities(world) if e.kind in ("zap_arc", "poof"))
+
+
+def test_zap_leaves_an_arc_and_a_poof_that_expire():
+    world, m = make()
+    freeze_waves(m)
+    creep = add_creep(m, (4, 0))
+    world.views = [view("d0", n=creep.n, e=creep.e, alt=2.0)]
+    world.run(m, ZAP_DWELL + 0.15)  # the arc lives 0.3 s: look right after the kill
+    assert not m.creeps
+    assert fx_kinds(world, m) == ["poof", "zap_arc"]
+    arc = next(e for e in m.entities(world) if e.kind == "zap_arc")
+    assert (arc.n, arc.e, arc.alt) == (creep.n, creep.e, 2.0), "arc starts at the drone"
+    assert (arc.data["tn"], arc.data["te"]) == (creep.n, creep.e), "…and ends at the creep"
+    poof = next(e for e in m.entities(world) if e.kind == "poof")
+    assert poof.data == {"verb": "zap"}
+    world.run(m, max(POOF_S, ZAP_ARC_S) + 0.2)
+    assert fx_kinds(world, m) == [], "cosmetics expire"
+
+
+def test_squish_tower_and_leak_kills_each_poof_with_their_verb():
+    world, m = make()
+    freeze_waves(m)
+    add_creep(m, (4, 1))
+    place_tile(world, m, (4, 1))
+    assert [e.data["verb"] for e in m.entities(world) if e.kind == "poof"] == ["squish"]
+    world.run(m, POOF_S + 0.2)
+
+    build_tower(world, m, (4, 1))
+    add_creep(m, (4, 3), uid=2)
+    world.run(m, 0.3)
+    assert [e.data["verb"] for e in m.entities(world) if e.kind == "poof"] == ["tower"]
+    world.run(m, POOF_S + 0.2)
+
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    add_creep(m, (0, 1), uid=3, speed=3.0)
+    for _ in range(50):
+        world.run(m, 0.1)
+        if m.keep_hp < KEEP_HP:
+            break
+    assert m.keep_hp == KEEP_HP - 1
+    assert [e.data["verb"] for e in m.entities(world) if e.kind == "poof"] == ["leak"]
+
+
+def test_fx_expire_even_in_an_empty_room():
+    world, m = make()
+    freeze_waves(m)
+    m._fx(world, "poof", 0.0, 0.0, 0.0, POOF_S, {"verb": "zap"})
+    world.views = []  # everyone left mid-poof
+    world.run(m, POOF_S + 1.0)
+    assert m.fx == []
+    assert fx_kinds(world, m) == []
+
+
+def test_fx_ids_are_unique_across_a_burst():
+    world, m = make()
+    freeze_waves(m)
+    for i in range(4):
+        add_creep(m, (4, 0), uid=10 + i)
+    world.views = [hover((4, 0), alt=2.0)]
+    world.run(m, 2.0)  # one dwell kills every creep sharing the circle
+    ids = [e.id for e in m.entities(world)]
+    assert len(ids) == len(set(ids))
 
 
 def test_hands_full_at_the_quarry_hints():

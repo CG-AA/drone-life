@@ -66,6 +66,11 @@ ZAP_RADIUS = 4.0
 ZAP_ALT_ABOVE = 3.0  # hover within this of the creep's feet
 ZAP_DWELL = 1.5
 
+# cosmetics the projector draws for a moment: a zap arc from drone to creep,
+# a poof where a creep died — same wall-clock expiry discipline as beams
+ZAP_ARC_S = 0.3
+POOF_S = 0.6
+
 TARGET_EVERY = 3.0  # per-drone nearest-creep hint
 ANNOUNCE_EVERY = 20.0
 FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
@@ -106,8 +111,11 @@ class SiegeMission(Mission):
         self.pending = 0  # creeps of the current wave not yet spawned
         self.spawn_timer = 0.0
         self.beams: list[tuple[str, float, tuple, tuple]] = []  # id, expiry, src, dst
+        # id, expiry, kind, (n, e, alt), data — see _fx
+        self.fx: list[tuple[str, float, str, tuple[float, float, float], dict]] = []
         self._uid = 0
         self._beam_seq = 0
+        self._fx_seq = 0
         self._hint = 0
         self.last_announce = 0.0
         self.last_target = 0.0
@@ -137,6 +145,7 @@ class SiegeMission(Mission):
         self.state, self.timer, self.wave = "grace", GRACE_S, 0
         self.pending, self.spawn_timer = 0, 0.0
         self.beams.clear()
+        self.fx.clear()
         self.last_announce = self.last_target = 0.0
         self.hints.clear()
         self.place_hints.clear()
@@ -170,9 +179,10 @@ class SiegeMission(Mission):
             self._check_towers(world)
             self._reflood()
 
-        # beams are wall-clock cosmetics (world.now keeps advancing), so they
-        # expire even while an empty room holds the siege clocks still below
+        # beams and fx are wall-clock cosmetics (world.now keeps advancing), so
+        # they expire even while an empty room holds the siege clocks still below
         self.beams = [b for b in self.beams if b[1] > world.now]
+        self.fx = [f for f in self.fx if f[1] > world.now]
 
         if not any(d.connected for d in drones):
             return  # empty room: creeps, waves, and clocks all hold still
@@ -185,7 +195,7 @@ class SiegeMission(Mission):
 
         result = step_units(self.creeps.values(), self.tm, self.flow, dt, CHEW_S)
         for u in result.arrived:
-            self._kill(u.uid)
+            self._kill(world, u.uid, "leak")
             self._keep_hit(world)
         for _u, cell in result.chews:
             if self.tm.remove_top(cell) is not None:
@@ -208,7 +218,7 @@ class SiegeMission(Mission):
     def _squish(self, world: WorldAPI, p) -> None:
         for uid, u in list(self.creeps.items()):
             if u.cell == p.cell:
-                self._kill(uid)
+                self._kill(world, uid, "squish")
                 world.add_score(KILL_POINTS, "creep squished", student_id=p.drone.student_id)
                 world.send_text(p.drone.id, f"GAME: squish! creep under tile +{KILL_POINTS}")
 
@@ -227,7 +237,7 @@ class SiegeMission(Mission):
             self._beam_seq += 1
             self.beams.append((f"beam{self._beam_seq}", world.now + BEAM_S,
                                (tn, te, self.tm.top_alt(cell)), (u.n, u.e, u.alt)))
-            self._kill(target[1])
+            self._kill(world, target[1], "tower")
             world.add_score(KILL_POINTS, "tower kill")
 
     def _zap(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
@@ -236,13 +246,23 @@ class SiegeMission(Mission):
             tracker.max_alt = u.alt + ZAP_ALT_ABOVE  # creeps on walls stay zappable
             winner = tracker.update(drones, u.n, u.e, dt)
             if winner is not None:
-                self._kill(uid)
+                self._fx(world, "zap_arc", winner.n, winner.e, winner.alt, ZAP_ARC_S,
+                         {"tn": u.n, "te": u.e, "talt": u.alt})
+                self._kill(world, uid, "zap")
                 world.add_score(KILL_POINTS, "creep zapped", student_id=winner.student_id)
                 world.send_text(winner.id, f"GAME: zap! creep down +{KILL_POINTS}")
 
-    def _kill(self, uid: int) -> None:
-        self.creeps.pop(uid, None)
+    def _kill(self, world: WorldAPI, uid: int, verb: str) -> None:
+        """Remove a creep; `verb` (zap | squish | tower | leak) colours the poof."""
+        u = self.creeps.pop(uid, None)
         self.zap.pop(uid, None)
+        if u is not None:
+            self._fx(world, "poof", u.n, u.e, u.alt, POOF_S, {"verb": verb})
+
+    def _fx(self, world: WorldAPI, kind: str, n: float, e: float, alt: float,
+            ttl: float, data: dict | None = None) -> None:
+        self._fx_seq += 1
+        self.fx.append((f"{kind}{self._fx_seq}", world.now + ttl, kind, (n, e, alt), data or {}))
 
     def _keep_hit(self, world: WorldAPI) -> None:
         self.keep_hp -= 1
@@ -331,5 +351,7 @@ class SiegeMission(Mission):
         for beam_id, _expiry, (n, e, alt), (tn, te, talt) in self.beams:
             out.append(Entity(id=beam_id, kind="beam", n=n, e=e, alt=alt,
                               data={"tn": tn, "te": te, "talt": talt}))
+        for fx_id, _expiry, kind, (n, e, alt), data in self.fx:
+            out.append(Entity(id=fx_id, kind=kind, n=n, e=e, alt=alt, data=data))
         out.extend(self.carry.entities(world.drones()))
         return out

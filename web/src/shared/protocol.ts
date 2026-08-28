@@ -40,6 +40,7 @@ export const KNOWN_KINDS = [
   "tile_source", "tile_carried", "ghost_tile",         // building missions
   "furnace",                                           // forge
   "keep", "troop", "tower", "beam",                    // siege
+  "zap_arc", "poof",                                   // siege cosmetics (short-lived)
 ] as const;
 
 export interface EntityState {
@@ -64,6 +65,10 @@ export interface TroopData { dir: number; chewing: boolean }
 export interface KeepData { hp: number; max: number }
 export interface TowerData { range: number }
 export interface BeamData { tn: number; te: number; talt: number }
+/** a drone's zap: origin is the entity pose (the drone), target rides in data */
+export interface ZapArcData { tn: number; te: number; talt: number }
+/** where a creep died; verb is zap | squish | tower | leak */
+export interface PoofData { verb: string }
 
 export interface PadState {
   slot: number;
