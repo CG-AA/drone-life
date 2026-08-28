@@ -172,12 +172,13 @@ cap of 16 (wave 7) — reach it in a round before judging difficulty.
 
 ## Day −1 checklist (cannot be verified off the lab server)
 
-- [ ] `make preflight` / podman path: `make image`, `make e2e`, one
-      container-mode submit end-to-end from a real browser.
+- [ ] `set -a && . /etc/drone-life.env && set +a && make preflight` (the env
+      file is not read by `make` on its own) / podman path: `make image`,
+      `make e2e`, one container-mode submit end-to-end from a real browser.
 - [ ] `make load` on the lab hardware (`MAX_STUDENTS=20`); overruns < 1% on
       `/healthz`.
 - [ ] Both transition boxes on the real box (`/etc/drone-life.env` edit +
       `systemctl restart` — time them; they're the 5′ SWITCH blocks).
 - [ ] Projector readability from 5 m; printed CHEATSHEET legible at desk.
 - [ ] Full dry run of §4 with 3 bots + one real phone/laptop as a fake
-      student (WORKPLAN day −1 freeze item).
+      student.

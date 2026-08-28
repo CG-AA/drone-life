@@ -60,8 +60,10 @@ See the Layout table in `README.md`. Rules of thumb:
 
 ```bash
 make test          # default suite: server pytest + web vitest
-make e2e           # needs podman + `make image`
-make load          # timing-sensitive: run on a quiet machine
+make lint          # ruff (server) + eslint (web); make lint-fix autofixes ruff only
+make typecheck     # tsc --noEmit (web) + mypy (server)
+make e2e           # needs podman + `make image` — without them the suite SKIPS, it does not fail
+make load          # timing-sensitive: run on a quiet machine (LOAD_BOTS=20 for class size)
 ```
 
 - Mission tests use `tests/support/harness.py` (`FakeWorld`, `view`,
