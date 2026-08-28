@@ -84,7 +84,25 @@ export interface WorldData {
   drones: DroneState[];
   entities: EntityState[];
   pads: PadState[];
+  /** Mission.hud() — per-mission, see the …HudState shapes; {} when a
+   * mission has nothing to count. Coerce field by field like entity data. */
+  mission_state: Record<string, unknown>;
 }
+
+/** siege's mission_state (missions/siege.py hud()) */
+export interface SiegeHudState {
+  wave: number;
+  state: "grace" | "build" | "active";
+  timer_s: number; // whole seconds to the next wave; 0 while active
+  keep_hp: number;
+  keep_max: number;
+  creeps_alive: number;
+  pending: number; // creeps of this wave still to spawn
+  towers: number;
+}
+
+/** delivery's mission_state */
+export interface DeliveryHudState { crates: number; delivered: number }
 
 export interface EventData {
   kind: string;

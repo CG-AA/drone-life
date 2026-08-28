@@ -122,6 +122,13 @@ class GameEngine:
             self._mission_error("entities")
             return []
 
+    def hud(self) -> dict:
+        try:
+            return self.mission.hud()
+        except Exception:
+            self._mission_error("hud")
+            return {}
+
     def reset(self, now: float) -> None:
         self.score = 0
         self.api.now = now

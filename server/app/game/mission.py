@@ -103,6 +103,14 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
         the first tick — so read live state from `world`, don't stash it."""
         return []
 
+    def hud(self) -> dict:
+        """What the projector's status strip shows for this mission — a small
+        JSON-serializable dict (integers, short strings) rebuilt from live
+        state on every frame and on WS connect, possibly before the first
+        tick. Empty by default: missions with nothing to count show nothing.
+        Siege: wave, state, countdown, keep hp; delivery: crates, delivered."""
+        return {}
+
     def tile_map(self) -> TileMap | None:
         """Missions with terrain return their TileMap; the service wires it
         into the sim as Terrain and broadcasts it to viewers. Identity must be

@@ -161,6 +161,19 @@ class SiegeMission(Mission):
         self.place_hints.clear()
         self.setup(world)
 
+    def hud(self) -> dict:
+        # integers only: the strip's countdown ticks in whole seconds
+        return {
+            "wave": self.wave,
+            "state": self.state,
+            "timer_s": max(0, math.ceil(self.timer)) if self.state != "active" else 0,
+            "keep_hp": self.keep_hp,
+            "keep_max": KEEP_HP,
+            "creeps_alive": len(self.creeps),
+            "pending": self.pending,
+            "towers": len(self.towers),
+        }
+
     # ------------------------------------------------------------------ tick
 
     def tick(self, world: WorldAPI, dt: float) -> None:

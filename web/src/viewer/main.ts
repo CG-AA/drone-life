@@ -122,6 +122,7 @@ async function boot(): Promise<void> {
     prev = cur;
     cur = { data: d, at: performance.now() };
     hud.setScore(d.score);
+    hud.setMissionState(d.mission_state ?? {});
     scene.drawPads(d.pads);
     droneCount = d.drones.length;
     showAttract();

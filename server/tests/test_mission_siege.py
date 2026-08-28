@@ -80,6 +80,20 @@ def test_wave_starts_after_grace_with_a_drone_present():
     assert_grammar(world)
 
 
+def test_hud_state_tracks_the_wave_machine():
+    world, m = make()
+    assert m.hud() == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
+                       "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0}
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    world.run(m, 10.0)
+    assert m.hud()["timer_s"] == 35 and m.hud()["state"] == "grace"
+    world.run(m, GRACE_S - 10.0 + 0.5)
+    h = m.hud()
+    assert h["wave"] == 1 and h["state"] == "active" and h["timer_s"] == 0
+    assert h["creeps_alive"] + h["pending"] == 4
+    assert all(isinstance(v, int) for k, v in h.items() if k != "state"), "integers only"
+
+
 def test_empty_room_freezes_the_clock():
     world, m = make()
     world.run(m, GRACE_S + 10.0)

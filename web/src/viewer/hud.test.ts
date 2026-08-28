@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { EVENT_CLASS } from "./hud";
+import { EVENT_CLASS, stripModel } from "./hud";
 
 const CLIENT_ONLY = new Set(["stale"]);
 
@@ -32,4 +32,30 @@ it("lists no kinds the server no longer emits", () => {
       expect(kinds.has(kind), `stale HUD kind ${kind}`).toBe(true);
     }
   }
+});
+
+it("shows no strip for missions that publish nothing", () => {
+  expect(stripModel({})).toBeNull();
+  expect(stripModel({ crates: 3, delivered: 0 })).toBeNull();
+});
+
+it("words each siege phase for the wall", () => {
+  const base = { wave: 0, state: "grace", timer_s: 45, keep_hp: 10, keep_max: 10,
+                 creeps_alive: 0, pending: 0, towers: 0 };
+  const grace = stripModel(base)!;
+  expect(grace.wave).toBe("GET READY");
+  expect(grace.phase).toBe("FIRST WAVE IN 45s");
+  expect(grace.keepPct).toBe(100);
+  expect(grace.keepLow).toBe(false);
+  expect(grace.towers).toBe("0 TOWERS");
+  const active = stripModel({ ...base, wave: 3, state: "active", timer_s: 0,
+                              creeps_alive: 2, pending: 5, towers: 1 })!;
+  expect(active.wave).toBe("WAVE 3");
+  expect(active.phase).toBe("7 CREEPS LEFT");
+  expect(active.towers).toBe("1 TOWER");
+  const build = stripModel({ ...base, wave: 3, state: "build", timer_s: 12, keep_hp: 2 })!;
+  expect(build.phase).toBe("WAVE 4 IN 12s");
+  expect(build.keepLow).toBe(true);
+  expect(build.keepText).toBe("2/10");
+  expect(build.keepPct).toBe(20);
 });

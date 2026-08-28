@@ -8,6 +8,7 @@ checked by writing zero new test code.
 """
 
 import importlib
+import json
 import pkgutil
 
 import pytest
@@ -44,8 +45,10 @@ def test_lifecycle_contract(name):
     mission = MISSIONS[name]()
     tm = mission.tile_map()  # the service reads this before setup runs
 
+    json.dumps(mission.hud())  # the world frame carries it before setup too
     world.start(mission)
     mission.entities(world)  # WS connect can serialize before the first tick
+    json.dumps(mission.hud())
 
     world.views = [view()]
     for kind in DRONE_EVENT_KINDS:  # every documented event, with a live drone
@@ -58,6 +61,7 @@ def test_lifecycle_contract(name):
     assert mission.tile_map() is tm, "tile_map identity must be process-stable"
     mission.reset(world)
     assert mission.tile_map() is tm, "reset() rebuilds the same map, never replaces it"
+    json.dumps(mission.hud())
 
     ids = [ent.id for ent in mission.entities(world)]
     assert len(ids) == len(set(ids)), "entity ids must be unique"

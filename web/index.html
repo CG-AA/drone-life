@@ -14,6 +14,16 @@
       <span class="visually-hidden">team score</span>
       <div id="score" aria-live="polite">0</div>
       <div id="mission">connecting…</div>
+      <div id="mstrip" hidden>
+        <span id="ms-wave">WAVE 1</span>
+        <span id="ms-phase"></span>
+        <span id="ms-keep">
+          <span class="ms-label">KEEP</span>
+          <span id="keep-bar" role="meter" aria-label="keep hp"><span id="keep-fill"></span></span>
+          <span id="ms-keep-hp"></span>
+        </span>
+        <span id="ms-towers"></span>
+      </div>
     </div>
     <div id="feed" role="log" aria-live="polite" aria-label="game events"></div>
     <div id="conn" role="status">offline</div>

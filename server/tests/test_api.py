@@ -86,6 +86,7 @@ async def test_status_and_world(client):
     assert r.status_code == 200
     world = r.json()["world"]
     assert world["score"] == 0
+    assert world["mission_state"] == {"crates": 3, "delivered": 0}
     assert len(world["drones"]) == 1
     kinds = {e["kind"] for e in world["entities"]}
     assert kinds == {"crate", "dropoff"}

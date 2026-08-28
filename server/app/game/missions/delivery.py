@@ -64,6 +64,7 @@ class DeliveryMission(Mission):
 
     def __init__(self) -> None:
         self.crates: dict[str, Crate] = {}
+        self.delivered = 0  # this round's tally, for the projector strip
         self.carry = CarrySlots()  # drone id -> crate id
         self.drop_dwell = DwellTracker(DROP_RADIUS, PICKUP_ALT, DROP_DWELL)
         self.next_id = 1
@@ -78,12 +79,16 @@ class DeliveryMission(Mission):
 
     # ------------------------------------------------------------- lifecycle
 
+    def hud(self) -> dict:
+        return {"crates": len(self.crates), "delivered": self.delivered}
+
     def setup(self, world: WorldAPI) -> None:
         while len(self.crates) < CRATE_COUNT:
             self._spawn_crate(world)
 
     def reset(self, world: WorldAPI) -> None:
         self.crates.clear()
+        self.delivered = 0
         self.carry.clear()
         self.drop_dwell.clear()
         self.next_id = 1
@@ -184,6 +189,7 @@ class DeliveryMission(Mission):
         if winner is not None:
             delivered = self.crates.pop(self.carry.take(winner.id) or "", None)
             if delivered is not None:
+                self.delivered += 1
                 total = world.add_score(POINTS, f"crate {delivered.id} delivered",
                                         student_id=winner.student_id, feed=False)
                 world.emit_event("delivery",
