@@ -248,6 +248,11 @@ function appendLogs(batch: LogLine[]): void {
   for (const line of lines) {
     const div = document.createElement("div");
     div.className = line.stream;
+    // the game talking to you is the one channel worth spotting in a wall of
+    // prints: "DRONE: GAME: …" lines get their own colour and a marker
+    if (line.stream === "stdout" && line.line.startsWith("DRONE: GAME:")) {
+      div.classList.add("game");
+    }
     div.textContent = line.line;
     logPane.appendChild(div);
   }

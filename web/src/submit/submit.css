@@ -90,6 +90,9 @@
 }
 #log-pane .stderr { color: var(--danger-soft); }
 #log-pane .system { color: var(--text-faint); font-style: italic; }
+/* the game talking to you — the one channel worth spotting among your prints */
+#log-pane .game { color: var(--gold); font-weight: 600; }
+#log-pane .game::before { content: "▶ "; color: var(--gold); }
 
 #banner {
   display: none;
