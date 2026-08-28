@@ -7,6 +7,7 @@ import { GameSocket } from "../shared/ws";
 import { attractView } from "./attract";
 import { CameraController } from "./controls";
 import { DroneRenderer } from "./drones";
+import { calloutFor, EffectsRenderer } from "./effects";
 import { EntityRenderer } from "./entities";
 import { Hud } from "./hud";
 import { diffVelocity, predict, smoothPose, type Pose } from "./interp";
@@ -69,6 +70,7 @@ async function boot(): Promise<void> {
   const droneR = new DroneRenderer(scene);
   const entityR = new EntityRenderer(scene);
   const terrainR = new TerrainRenderer(scene);
+  const effects = new EffectsRenderer(scene);
 
   // a refused code clears itself and reloads; the flag survives that reload so
   // the operator learns why they are back at the prompt
@@ -98,6 +100,7 @@ async function boot(): Promise<void> {
   let prev: Frame | null = null;
   let cur: Frame | null = null;
   let epoch = -1;
+  let simT = 0; // the sim clock, for telling live events from replayed history
   // rendered poses, eased toward the dead-reckoned target each frame
   const dronePoses = new Map<string, Pose>();
   const entityPoses = new Map<string, Pose>();
@@ -121,6 +124,7 @@ async function boot(): Promise<void> {
     }
     prev = cur;
     cur = { data: d, at: performance.now() };
+    simT = d.t;
     hud.setScore(d.score);
     hud.setSimTime(d.t);
     hud.setMissionState(d.mission_state ?? {});
@@ -129,7 +133,15 @@ async function boot(): Promise<void> {
     showAttract();
   });
   ws.on<TilesData>("tiles", (d) => terrainR.set(d));
-  ws.on<EventData>("event", (ev) => hud.addEvent(ev));
+  ws.on<EventData>("event", (ev) => {
+    hud.addEvent(ev);
+    // a burst at the pilot's drone — live events only (a fresh socket
+    // replays the last 20), and only for a drone we can see right now
+    const c = calloutFor(ev);
+    if (!c || !cur || (simT > 0 && ev.t < simT - 5)) return;
+    const drone = cur.data.drones.find((x) => x.student_id === ev.student_id);
+    if (drone) effects.burst(dronePoses.get(drone.id) ?? drone, c, performance.now());
+  });
   ws.onStatus = (up) => {
     hud.setConn(up);
     connected = up;
@@ -243,6 +255,7 @@ async function boot(): Promise<void> {
 
     droneR.sync(cur.data.drones, dronePoses);
     entityR.sync(cur.data.entities, entityPoses, now);
+    effects.tick(now);
   });
 }
 
