@@ -22,6 +22,7 @@ from app.game.missions.siege import (
     ZAP_ARC_S,
     ZAP_DWELL,
     SiegeMission,
+    _wave_size,
 )
 from app.game.units import GroundUnit
 from tests.support.harness import FakeWorld, assert_grammar, view
@@ -317,6 +318,37 @@ def test_champion_leak_costs_three_hits():
     assert m.keep_hp == KEEP_HP - 3 and m.stats.keep_hits == 3
 
 
+def test_every_fifth_wave_brings_a_champion_and_says_so():
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    m._start_wave(world, 4)
+    assert "champion" not in m.roster
+    m._start_wave(world, 5)
+    assert m.roster[-1] == "champion" and m.roster.count("champion") == 1
+    assert m.pending == _wave_size(5, 1) + 1, "the boss comes on top of the size"
+    assert any("wave 5 at N" in t and "creeps + boss" in t for t in texts(world))
+    ev = [ev for ev in world.events if ev["kind"] == "wave_start"][-1]
+    assert ev["msg"].endswith("creeps + a champion") and ev["data"]["boss"] is True
+    m._start_wave(world, 10)
+    assert m.roster[-1] == "champion"
+    assert_grammar(world)
+
+
+def test_boss_down_is_a_moment():
+    world, m = make()
+    freeze_waves(m)
+    champ = add_kind(m, (4, 0), "champion")
+    world.views = [view("d0", n=champ.n, e=champ.e, alt=2.0)]
+    world.run(m, (ZAP_DWELL + 0.2) * KINDS["champion"].hp)
+    assert not m.creeps
+    ev = next(ev for ev in world.events if ev["kind"] == "boss_down")
+    assert ev["msg"] == "D0 felled the champion! +20" and ev["student_id"] == "s-d0"
+    assert ("*", "GAME: champion down! +20") in world.texts
+    assert ("d0", "GAME: zap! champion down +20") in world.texts
+    assert "score" not in [ev["kind"] for ev in world.events], "one row, not two"
+    assert_grammar(world)
+
+
 def test_wave_composition_follows_the_bands():
     import random
 
@@ -333,7 +365,6 @@ def test_wave_composition_follows_the_bands():
 
 
 def test_wave_size_scales_with_pilots_and_clamps():
-    from app.game.missions.siege import _wave_size
     assert _wave_size(1, 1) == 4 and _wave_size(1, 3) == 4
     assert _wave_size(1, 8) == 6 and _wave_size(1, 20) == 9
     assert _wave_size(7, 1) == 16 and _wave_size(9, 20) == WAVE_MAX

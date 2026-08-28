@@ -163,6 +163,7 @@ SHARES: tuple[tuple[int, tuple[int, int, int, int]], ...] = (
 
 WAVE_MAX = 20
 PILOTS_PER_CREEP = 4  # +1 creep per this many connected pilots
+BOSS_EVERY = 5  # a champion walks in behind every 5th wave
 
 
 def _wave_size(wave: int, pilots: int = 0) -> int:
@@ -429,7 +430,12 @@ class SiegeMission(Mission):
         self._kill(world, uid, verb)
         who = drone.student_id if drone is not None else student_id
         world.add_score(u.bounty, f"{u.kind} {_kill_reason(verb)}", student_id=who,
-                        feed=drone is not None)
+                        feed=drone is not None and u.kind != "champion")
+        if u.kind == "champion":  # the boss going down is a moment for the wall
+            slayer = drone.name if drone is not None else "a watchtower"
+            world.emit_event("boss_down", f"{slayer} felled the champion! +{u.bounty}",
+                             student_id=who, data={"points": u.bounty, "wave": self.wave})
+            world.broadcast_text(f"GAME: champion down! +{u.bounty}")
         if drone is not None:
             if verb == "zap":
                 world.send_text(drone.id, f"GAME: zap! {u.kind} down +{u.bounty}")
@@ -508,13 +514,21 @@ class SiegeMission(Mission):
         self.stats.best_wave = max(self.stats.best_wave, wave)
         self.gate = self.rng.choice(GATES)
         pilots = sum(1 for d in world.drones() if d.connected)
-        self.roster = _wave_roster(wave, _wave_size(wave, pilots), self.rng)
+        size = _wave_size(wave, pilots)
+        self.roster = _wave_roster(wave, size, self.rng)
+        boss = wave % BOSS_EVERY == 0
+        if boss:
+            self.roster.append("champion")  # last through the gate, on top of the size
         self.pending = len(self.roster)
         self.leaks, self.wave_kills = 0, 0
         self.spawn_timer = 0.0
-        world.emit_event("wave_start", f"wave {wave}: {self.pending} creeps")
+        suffix = " + a champion" if boss else ""
+        world.emit_event("wave_start", f"wave {wave}: {size} creeps{suffix}",
+                         data={"wave": wave, "size": size, "boss": boss})
+        # widest: "GAME: wave 10 at N 0 E -83, 20 creeps + boss" = 45
         world.broadcast_text(
-            f"GAME: wave {wave} at {fmt_world(*self.gate)}, {self.pending} creeps")
+            f"GAME: wave {wave} at {fmt_world(*self.gate)}, {size} creeps"
+            + (" + boss" if boss else ""))
 
     def _spawn_creep(self) -> None:
         self._uid += 1
