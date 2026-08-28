@@ -60,12 +60,21 @@ it("words each siege phase for the wall", () => {
   expect(build.keepPct).toBe(20);
 });
 
+it("keeps last round's record on the strip until the next round starts", () => {
+  const base = { wave: 0, state: "grace", timer_s: 45, keep_hp: 10, keep_max: 10,
+                 creeps_alive: 0, pending: 0, towers: 0 };
+  expect(stripModel(base)!.record).toBe("");
+  expect(stripModel({ ...base, last_round: null })!.record).toBe("");
+  expect(stripModel({ ...base, last_round: { round: 1, wave: 8, kills: 83, score: 320 } })!.record)
+    .toBe("LAST ROUND · WAVE 8 · 320 PTS");
+});
+
 const ev = (kind: string, t: number, msg = kind) =>
   ({ kind, msg, student_id: null, data: {}, t });
 
 it("puts a wave start on the banner and a milestone on the overlay", () => {
   expect(splashFor(ev("wave_start", 100, "wave 3: 8 creeps"), 101))
-    .toEqual({ slot: "banner", text: "wave 3: 8 creeps", cls: "warn" });
+    .toEqual({ slot: "banner", text: "wave 3: 8 creeps", cls: "warn", kind: "wave_start" });
   expect(splashFor(ev("milestone", 100), 101)?.slot).toBe("overlay");
   expect(splashFor(ev("keep_fell", 100), 101)?.cls).toBe("danger");
   expect(splashFor(ev("score", 100), 101)).toBeNull();

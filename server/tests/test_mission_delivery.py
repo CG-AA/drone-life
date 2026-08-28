@@ -64,6 +64,16 @@ def test_leaving_the_circle_resets_dwell():
     assert crate.carried_by is None, "dwell must restart after leaving"
 
 
+def test_a_newcomer_hears_the_crates_on_the_ground():
+    mission, world = make()
+    world.texts.clear()
+    world.drone_event(mission, view("d9"), "connected")
+    mine = [t for target, t in world.texts if target == "d9"]
+    assert len(mine) == len(mission.crates) and all(t.startswith("GAME: crate ") for t in mine)
+    world.drone_event(mission, view("d9"), "armed")
+    assert len([t for target, t in world.texts if target == "d9"]) == len(mine)
+
+
 def test_hud_counts_crates_and_deliveries():
     mission, world = make()
     assert mission.hud() == {"crates": 3, "delivered": 0}

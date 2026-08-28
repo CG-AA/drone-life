@@ -48,6 +48,8 @@ def scan() -> None:
 drone.takeoff(8)
 while True:
     scan()
+    if not drone.armed:  # crashed and respawned on the pad: back up we go
+        drone.takeoff(8)
     if not carrying and quarry:
         drone.goto(quarry[0], quarry[1], 2)  # hover low: the pickup dwell
         deadline = time.time() + 8

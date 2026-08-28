@@ -48,10 +48,24 @@ def test_resource_limits(tmp_path):
     assert value_of(argv, "--pids-limit") == "64"
 
 
-def test_only_mount_is_the_script_dir_read_only(tmp_path):
+def test_the_live_helper_is_mounted_over_the_baked_copy(tmp_path):
+    """examples/dronelife.py changes; the image does not. Every run must import
+    the helper the server ships with, not whatever `make image` last saw."""
+    from app.runner.podman import HELPER, HELPER_IN_IMAGE
     _, _, argv = build(tmp_path)
     mounts = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
-    assert mounts == [f"{(tmp_path / 's0').resolve()}:/work:ro"]
+    assert f"{HELPER}:{HELPER_IN_IMAGE}:ro" in mounts
+    assert HELPER.is_file() and HELPER.name == "dronelife.py"
+    assert HELPER_IN_IMAGE.endswith("/site-packages/dronelife.py")
+
+
+def test_the_only_mounts_are_the_script_dir_and_the_helper_read_only(tmp_path):
+    from app.runner.podman import HELPER, HELPER_IN_IMAGE
+    _, _, argv = build(tmp_path)
+    mounts = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
+    assert mounts == [f"{(tmp_path / 's0').resolve()}:/work:ro",
+                      f"{HELPER}:{HELPER_IN_IMAGE}:ro"]
+    assert all(m.endswith(":ro") for m in mounts)
 
 
 def test_never_pulls_at_run_time(tmp_path):

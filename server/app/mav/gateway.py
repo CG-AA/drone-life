@@ -80,6 +80,11 @@ class Gateway:
         link = Link(writer, drone.sysid)
         conn = Conn(link=link, writer=writer)
         self.conns[drone.id] = conn
+        # texts queued while nobody was listening are history, not news: a
+        # mid-round joiner used to receive every announce since boot (stale
+        # gates, old build sites) before its first heartbeat. Missions brief a
+        # newcomer themselves on the "connected" event.
+        drone.outbox.clear()
         drone.connected = True
         drone.events.append("connected")
         # immediate heartbeat so the client's wait_heartbeat() returns right away

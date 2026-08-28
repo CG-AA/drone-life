@@ -28,13 +28,18 @@ function polyAround(cx: number, cy: number, r: number, sides: number, rot = 0): 
 
 export const troop: KindRenderer = {
   animated: true,
+  init(vis, ent) {
+    if (ent.data.kind === "champion") vis.addLabel("CHAMPION", COLORS.gold, 12, 12);
+  },
   draw(vis, ent, pose, drawAlt, s, timeMs) {
     const chewing = Boolean(ent.data.chewing);
     const look = TROOP_LOOK[String(ent.data.kind ?? "grunt")] ?? TROOP_LOOK.grunt;
     const dir = (Number(ent.data.dir ?? 0) * Math.PI) / 180; // server sends degrees
     const jitter = chewing && !REDUCED_MOTION ? Math.sin(timeMs / 30) * s * 0.25 : 0;
     const bob = chewing || REDUCED_MOTION ? 0 : Math.abs(Math.sin(timeMs / 120)) * s * 0.35;
-    const r = Math.max(5, s * look.r);
+    // a pixel floor per kind: ~11 px grunts, ~17 px brutes, ~23 px champion at any
+    // zoom — a projector from the back row is the target, not a laptop
+    const r = Math.max(9 * look.r, s * look.r);
     if (look.sides === 0) {
       vis.g.circle(jitter, -bob, r).fill({ color: look.fill })
         .stroke({ width: 1.5, color: look.edge });
@@ -43,8 +48,9 @@ export const troop: KindRenderer = {
         .fill({ color: look.fill }).stroke({ width: 1.5, color: look.edge });
     }
     if (look.sides === 8) { // the champion wears a crown
-      const c = polyAround(jitter, -bob - r * 0.9, r * 0.55, 3, -Math.PI / 2);
-      vis.g.poly(c).fill({ color: COLORS.gold });
+      const c = polyAround(jitter, -bob - r * 0.95, r * 0.7, 3, -Math.PI / 2);
+      vis.g.poly(c).fill({ color: COLORS.gold }).stroke({ width: 1.5, color: COLORS.ink });
+      vis.g.circle(jitter, -bob, r * 1.35).stroke({ width: 2, color: COLORS.gold, alpha: 0.6 });
     }
     const reach = look.sides === 3 ? 2.6 : 1.8; // runners point further ahead
     const tip = project(Math.cos(dir) * reach, Math.sin(dir) * reach, 0, s);
@@ -130,9 +136,10 @@ export const beam: KindRenderer = {
     const dy = dst.y - src.y;
     // ~4 Hz flicker is a photosensitivity risk projected large: steady when reduced
     const flick = pulse(timeMs, 40, 0.6, 0.4);
-    vis.g.moveTo(0, 0).lineTo(dx, dy).stroke({ width: 3, color: 0x9fd8ff, alpha: flick });
-    vis.g.moveTo(0, 0).lineTo(dx, dy).stroke({ width: 1, color: 0xffffff, alpha: 0.9 });
-    vis.g.circle(dx, dy, Math.max(3, s) * flick).fill({ color: 0xcfeaff, alpha: 0.8 });
+    vis.g.moveTo(0, 0).lineTo(dx, dy).stroke({ width: 9, color: 0x9fd8ff, alpha: flick * 0.35 });
+    vis.g.moveTo(0, 0).lineTo(dx, dy).stroke({ width: 4, color: 0xcfeaff, alpha: flick });
+    vis.g.moveTo(0, 0).lineTo(dx, dy).stroke({ width: 1.5, color: 0xffffff, alpha: 0.95 });
+    vis.g.circle(dx, dy, Math.max(5, s * 1.4) * flick).fill({ color: 0xcfeaff, alpha: 0.85 });
   },
 };
 

@@ -31,6 +31,9 @@ under one minute; the rest is students pressing Run again.
 ## 3. Before doors open (T−20)
 
 - `systemctl status drone-life` green; `MISSION=freefly` in `/etc/drone-life.env`.
+  Pulled new code since the last class? `make image` too — cheap, and the
+  sandbox then matches the server (the live `dronelife.py` is mounted into
+  every run regardless, so a stale image cannot break imports).
 - Projector on `/` with the room code entered; admin console (`/admin`) open
   on the instructor laptop.
 - Smoke: `make bots N=3 HOST=localhost:8000 ADMIN_TOKEN=...` → three drones
@@ -168,7 +171,9 @@ speed) from 3; brutes (3 hp, 0.65× speed, chew 2×) from 5; sappers (2 hp,
 chew 3×) from 7; a champion (8 hp, 0.6×, three Keep hits) behind every 5th
 wave (`BOSS_EVERY`). Gates: one lane through wave 3, two from 4, all three
 from 8 (`_gates_for`). Between waves the game announces a tower site four
-cells before the Keep beside the last lane (`BUILD_SITE_STEPS`).
+cells before the Keep beside the last lane (`BUILD_SITE_STEPS`, 8 ≈ 40 m out —
+past where gate-camping zappers already emptied it); towers reach 16 m and
+fire every 2 s; a drone zaps one creep per 1.5 s (`ZAP_DWELL`), never a clump.
 
 Measured before the kinds landed (8 × `bot_siege` + 2 × `bot_builder`,
 ~3.5 min): grace and the wave machine ran exactly on the documented clocks

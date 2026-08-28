@@ -30,6 +30,8 @@ def scan() -> None:
 drone.takeoff(6)
 while True:
     scan()
+    if not drone.armed:  # crashed and respawned on the pad: back up we go
+        drone.takeoff(6)
     if target is None:
         time.sleep(0.5)  # wait for a creep call
         continue

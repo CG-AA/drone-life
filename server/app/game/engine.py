@@ -152,4 +152,4 @@ class GameEngine:
         except Exception:
             self._mission_error("reset")
         self.score = 0
-        self.bus.emit("reset", "world reset", t=now)
+        self.bus.emit("reset", "world reset — press Run again", t=now)

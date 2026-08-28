@@ -104,6 +104,12 @@ async def test_template_served(client):
     assert r.status_code == 404
 
 
+def test_default_template_follows_the_mission():
+    from app.api.routes_public import default_variant
+    assert default_variant("siege") == "siege"
+    assert default_variant("delivery") == "beginner" and default_variant("freefly") == "beginner"
+
+
 async def test_every_template_variant_is_a_real_parseable_script(client):
     # the submit page's menu is only as good as the files behind it
     import ast

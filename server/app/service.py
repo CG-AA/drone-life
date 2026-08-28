@@ -284,7 +284,13 @@ class DroneLifeService:
                       student_id=student.id, t=self.world.t)
 
     async def reset_world(self) -> None:
-        await self.runner.stop_all()
+        # the reset itself is the news; twenty "X's script was stopped" rows
+        # would bury the round summary the mission just posted
+        self._resetting = True
+        try:
+            await self.runner.stop_all()
+        finally:
+            self._resetting = False
         # bots are session furniture: clear them so `make reset && make bots`
         # really is a clean slate and bot numbering restarts at 1
         for student in list(self.registry.students.values()):
@@ -358,14 +364,16 @@ class DroneLifeService:
 
     # -------------------------------------------------------------- runner cb
 
+    _resetting = False
+
     def _on_run_event(self, student_id: str, payload: dict) -> None:
         if self.hub is not None:
             self.hub.send_run_state(student_id, payload)
         if payload["state"] != "exited":
             return
         reason = payload["reason"]
-        if reason == "replaced":
-            return  # the new run's own lines say it better; don't spam the feed
+        if reason == "replaced" or self._resetting:
+            return  # the new run's own lines (or the reset line) say it better
         student = self.registry.students.get(student_id)
         name = student.name if student else student_id
         # "error" keeps its code: that number is the student's debugging handle

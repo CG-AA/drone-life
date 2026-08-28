@@ -8,6 +8,8 @@ const FEED_MAX = 8;
 const FEED_TTL_MS = 45_000;
 const BANNER_MS = 2800;
 const OVERLAY_MS = 2200;
+/** the round summary is the one overlay worth reading twice */
+const OVERLAY_LONG: Record<string, number> = { round_end: 7000 };
 /** events older than this (sim seconds) are replay on connect, not news */
 const FRESH_S = 5;
 
@@ -55,6 +57,8 @@ export interface StripModel {
   keepText: string;
   keepLow: boolean;
   towers: string;
+  /** the record to beat, shown until the next wave 1 ("" when none) */
+  record: string;
 }
 
 export function stripModel(ms: Record<string, unknown>): StripModel | null {
@@ -70,7 +74,12 @@ export function stripModel(ms: Record<string, unknown>): StripModel | null {
   const hp = Number(ms.keep_hp ?? 0);
   const max = Math.max(1, Number(ms.keep_max ?? 1));
   const towers = Number(ms.towers ?? 0);
+  const last = ms.last_round as Record<string, unknown> | null | undefined;
+  const record = last && typeof last.wave === "number"
+    ? `LAST ROUND · WAVE ${last.wave} · ${Number(last.score ?? 0)} PTS`
+    : "";
   return {
+    record,
     wave: wave === 0 ? "GET READY" : `WAVE ${wave}`,
     phase,
     keepPct: Math.max(0, Math.min(100, (hp / max) * 100)),
@@ -81,7 +90,7 @@ export function stripModel(ms: Record<string, unknown>): StripModel | null {
 }
 
 /** Which events get a big moment on the wall, and where. */
-export interface Splash { slot: "banner" | "overlay"; text: string; cls: string }
+export interface Splash { slot: "banner" | "overlay"; text: string; cls: string; kind: string }
 
 const BANNER_KINDS: Record<string, string> = { wave_start: "warn" };
 const OVERLAY_KINDS: Record<string, string> = {
@@ -98,9 +107,9 @@ const OVERLAY_KINDS: Record<string, string> = {
 export function splashFor(ev: EventData, simT: number): Splash | null {
   if (simT > 0 && ev.t < simT - FRESH_S) return null;
   const banner = BANNER_KINDS[ev.kind];
-  if (banner !== undefined) return { slot: "banner", text: ev.msg, cls: banner };
+  if (banner !== undefined) return { slot: "banner", text: ev.msg, cls: banner, kind: ev.kind };
   const overlay = OVERLAY_KINDS[ev.kind];
-  if (overlay !== undefined) return { slot: "overlay", text: ev.msg, cls: overlay };
+  if (overlay !== undefined) return { slot: "overlay", text: ev.msg, cls: overlay, kind: ev.kind };
   return null;
 }
 
@@ -149,6 +158,9 @@ export class Hud {
     fill.style.width = `${m.keepPct}%`;
     fill.classList.toggle("low", m.keepLow);
     document.getElementById("ms-towers")!.textContent = m.towers;
+    const rec = document.getElementById("ms-record")!;
+    rec.textContent = m.record;
+    rec.hidden = m.record === "";
   }
 
   /** The sim clock from the latest world frame, for the replay gate. */
@@ -169,8 +181,8 @@ export class Hud {
       el.classList.add("in");
     }
     window.clearTimeout(this.timers[s.slot]);
-    this.timers[s.slot] = window.setTimeout(
-      () => { el.hidden = true; }, s.slot === "banner" ? BANNER_MS : OVERLAY_MS);
+    const ms = s.slot === "banner" ? BANNER_MS : (OVERLAY_LONG[s.kind] ?? OVERLAY_MS);
+    this.timers[s.slot] = window.setTimeout(() => { el.hidden = true; }, ms);
   }
 
   addEvent(ev: EventData): void {

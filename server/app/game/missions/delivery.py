@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from ...sim.backend import DroneView
 from .. import hex
 from ..building import (
     PICKUP_ALT,
@@ -81,6 +82,15 @@ class DeliveryMission(Mission):
 
     def hud(self) -> dict:
         return {"crates": len(self.crates), "delivered": self.delivered}
+
+    def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:
+        # a fresh link starts with an empty outbox (gateway): tell the newcomer
+        # what is on the ground right now, not the history it missed
+        if kind == "connected":
+            for crate in self.crates.values():
+                if crate.carried_by is None:
+                    world.send_text(drone.id,
+                                    f"GAME: crate {crate.id} at {fmt_world(crate.n, crate.e)}")
 
     def setup(self, world: WorldAPI) -> None:
         while len(self.crates) < CRATE_COUNT:

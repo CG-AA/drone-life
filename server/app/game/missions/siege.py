@@ -25,6 +25,7 @@ from ...sim.backend import DroneView
 from .. import hex, path
 from ..blueprints import Blueprint, BlueprintTracker, Requirement
 from ..building import (
+    _EPS,
     HINT_SUSTAIN,
     CarrySlots,
     DwellTracker,
@@ -71,13 +72,13 @@ WAVE_BONUS_LEAKY = 5  # …and the consolation when something did
 TOWER_POINTS = 15
 TOWER_BP = Blueprint("watchtower", (Requirement(0, 0, "steel", 3),))
 TOWER_HEIGHT = 3
-TOWER_RANGE = 12.0
-TOWER_COOLDOWN = 3.0
-BEAM_S = 0.35
+TOWER_RANGE = 16.0
+TOWER_COOLDOWN = 2.0
+BEAM_S = 0.6  # long enough to be seen from the back row
 
 ZAP_RADIUS = 4.0
 ZAP_ALT_ABOVE = 3.0  # hover within this of the creep's feet
-ZAP_DWELL = 1.5
+ZAP_DWELL = 1.5  # …and between one drone's zaps: a hover kills one creep at a time
 
 # cosmetics the projector draws for a moment: a zap arc from drone to creep,
 # a poof where a creep died — same wall-clock expiry discipline as beams
@@ -85,9 +86,10 @@ ZAP_ARC_S = 0.3
 POOF_S = 0.6
 
 TARGET_EVERY = 3.0  # per-drone nearest-creep hint
-ANNOUNCE_EVERY = 20.0
-BUILD_HINT_EVERY = 10.0  # 'build a tower at …' while the room has time to build
-BUILD_SITE_STEPS = 4  # cells before the Keep along the lane: ~21 m out, tower range 12
+ANNOUNCE_EVERY = 30.0
+BUILD_HINT_EVERY = 20.0  # 'build a tower at …' while the room has time to build
+BUILD_SITE_STEPS = 8  # cells before the Keep along the lane: ~40 m out, where the
+# zappers camping the gates have not already emptied the lane (tower range 16)
 FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
                    "GAME: got steel, wall or tower it",
                    "GAME: hands full, wall or tower it")
@@ -97,7 +99,7 @@ _HINTS = ("GAME: stack 3 steel = watchtower",
           "GAME: 2-high walls turn creeps aside",
           "GAME: drop a tile on a creep to squish it",
           "GAME: clean wave +10, each leak costs -1",
-          "GAME: towers shoot 12 m, build by the path")
+          "GAME: towers shoot 16 m, build by the path")
 
 
 @dataclass
@@ -224,6 +226,7 @@ class SiegeMission(Mission):
         self.towers: dict[Axial, Tower] = {}
         self.creeps: dict[int, GroundUnit] = {}
         self.zap: dict[int, DwellTracker] = {}  # creep uid -> hover dwell
+        self.zap_ready: dict[str, float] = {}  # drone id -> when its next zap may land
         self.zap_high: dict[int, DwellTracker] = {}  # creep uid -> too-high dwell (a hint)
         # siege's own dice: reseeded from the engine's on every round, so the
         # gate sequence differs between rounds yet stays reproducible per seed
@@ -244,6 +247,8 @@ class SiegeMission(Mission):
         self.spawn_timer = 0.0
         self.leaks = 0  # this wave's creeps that reached the Keep
         self.wave_kills = 0
+        self.wave_tower_kills = 0
+        self.last_round: dict | None = None  # the record to beat, until wave 1 starts
         self.beams: list[tuple[str, float, tuple, tuple]] = []  # id, expiry, src, dst
         # id, expiry, kind, (n, e, alt), data — see _fx
         self.fx: list[tuple[str, float, str, tuple[float, float, float], dict]] = []
@@ -267,6 +272,25 @@ class SiegeMission(Mission):
     def tile_map(self) -> TileMap:
         return self.tm
 
+    def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:
+        if kind == "connected":
+            self._brief(world, drone)
+
+    def _brief(self, world: WorldAPI, drone: DroneView) -> None:
+        """What a newcomer needs, and nothing that already happened: the
+        landmarks and where the game is right now."""
+        world.send_text(drone.id, f"GAME: keep at {fmt_world(*KEEP)}, protect it!")
+        world.send_text(drone.id, f"GAME: quarry at {fmt_world(*QUARRY)}")
+        left_s = max(0, math.ceil(self.timer))
+        if self.state == "grace":
+            world.send_text(drone.id, f"GAME: first wave in {left_s}s, build!")
+        elif self.state == "build":
+            world.send_text(drone.id, f"GAME: wave {self.wave + 1} in {left_s}s, build!")
+        else:
+            left = len(self.creeps) + self.pending
+            world.send_text(
+                drone.id, f"GAME: wave {self.wave} at {fmt_world(*self.gate)}, {left} creeps")
+
     def reset(self, world: WorldAPI) -> None:
         self._round_end(world)
         self.tm.clear()
@@ -278,6 +302,7 @@ class SiegeMission(Mission):
         self.creeps.clear()
         self.zap.clear()
         self.zap_high.clear()
+        self.zap_ready.clear()
         self.stats = SiegeStats()
         self.round += 1
         self._reflood()
@@ -286,7 +311,7 @@ class SiegeMission(Mission):
         self.gates, self.gate, self._lane = (GATES[0],), GATES[0], 0
         self.pending, self.spawn_timer = 0, 0.0
         self.roster.clear()
-        self.leaks, self.wave_kills = 0, 0
+        self.leaks, self.wave_kills, self.wave_tower_kills = 0, 0, 0
         self.beams.clear()
         self.fx.clear()
         self.last_announce = self.last_target = 0.0
@@ -299,6 +324,7 @@ class SiegeMission(Mission):
         # integers only: the strip's countdown ticks in whole seconds
         return {
             "stats": self.stats.as_dict(),
+            "last_round": self.last_round,
             "wave": self.wave,
             "state": self.state,
             "timer_s": max(0, math.ceil(self.timer)) if self.state != "active" else 0,
@@ -407,6 +433,7 @@ class SiegeMission(Mission):
             # wave-clear line carries the tally), credited to the builder
             if self._damage(world, target[1], 1, "tower", None, student_id=tower.builder):
                 tower.kills += 1
+                self.wave_tower_kills += 1
 
     def _zap(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
         for uid, u in list(self.creeps.items()):
@@ -427,6 +454,12 @@ class SiegeMission(Mission):
             tracker.max_alt = ceiling
             winner = tracker.update(drones, u.n, u.e, dt)
             if winner is not None:
+                # one zap per drone per dwell: a hover over a clump takes the
+                # creeps one at a time (this one's dwell just restarted), so a
+                # parked drone is not an area weapon and splitting up pays
+                if world.now < self.zap_ready.get(winner.id, -math.inf):
+                    continue
+                self.zap_ready[winner.id] = world.now + ZAP_DWELL - _EPS
                 self._fx(world, "zap_arc", winner.n, winner.e, winner.alt, ZAP_ARC_S,
                          {"tn": u.n, "te": u.e, "talt": u.alt})
                 # the dwell re-armed itself: another 1.5 s takes the next hp
@@ -518,11 +551,14 @@ class SiegeMission(Mission):
         elif self.pending == 0 and not self.creeps:
             bonus = WAVE_BONUS if self.leaks == 0 else WAVE_BONUS_LEAKY
             world.add_score(bonus, f"wave {self.wave} cleared", feed=False)
+            by_towers = (f" ({self.wave_tower_kills} by towers)"
+                         if self.wave_tower_kills else "")
             world.emit_event(
                 "wave_clear",
-                f"wave {self.wave} beaten! {self.wave_kills} kills, "
+                f"wave {self.wave} beaten! {self.wave_kills} kills{by_towers}, "
                 f"{self.leaks} leaked, +{bonus}",
-                data={"points": bonus, "kills": self.wave_kills, "leaks": self.leaks})
+                data={"points": bonus, "kills": self.wave_kills, "leaks": self.leaks,
+                      "tower_kills": self.wave_tower_kills})
             if self.leaks == 0:
                 world.broadcast_text(f"GAME: wave {self.wave} clear! +{bonus}")
             else:
@@ -546,8 +582,10 @@ class SiegeMission(Mission):
         if boss:
             self.roster.append("champion")  # last through the gate, on top of the size
         self.pending = len(self.roster)
-        self.leaks, self.wave_kills = 0, 0
+        self.leaks, self.wave_kills, self.wave_tower_kills = 0, 0, 0
         self.spawn_timer = 0.0
+        if wave == 1:
+            self.last_round = None  # the new round is on; the record moves to the whiteboard
         suffix = (f" from {k} gates" if k > 1 else "") + (" + a champion" if boss else "")
         world.emit_event("wave_start", f"wave {wave}: {size} creeps{suffix}",
                          data={"wave": wave, "size": size, "boss": boss, "gates": k})
@@ -598,6 +636,8 @@ class SiegeMission(Mission):
             f"{world.score} points",
             data={**st.as_dict(), "score": world.score, "round": self.round + 1})
         world.broadcast_text(f"GAME: round over! wave {st.best_wave}, {st.kills} kills")
+        self.last_round = {"round": self.round + 1, "wave": st.best_wave,
+                           "kills": st.kills, "score": world.score}
 
     # ---------------------------------------------------------- announcements
 

@@ -67,9 +67,16 @@ async def join(body: JoinBody, request: Request,
     }
 
 
+def default_variant(mission: str) -> str:
+    """The starter a fresh editor loads: the main event gets its own, so a
+    student joining mid-siege is not handed a delivery script."""
+    return "siege" if mission == "siege" else "beginner"
+
+
 @router.get("/template")
-async def template(variant: str = "beginner") -> PlainTextResponse:
-    filename = TEMPLATES.get(variant)
+async def template(variant: str = "",
+                   service: DroneLifeService = Depends(get_service)) -> PlainTextResponse:
+    filename = TEMPLATES.get(variant or default_variant(service.engine.mission.name))
     if filename is None:
         raise err(404, "variant", f"unknown template variant {variant!r}")
     # off-loop: this route shares the event loop with the 20 Hz sim driver

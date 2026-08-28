@@ -92,7 +92,7 @@ def test_wave_starts_after_grace_with_a_drone_present():
 
 def test_hud_state_tracks_the_wave_machine():
     world, m = make()
-    hud = {k: v for k, v in m.hud().items() if k != "stats"}
+    hud = {k: v for k, v in m.hud().items() if k not in ("stats", "last_round")}
     assert hud == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
                    "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0}
     world.views = [view("d0", n=-90.0, e=-76.0)]
@@ -102,8 +102,8 @@ def test_hud_state_tracks_the_wave_machine():
     h = m.hud()
     assert h["wave"] == 1 and h["state"] == "active" and h["timer_s"] == 0
     assert h["creeps_alive"] + h["pending"] == 4
-    assert all(isinstance(v, int) for k, v in h.items() if k not in ("state", "stats")), \
-        "integers only"
+    assert all(isinstance(v, int) for k, v in h.items()
+               if k not in ("state", "stats", "last_round")), "integers only"
     assert h["stats"]["best_wave"] == 1
 
 
@@ -170,7 +170,7 @@ def test_leaky_wave_pays_the_reduced_bonus():
     assert any("wave 3 clear, 2 leaked +5" in t for t in texts(world))
     ev = next(ev for ev in world.events if ev["kind"] == "wave_clear")
     assert ev["msg"] == "wave 3 beaten! 6 kills, 2 leaked, +5"
-    assert ev["data"] == {"points": 5, "kills": 6, "leaks": 2}
+    assert ev["data"] == {"points": 5, "kills": 6, "leaks": 2, "tower_kills": 0}
     assert_grammar(world)
 
 
@@ -208,7 +208,8 @@ def test_hint_rotation_covers_every_tip():
     world, m = make()
     world.views = [view("d0", n=-90.0, e=-76.0)]
     freeze_waves(m)
-    world.run(m, 20.0 * len(_HINTS) + 1)
+    from app.game.missions.siege import ANNOUNCE_EVERY
+    world.run(m, ANNOUNCE_EVERY * len(_HINTS) + 1)
     said = [t for _target, t in world.texts]
     assert all(any(h == t for t in said) for h in _HINTS)
     assert len(_HINTS) >= 6 and len(set(_HINTS)) == len(_HINTS)
@@ -443,7 +444,7 @@ def test_build_site_is_off_lane_placeable_and_announced_while_building():
         cell = m.flow.toward(cell)
     assert site not in lane and any(nb in lane for nb in hex.neighbors(site))
     n, e = hex.axial_to_world(site)
-    assert 12 < (n * n + e * e) ** 0.5 < 40, "close enough to cover the approach"
+    assert 25 < (n * n + e * e) ** 0.5 < 60, "out along the lane, past the gate campers"
     world.run(m, 0.2)
     assert any(t == f"GAME: build a tower at {hex_text(site)}" for t in texts(world))
     said = [t for t in texts(world) if "build a tower at" in t]
@@ -697,9 +698,70 @@ def test_fx_ids_are_unique_across_a_burst():
     for i in range(4):
         add_creep(m, (4, 0), uid=10 + i)
     world.views = [hover((4, 0), alt=2.0)]
-    world.run(m, 2.0)  # one dwell kills every creep sharing the circle
+    world.run(m, 4 * ZAP_DWELL + 1.0)  # one creep per dwell: four dwells for the clump
+    assert not m.creeps
     ids = [e.id for e in m.entities(world)]
     assert len(ids) == len(set(ids))
+
+
+def test_one_zap_per_drone_per_dwell_so_a_hover_is_not_an_area_weapon():
+    world, m = make()
+    freeze_waves(m)
+    for i in range(3):
+        add_creep(m, (4, 0), uid=10 + i)
+    world.views = [hover((4, 0), alt=2.0)]
+    world.run(m, ZAP_DWELL + 0.15)
+    assert len(m.creeps) == 2, "the first dwell takes exactly one"
+    world.run(m, ZAP_DWELL + 0.15)
+    assert len(m.creeps) == 1
+    # a second drone over the same clump doubles the rate
+    world.views = [hover((4, 0), alt=2.0, drone_id="d0"), hover((4, 0), alt=2.0, drone_id="d1")]
+    add_creep(m, (4, 0), uid=20)
+    world.run(m, ZAP_DWELL + 0.15)
+    assert len(m.creeps) == 0
+
+
+def test_a_newcomer_is_briefed_not_backfilled():
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    world.run(m, GRACE_S + 1.0)  # wave 1 is on
+    world.texts.clear()
+    late = view("d1", n=-90.0, e=-68.0)
+    world.drone_event(m, late, "connected")
+    mine = [t for target, t in world.texts if target == "d1"]
+    assert mine[0].startswith("GAME: keep at N 0 E 0")
+    assert mine[1].startswith("GAME: quarry at")
+    assert mine[2].startswith("GAME: wave 1 at N") and "creeps" in mine[2]
+    assert not [t for target, t in world.texts if target == "d0"], "nobody else hears it"
+    m.state, m.timer = "build", 12.4
+    world.texts.clear()
+    world.drone_event(m, late, "connected")
+    assert ("d1", "GAME: wave 2 in 13s, build!") in world.texts
+    assert_grammar(world)
+
+
+def test_last_round_stays_on_the_hud_until_the_next_wave_one():
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    m._start_wave(world, 3)
+    m.reset(world)
+    assert m.hud()["last_round"] == {"round": 1, "wave": 3, "kills": 0, "score": world.score}
+    world.run(m, GRACE_S + 0.5)
+    assert m.wave == 1 and m.hud()["last_round"] is None
+
+
+def test_wave_clear_credits_the_towers_share():
+    world, m = make()
+    freeze_waves(m)
+    build_tower(world, m, (4, 1))
+    add_creep(m, (4, 3))
+    world.run(m, 0.3)
+    world.views = [view("d0")]
+    m.state, m.wave, m.pending = "active", 2, 0
+    world.run(m, 0.3)
+    ev = next(ev for ev in world.events if ev["kind"] == "wave_clear")
+    assert ev["msg"] == "wave 2 beaten! 1 kills (1 by towers), 0 leaked, +10"
+    assert ev["data"]["tower_kills"] == 1
 
 
 def test_hands_full_at_the_quarry_hints():

@@ -196,7 +196,9 @@ function setRunState(rs: RunState): void {
   runPill($("run-pill"), rs);
   // a missing sandbox image never reaches the API as an error — the container
   // starts, dies, and the reason is in the log pane. Say where to look.
-  if (rs.state === "exited" && rs.exit_code !== null && rs.exit_code !== 0) {
+  if (rs.state === "exited" && (rs.reason === "stopped" || rs.reason === "replaced")) {
+    $("run-hint").textContent = "stopped — press run to fly again";
+  } else if (rs.state === "exited" && rs.exit_code !== null && rs.exit_code !== 0) {
     $("run-hint").textContent =
       "your script ended with an error — the reason is in the log pane";
   }

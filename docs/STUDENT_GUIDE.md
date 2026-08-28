@@ -58,7 +58,7 @@ over and even **land on top**.
   2. **Squish**: place a tile right on top of one — flattens anything, any
      hp (same ferry loop as rampart; steel comes from the announced quarry).
   3. **Watchtower**: stack **3 steel on one cell** (+15) and it auto-fires
-     at everything within 12 m, one hp per shot every 3 s. Between waves the
+     at everything within 16 m, one hp per shot every 2 s. Between waves the
      game says where one pays off: `build a tower at N 20 E -8`.
 
   The creeps change as the waves grow: **grunts** (1 hp) from wave 1,
@@ -71,8 +71,11 @@ over and even **land on top**.
   Walls 2 tiles high reroute the creeps into your kill zones — but nothing
   is forever: a blocked creep **chews** through (watch for `wall chewed`
   warnings, and rebuild). You get 45 s of peace before wave 1, and 20 s
-  between waves. When the instructor resets, the game reads out the round:
-  best wave, kills, leaks, points — beat it next round.
+  between waves. A zap takes one creep per 1.5 s per drone — a clump needs
+  more drones, not a longer hover. The clocks only run while somebody is
+  connected: an empty room freezes the wave. When the instructor resets,
+  the game reads out the round — best wave, kills, leaks, points — and the
+  wall keeps that record up until the next wave 1. Beat it.
 
 Crashing into a wall costs you your tile and 5 s on the ground — the arena
 edges are still soft, but steel is not.
