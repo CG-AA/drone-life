@@ -86,6 +86,8 @@ POOF_S = 0.6
 
 TARGET_EVERY = 3.0  # per-drone nearest-creep hint
 ANNOUNCE_EVERY = 20.0
+BUILD_HINT_EVERY = 10.0  # 'build a tower at …' while the room has time to build
+BUILD_SITE_STEPS = 4  # cells before the Keep along the lane: ~21 m out, tower range 12
 FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
                    "GAME: got steel, wall or tower it",
                    "GAME: hands full, wall or tower it")
@@ -251,6 +253,7 @@ class SiegeMission(Mission):
         self._hint = 0
         self.last_announce = 0.0
         self.last_target = 0.0
+        self.last_build_hint = float("-inf")
         self.hints = SourceHints(self.carry, FERRY.full_say)
         self.place_hints = PlaceHints(self.tm, self.carry, self.hints.throttle)
 
@@ -287,6 +290,7 @@ class SiegeMission(Mission):
         self.beams.clear()
         self.fx.clear()
         self.last_announce = self.last_target = 0.0
+        self.last_build_hint = float("-inf")
         self.hints.clear()
         self.place_hints.clear()
         self.setup(world)
@@ -371,6 +375,10 @@ class SiegeMission(Mission):
         if self.creeps and world.now - self.last_target > TARGET_EVERY:
             self.last_target = world.now
             self._call_targets(world, drones)
+        if (self.state in ("grace", "build")
+                and world.now - self.last_build_hint > BUILD_HINT_EVERY):
+            self.last_build_hint = world.now
+            self._call_build_site(world)
 
     # ---------------------------------------------------------------- combat
 
@@ -518,6 +526,8 @@ class SiegeMission(Mission):
                     f"GAME: wave {self.wave} clear, {self.leaks} leaked +{bonus}")
             self.state, self.timer = "build", BUILD_S
             world.broadcast_text(f"GAME: wave {self.wave + 1} in {round(BUILD_S)}s, build!")
+            self.last_build_hint = world.now
+            self._call_build_site(world)
 
     def _start_wave(self, world: WorldAPI, wave: int) -> None:
         self.state, self.wave = "active", wave
@@ -592,6 +602,34 @@ class SiegeMission(Mission):
         world.broadcast_text(f"GAME: quarry at {fmt_world(*QUARRY)}")
         world.broadcast_text(_HINTS[self._hint])
         self._hint = (self._hint + 1) % len(_HINTS)
+
+    def build_site(self) -> Axial | None:
+        """Where a tower pays off right now: beside the lane creeps last used,
+        BUILD_SITE_STEPS cells before the Keep — off the path itself (a tower
+        on the path is what gets chewed), placeable, not already a tower."""
+        cell = hex.world_to_axial(*self.gate)
+        lane: list[Axial] = []
+        while cell != KEEP_CELL and len(lane) < 200:
+            nxt = self.flow.toward(cell)
+            if nxt is None:
+                break
+            lane.append(cell)
+            cell = nxt
+        if len(lane) <= BUILD_SITE_STEPS:
+            return None
+        anchor = lane[-BUILD_SITE_STEPS]
+        on_lane = set(lane)
+        for nb in hex.neighbors(anchor):
+            if (nb not in on_lane and nb not in self.towers
+                    and nb not in self.blueprints.claimed
+                    and self.tm.can_place(nb, "steel")[0]):
+                return nb
+        return None
+
+    def _call_build_site(self, world: WorldAPI) -> None:
+        site = self.build_site()
+        if site is not None:  # widest: "GAME: build a tower at N -100 E -100" = 37
+            world.broadcast_text(f"GAME: build a tower at {fmt_cell(site)}")
 
     def _call_targets(self, world: WorldAPI, drones: list[DroneView]) -> None:
         for d in drones:

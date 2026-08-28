@@ -428,6 +428,55 @@ def test_spawned_creeps_carry_their_kind_stats_and_the_viewer_sees_them():
     assert troop.data["kind"] == "brute" and troop.data["hp"] == 3 and troop.data["max"] == 3
 
 
+# --------------------------------------------------------------- build site
+
+def test_build_site_is_off_lane_placeable_and_announced_while_building():
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    site = m.build_site()
+    assert site is not None and m.tm.can_place(site, "steel")[0]
+    # beside the lane, not on it: the cell before the keep along the flow
+    lane = set()
+    cell = hex.world_to_axial(*m.gate)
+    while cell != (0, 0):
+        lane.add(cell)
+        cell = m.flow.toward(cell)
+    assert site not in lane and any(nb in lane for nb in hex.neighbors(site))
+    n, e = hex.axial_to_world(site)
+    assert 12 < (n * n + e * e) ** 0.5 < 40, "close enough to cover the approach"
+    world.run(m, 0.2)
+    assert any(t == f"GAME: build a tower at {hex_text(site)}" for t in texts(world))
+    said = [t for t in texts(world) if "build a tower at" in t]
+    world.run(m, 25.0)
+    assert len([t for t in texts(world) if "build a tower at" in t]) > len(said), "repeats"
+    assert_grammar(world)
+
+
+def hex_text(cell):
+    from app.game.building import fmt_cell
+    return fmt_cell(cell)
+
+
+def test_build_site_moves_on_once_a_tower_stands_there():
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    first = m.build_site()
+    assert first is not None
+    build_tower(world, m, first)
+    second = m.build_site()
+    assert second is not None and second != first
+
+
+def test_build_hint_follows_the_wave_clear_line():
+    world, m = make()
+    world.views = [view("d0")]
+    m.state, m.wave, m.pending = "active", 1, 0
+    world.run(m, 0.3)
+    lines = texts(world)
+    i = next(i for i, t in enumerate(lines) if "in 20s, build!" in t)
+    assert "build a tower at" in lines[i + 1]
+
+
 # ------------------------------------------------------------------ towers
 
 def build_tower(world, m, cell):

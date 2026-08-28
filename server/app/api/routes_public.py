@@ -27,6 +27,7 @@ TEMPLATES = {
     "pymavlink": "template_pymavlink.py",
     "bot_courier": "bot_courier.py",
     "bot_siege": "bot_siege.py",
+    "bot_tower": "bot_tower.py",
     "bot_builder": "bot_builder.py",
     "bot_patrol": "bot_patrol.py",
 }
