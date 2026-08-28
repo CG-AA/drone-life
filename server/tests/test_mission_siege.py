@@ -751,6 +751,7 @@ def test_a_brief_is_not_followed_by_the_same_lines_again():
     world.views = [view("d0", n=-90.0, e=-76.0)]
     freeze_waves(m)
     world.run(m, ANNOUNCE_EVERY - 0.05)  # the periodic announce is due next tick
+    world.texts.clear()  # setup's own broadcast is not the point
     late = view("d1", n=-90.0, e=-68.0)
     world.views.append(late)
     world.drone_event(m, late, "connected")
