@@ -447,7 +447,11 @@ class SiegeMission(Mission):
             return False
         self._kill(world, uid, verb)
         who = drone.student_id if drone is not None else student_id
-        world.add_score(u.bounty, f"{u.kind} {_kill_reason(verb)}", student_id=who,
+        # the feed row names the pilot: "+2: Alice zapped a grunt" is the
+        # 'that was me' moment for twenty people at once; tower shots stay quiet
+        reason = (f"{drone.name} {_kill_reason(verb)} a {u.kind}" if drone is not None
+                  else f"{u.kind} {_kill_reason(verb)}")
+        world.add_score(u.bounty, reason, student_id=who,
                         feed=drone is not None and u.kind != "champion")
         if u.kind == "champion":  # the boss going down is a moment for the wall
             slayer = drone.name if drone is not None else "a watchtower"

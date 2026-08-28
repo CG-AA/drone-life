@@ -518,6 +518,12 @@ def test_tower_kill_credits_the_builder_silently():
     world.run(m, 0.3)
     assert not m.creeps
     assert world.scores[-1] == (KILL_POINTS, "grunt shot", "s-d0")
+    # …while a zap names the pilot on the wall
+    creep = add_creep(m, (8, 0), uid=7)
+    world.views = [view("d0", n=creep.n, e=creep.e, alt=2.0)]
+    world.run(m, ZAP_DWELL + 0.2)
+    assert world.scores[-1] == (KILL_POINTS, "D0 zapped a grunt", "s-d0")
+    assert world.events[-1]["msg"] == "+2: D0 zapped a grunt"
     assert m.towers[(4, 1)].kills == 1
     assert [ev["kind"] for ev in world.events] == [], "tower shots never post feed rows"
 
