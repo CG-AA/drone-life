@@ -49,8 +49,15 @@ KEEP_HIT_POINTS = -1  # hits 1..9: a gradient, so ignoring the Keep is never fre
 KEEP_FALL_POINTS = -25  # the 10th hit charges only this, then the Keep rebuilds
 QUARRY_CELL: Axial = (14, -11)  # ~(-50, 44)
 QUARRY = hex.axial_to_world(QUARRY_CELL)
-GATE_CELLS: tuple[Axial, ...] = ((-9, 19), (16, 0), (-16, 0))  # ~N 85, ~E 83, ~E -83
+GATE_CELLS: tuple[Axial, ...] = ((-9, 19), (16, 0), (-16, 0))  # N 86 E 3, N 0 E 83, N 0 E -83
 GATES = tuple(hex.axial_to_world(c) for c in GATE_CELLS)
+GATE_LABELS = ("N", "E", "W")  # what the projector writes on each archway
+
+
+def _gates_for(wave: int) -> int:
+    """How many gates a wave pours through: one lane while the room learns,
+    then a pincer, then all three — a single parked drone stops mattering."""
+    return 1 if wave <= 3 else 2 if wave <= 7 else 3
 
 CLIMB = 1  # 1 tile is a ramp; a 2-stack is a wall
 CHEW_S = 6.0  # s a creep gnaws before a tile pops off
@@ -227,7 +234,9 @@ class SiegeMission(Mission):
         self.state = "grace"  # grace | build | active
         self.timer = GRACE_S
         self.wave = 0
-        self.gate = GATES[0]
+        self.gates: tuple[tuple[float, float], ...] = (GATES[0],)  # this wave's lanes
+        self.gate = GATES[0]  # the primary lane (first announced)
+        self._lane = 0
         self.pending = 0  # creeps of the current wave not yet spawned
         self.roster: list[str] = []  # …and their kinds, in spawn order
         self.spawn_timer = 0.0
@@ -271,6 +280,7 @@ class SiegeMission(Mission):
         self._reflood()
         self.keep_hp = KEEP_HP
         self.state, self.timer, self.wave = "grace", GRACE_S, 0
+        self.gates, self.gate, self._lane = (GATES[0],), GATES[0], 0
         self.pending, self.spawn_timer = 0, 0.0
         self.roster.clear()
         self.leaks, self.wave_kills = 0, 0
@@ -512,7 +522,9 @@ class SiegeMission(Mission):
     def _start_wave(self, world: WorldAPI, wave: int) -> None:
         self.state, self.wave = "active", wave
         self.stats.best_wave = max(self.stats.best_wave, wave)
-        self.gate = self.rng.choice(GATES)
+        k = _gates_for(wave)
+        self.gates = tuple(self.rng.sample(GATES, k))
+        self.gate, self._lane = self.gates[0], 0
         pilots = sum(1 for d in world.drones() if d.connected)
         size = _wave_size(wave, pilots)
         self.roster = _wave_roster(wave, size, self.rng)
@@ -522,19 +534,26 @@ class SiegeMission(Mission):
         self.pending = len(self.roster)
         self.leaks, self.wave_kills = 0, 0
         self.spawn_timer = 0.0
-        suffix = " + a champion" if boss else ""
+        suffix = (f" from {k} gates" if k > 1 else "") + (" + a champion" if boss else "")
         world.emit_event("wave_start", f"wave {wave}: {size} creeps{suffix}",
-                         data={"wave": wave, "size": size, "boss": boss})
+                         data={"wave": wave, "size": size, "boss": boss, "gates": k})
+        # one line per gate, each bot-parseable on its own (a 3-gate line would
+        # be 58 chars). Spawns round-robin the lanes, so lane i gets
+        # size//k (+1 for the first size%k lanes) — say exactly that.
         # widest: "GAME: wave 10 at N 0 E -83, 20 creeps + boss" = 45
-        world.broadcast_text(
-            f"GAME: wave {wave} at {fmt_world(*self.gate)}, {size} creeps"
-            + (" + boss" if boss else ""))
+        for i, gate in enumerate(self.gates):
+            share = size // k + (1 if i < size % k else 0)
+            where = "at" if i == 0 else "also at"
+            world.broadcast_text(
+                f"GAME: wave {wave} {where} {fmt_world(*gate)}, {share} creeps"
+                + (" + boss" if boss and i == 0 else ""))
 
     def _spawn_creep(self) -> None:
         self._uid += 1
         self.pending -= 1
         kind = KINDS[self.roster.pop(0) if self.roster else "grunt"]
-        n, e = self.gate
+        n, e = self.gates[self._lane % len(self.gates)]
+        self._lane += 1
         self.creeps[self._uid] = GroundUnit(
             uid=self._uid, n=n, e=e, speed=_wave_speed(self.wave) * kind.speed_mult,
             kind=kind.name, hp=kind.hp, max_hp=kind.hp, bounty=kind.bounty,
@@ -588,6 +607,10 @@ class SiegeMission(Mission):
         out = [Entity(id="keep", kind="keep", n=KEEP[0], e=KEEP[1], alt=0.0,
                       data={"hp": self.keep_hp, "max": KEEP_HP}),
                self.quarry.entity()]
+        for i, (gate, label) in enumerate(zip(GATES, GATE_LABELS, strict=True)):
+            active = self.state == "active" and gate in self.gates and self.pending > 0
+            out.append(Entity(id=f"gate{i}", kind="gate", n=gate[0], e=gate[1], alt=0.0,
+                              data={"label": label, "active": active}))
         for uid, u in self.creeps.items():
             out.append(Entity(id=f"creep{uid}", kind="troop", n=u.n, e=u.e, alt=u.alt,
                               data={"dir": u.heading, "chewing": u.chewing,

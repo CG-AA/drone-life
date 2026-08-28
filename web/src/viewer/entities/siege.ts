@@ -136,6 +136,35 @@ export const beam: KindRenderer = {
   },
 };
 
+export const gate: KindRenderer = {
+  animated: true,
+  init(vis, ent) {
+    vis.addLabel(`GATE ${String(ent.data.label ?? "")}`.trim(), 0xd9a0a0, 11, 12);
+  },
+  draw(vis, ent, pose, _drawAlt, s, timeMs) {
+    const active = Boolean(ent.data.active);
+    // a dark archway on the lattice: two posts and a lintel, hex footprint
+    const base = hexPoly(2.4, s);
+    vis.g.poly(base).fill({ color: 0x1c1a26, alpha: 0.9 })
+      .stroke({ width: 2, color: active ? 0xff5c5c : 0x5a4a5a, alpha: 0.95 });
+    const h = 2.2 * ALT_LIFT * s;
+    const w = Math.max(4, s * 1.3);
+    vis.g.rect(-w - 2, -h, 3, h).fill({ color: 0x4a3a4a });
+    vis.g.rect(w - 1, -h, 3, h).fill({ color: 0x4a3a4a });
+    vis.g.rect(-w - 2, -h - 3, w * 2 + 4, 3).fill({ color: 0x6a5a6a });
+    if (active) { // creeps are coming through: a pulsing red ring on the ground
+      const glow = pulse(timeMs, 220, 0.5, 0.35);
+      const ring: number[] = [];
+      for (let k = 0; k < 18; k++) {
+        const a = (Math.PI / 9) * k;
+        const p = projectGround(pose.n + 6 * Math.cos(a), pose.e + 6 * Math.sin(a), s);
+        ring.push(p.x, p.y);
+      }
+      vis.decal.poly(ring).stroke({ width: 3, color: 0xff5c5c, alpha: glow });
+    }
+  },
+};
+
 /** Fill colour per kill verb: what killed it is readable at a glance. */
 const POOF_COLOR: Record<string, number> = {
   zap: COLORS.gold,

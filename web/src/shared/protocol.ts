@@ -39,7 +39,7 @@ export const KNOWN_KINDS = [
   "crate", "dropoff",                                  // delivery
   "tile_source", "tile_carried", "ghost_tile",         // building missions
   "furnace",                                           // forge
-  "keep", "troop", "tower", "beam",                    // siege
+  "keep", "troop", "tower", "beam", "gate",            // siege
   "zap_arc", "poof",                                   // siege cosmetics (short-lived)
 ] as const;
 
@@ -65,6 +65,8 @@ export interface GhostTileData { material: string; need: number; have: number; s
 export interface TroopData { dir: number; chewing: boolean; kind: string; hp: number; max: number }
 export interface KeepData { hp: number; max: number }
 export interface TowerData { range: number }
+/** an archway creeps pour from; active while its wave is still spawning */
+export interface GateData { label: string; active: boolean }
 export interface BeamData { tn: number; te: number; talt: number }
 /** a drone's zap: origin is the entity pose (the drone), target rides in data */
 export interface ZapArcData { tn: number; te: number; talt: number }

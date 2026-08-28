@@ -69,7 +69,10 @@ def texts(world):
 def test_setup_entities_and_announcements():
     world, m = make()
     kinds = {e.kind for e in m.entities(world)}
-    assert {"keep", "tile_source"} <= kinds
+    assert {"keep", "tile_source", "gate"} <= kinds
+    gates = [e for e in m.entities(world) if e.kind == "gate"]
+    assert [g.data["label"] for g in gates] == ["N", "E", "W"]
+    assert not any(g.data["active"] for g in gates), "quiet before the first wave"
     keep = next(e for e in m.entities(world) if e.kind == "keep")
     assert keep.data == {"hp": KEEP_HP, "max": KEEP_HP}
     assert any("keep at N 0 E 0" in t for t in texts(world))
@@ -318,6 +321,37 @@ def test_champion_leak_costs_three_hits():
     assert m.keep_hp == KEEP_HP - 3 and m.stats.keep_hits == 3
 
 
+def test_waves_pour_through_more_gates_as_they_grow():
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    m._start_wave(world, 3)
+    assert len(m.gates) == 1
+    m._start_wave(world, 4)
+    assert len(m.gates) == 2 and len(set(m.gates)) == 2
+    world.run(m, 1.5 * 4 + 0.1)  # four spawns, still near their gates
+    import math
+    lanes = {min(range(3), key=lambda i, u=u: math.hypot(u.n - GATES[i][0], u.e - GATES[i][1]))
+             for u in m.creeps.values()}
+    assert len(lanes) == 2, "spawns alternate lanes"
+    active = [g for g in m.entities(world) if g.kind == "gate" and g.data["active"]]
+    assert len(active) == 2
+    m._start_wave(world, 8)
+    assert len(m.gates) == 3
+
+
+def test_multi_gate_announce_is_one_line_per_gate_and_the_shares_add_up():
+    world, m = make()
+    world.views = [view(f"d{i}", n=-90.0, e=-76.0 + 8 * i) for i in range(8)]
+    m._start_wave(world, 8)  # 3 gates; size 4 + 14 + 2 = 20
+    lines = [t for t in texts(world) if t.startswith("GAME: wave 8 ")]
+    assert len(lines) == 3 and lines[0].split(" ")[3] == "at" and "also at" in lines[1]
+    shares = [int(line.rsplit(", ", 1)[1].split(" ")[0]) for line in lines]
+    assert sum(shares) == 20 and max(shares) - min(shares) <= 1
+    ev = [ev for ev in world.events if ev["kind"] == "wave_start"][-1]
+    assert ev["msg"] == "wave 8: 20 creeps from 3 gates" and ev["data"]["gates"] == 3
+    assert_grammar(world)
+
+
 def test_every_fifth_wave_brings_a_champion_and_says_so():
     world, m = make()
     world.views = [view("d0", n=-90.0, e=-76.0)]
@@ -328,7 +362,7 @@ def test_every_fifth_wave_brings_a_champion_and_says_so():
     assert m.pending == _wave_size(5, 1) + 1, "the boss comes on top of the size"
     assert any("wave 5 at N" in t and "creeps + boss" in t for t in texts(world))
     ev = [ev for ev in world.events if ev["kind"] == "wave_start"][-1]
-    assert ev["msg"].endswith("creeps + a champion") and ev["data"]["boss"] is True
+    assert ev["msg"].endswith("+ a champion") and ev["data"]["boss"] is True
     m._start_wave(world, 10)
     assert m.roster[-1] == "champion"
     assert_grammar(world)
