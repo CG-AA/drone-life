@@ -39,12 +39,14 @@ class _API:
                    data: dict | None = None) -> None:
         self._engine.bus.emit(kind, msg, student_id=student_id, data=data, t=self.now)
 
-    def add_score(self, points: int, reason: str, student_id: str | None = None) -> int:
+    def add_score(self, points: int, reason: str, student_id: str | None = None,
+                  *, feed: bool = True) -> int:
         prev = self._engine.score
         self._engine.score += points
         total = self._engine.score
-        self._engine.bus.emit("score", f"{points:+d}: {reason}", student_id=student_id,
-                              data={"points": points, "total": total}, t=self.now)
+        if feed:
+            self._engine.bus.emit("score", f"{points:+d}: {reason}", student_id=student_id,
+                                  data={"points": points, "total": total}, t=self.now)
         # upward century crossings get a celebration line on the projector;
         # a mark re-earned after a dip (siege's keep) celebrates again
         if points > 0 and prev // MILESTONE_EVERY < total // MILESTONE_EVERY:

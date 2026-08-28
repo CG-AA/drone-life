@@ -17,6 +17,7 @@ is empty — an idle server can't bleed score.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from ...sim.backend import DroneView
 from .. import hex, path
@@ -81,6 +82,15 @@ _HINTS = ("GAME: stack 3 steel = watchtower",
           "GAME: hover low on a creep to zap it")
 
 
+@dataclass
+class Tower:
+    """A completed watchtower: who raised it (kills credit them), its cooldown."""
+
+    builder: str | None
+    last_shot: float = -math.inf  # loaded and ready
+    kills: int = 0
+
+
 def _wave_size(wave: int) -> int:
     return min(16, 4 + 2 * (wave - 1))
 
@@ -98,7 +108,7 @@ class SiegeMission(Mission):
         self.quarry = TileSource("quarry", *QUARRY, material="steel")
         self.tracker = PlaceTracker(self.tm, self.carry)
         self.blueprints = BlueprintTracker([TOWER_BP])
-        self.towers: dict[Axial, float] = {}  # cell -> last shot time
+        self.towers: dict[Axial, Tower] = {}
         self.creeps: dict[int, GroundUnit] = {}
         self.zap: dict[int, DwellTracker] = {}  # creep uid -> hover dwell
         self.flow = path.flood(self.tm, KEEP_CELL, climb=CLIMB)
@@ -166,11 +176,13 @@ class SiegeMission(Mission):
             if match is None:
                 world.send_text(p.drone.id, f"GAME: placed! tile at {fmt_cell(p.cell)}")
             else:
-                self.towers[match.anchor] = -math.inf  # loaded and ready
+                self.towers[match.anchor] = Tower(builder=p.drone.student_id)
                 world.add_score(TOWER_POINTS, f"watchtower at {fmt_cell(match.anchor)}",
-                                student_id=p.drone.student_id)
-                world.emit_event("tower_up", f"{p.drone.name} raised a watchtower!",
-                                 student_id=p.drone.student_id)
+                                student_id=p.drone.student_id, feed=False)
+                world.emit_event("tower_up",
+                                 f"{p.drone.name} raised a watchtower! +{TOWER_POINTS}",
+                                 student_id=p.drone.student_id,
+                                 data={"points": TOWER_POINTS})
                 world.broadcast_text(f"GAME: tower up! +{TOWER_POINTS}")
         for d, _cell in refused:
             world.send_text(d.id, "GAME: can't build there")
@@ -224,7 +236,8 @@ class SiegeMission(Mission):
 
     def _fire_towers(self, world: WorldAPI) -> None:
         for cell in sorted(self.towers):
-            if world.now - self.towers[cell] < TOWER_COOLDOWN:
+            tower = self.towers[cell]
+            if world.now - tower.last_shot < TOWER_COOLDOWN:
                 continue
             tn, te = hex.axial_to_world(cell)
             target = min(
@@ -233,12 +246,15 @@ class SiegeMission(Mission):
             if target is None or target[0] > TOWER_RANGE:
                 continue
             u = self.creeps[target[1]]
-            self.towers[cell] = world.now
+            tower.last_shot = world.now
+            tower.kills += 1
             self._beam_seq += 1
             self.beams.append((f"beam{self._beam_seq}", world.now + BEAM_S,
                                (tn, te, self.tm.top_alt(cell)), (u.n, u.e, u.alt)))
             self._kill(world, target[1], "tower")
-            world.add_score(KILL_POINTS, "tower kill")
+            # every 3 s per tower: scored quietly (the wave-clear line carries
+            # the tally) and credited to whoever raised the tower
+            world.add_score(KILL_POINTS, "tower kill", student_id=tower.builder, feed=False)
 
     def _zap(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
         for uid, u in list(self.creeps.items()):
@@ -271,8 +287,10 @@ class SiegeMission(Mission):
             world.broadcast_text(f"GAME: keep hit! hp {self.keep_hp}", severity=SEV_WARNING)
         else:
             self.keep_hp = KEEP_HP  # co-op never hard-fails: pay and rebuild
-            world.add_score(KEEP_FALL_POINTS, "the keep fell")
-            world.emit_event("keep_fell", "the keep fell! rebuilt at full hp")
+            world.add_score(KEEP_FALL_POINTS, "the keep fell", feed=False)
+            world.emit_event("keep_fell",
+                             f"the keep fell! {KEEP_FALL_POINTS}, rebuilt at full hp",
+                             data={"points": KEEP_FALL_POINTS})
             world.broadcast_text(f"GAME: keep fell! {KEEP_FALL_POINTS}, rebuilt",
                                  severity=SEV_WARNING)
 
@@ -284,8 +302,9 @@ class SiegeMission(Mission):
             if self.timer <= 0:
                 self._start_wave(world, self.wave + 1)
         elif self.pending == 0 and not self.creeps:
-            world.add_score(WAVE_BONUS, f"wave {self.wave} cleared")
-            world.emit_event("wave_clear", f"wave {self.wave} beaten! +{WAVE_BONUS}")
+            world.add_score(WAVE_BONUS, f"wave {self.wave} cleared", feed=False)
+            world.emit_event("wave_clear", f"wave {self.wave} beaten! +{WAVE_BONUS}",
+                             data={"points": WAVE_BONUS})
             world.broadcast_text(f"GAME: wave {self.wave} clear! +{WAVE_BONUS}")
             self.state, self.timer = "build", BUILD_S
             world.broadcast_text(f"GAME: wave {self.wave + 1} in {round(BUILD_S)}s, build!")

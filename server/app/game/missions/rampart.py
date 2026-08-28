@@ -92,15 +92,15 @@ class RampartMission(Mission):
         self.place_hints.tick(world, drones, dt)
         for p in placed:
             total = world.add_score(PLACE_POINTS, f"wall tile at {fmt_cell(p.cell)}",
-                                    student_id=p.drone.student_id)
-            world.emit_event("tile_placed", f"{p.drone.name} built the wall",
-                             student_id=p.drone.student_id)
+                                    student_id=p.drone.student_id, feed=False)
+            world.emit_event("tile_placed", f"{p.drone.name} built the wall +{PLACE_POINTS}",
+                             student_id=p.drone.student_id, data={"points": PLACE_POINTS})
             world.send_text(p.drone.id,
                             f"GAME: placed! wall {self.built()}/{self.total} +{PLACE_POINTS}")
             if self.built() >= self.total and not self.done:
                 self.done = True
                 world.add_score(WALL_BONUS, "rampart complete",
-                                student_id=p.drone.student_id)
+                                student_id=p.drone.student_id, feed=False)
                 world.emit_event("wall_complete", f"the rampart stands! +{WALL_BONUS}",
                                  data={"points": WALL_BONUS, "team": total + WALL_BONUS})
                 world.broadcast_text(f"GAME: rampart complete! +{WALL_BONUS}")

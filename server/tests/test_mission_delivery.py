@@ -64,6 +64,19 @@ def test_leaving_the_circle_resets_dwell():
     assert crate.carried_by is None, "dwell must restart after leaving"
 
 
+def test_delivery_posts_one_feed_row_carrying_the_points():
+    mission, world = make()
+    crate = next(iter(mission.crates.values()))
+    world.views = [view(n=crate.n, e=crate.e, alt=1.5)]
+    world.run(mission, PICKUP_DWELL + 0.3)
+    world.views = [view(n=0.0, e=0.0, alt=1.5)]
+    world.events.clear()
+    world.run(mission, DROP_DWELL + 0.3)
+    kinds = [ev["kind"] for ev in world.events if ev["kind"] in ("score", "delivery")]
+    assert kinds == ["delivery"], "the named event replaces the generic '+10' row"
+    assert f"+{POINTS}" in next(ev["msg"] for ev in world.events if ev["kind"] == "delivery")
+
+
 def test_delivery_scores_and_respawns():
     mission, world = make()
     crate = next(iter(mission.crates.values()))

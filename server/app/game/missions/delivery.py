@@ -185,7 +185,7 @@ class DeliveryMission(Mission):
             delivered = self.crates.pop(self.carry.take(winner.id) or "", None)
             if delivered is not None:
                 total = world.add_score(POINTS, f"crate {delivered.id} delivered",
-                                        student_id=winner.student_id)
+                                        student_id=winner.student_id, feed=False)
                 world.emit_event("delivery",
                                  f"{winner.name} delivered crate {delivered.id}! +{POINTS}",
                                  student_id=winner.student_id, data={"points": POINTS})

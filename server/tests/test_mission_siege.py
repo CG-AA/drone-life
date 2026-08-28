@@ -190,6 +190,36 @@ def test_tower_builds_fires_and_beam_expires():
     assert_grammar(world)
 
 
+def test_tower_kill_credits_the_builder_silently():
+    world, m = make()
+    freeze_waves(m)
+    build_tower(world, m, (4, 1))
+    assert m.towers[(4, 1)].builder == "s-d0"
+    world.events.clear()
+    add_creep(m, (4, 3))
+    world.run(m, 0.3)
+    assert not m.creeps
+    assert world.scores[-1] == (KILL_POINTS, "tower kill", "s-d0")
+    assert m.towers[(4, 1)].kills == 1
+    assert [ev["kind"] for ev in world.events] == [], "tower shots never post feed rows"
+
+
+def test_tower_up_and_wave_clear_post_one_feed_row_each():
+    world, m = make()
+    freeze_waves(m)
+    world.events.clear()
+    build_tower(world, m, (4, 1))
+    kinds = [ev["kind"] for ev in world.events]
+    assert kinds.count("tower_up") == 1 and "score" not in kinds
+    assert any("+15" in ev["msg"] for ev in world.events if ev["kind"] == "tower_up")
+    world.events.clear()
+    world.views = [view("d0")]
+    m.state, m.wave, m.pending = "active", 1, 0
+    world.run(m, 0.3)
+    kinds = [ev["kind"] for ev in world.events]
+    assert kinds == ["wave_clear"], kinds
+
+
 def test_tower_dies_when_chewed_and_is_rebuildable():
     world, m = make()
     freeze_waves(m)

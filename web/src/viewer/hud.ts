@@ -12,6 +12,7 @@ const FEED_TTL_MS = 45_000;
 export const EVENT_CLASS: Record<string, string> = {
   score: "score",
   delivery: "score",
+  tile_placed: "score",
   milestone: "triumph",
   wave_clear: "triumph",
   wall_complete: "triumph",
@@ -34,7 +35,6 @@ export const EVENT_CLASS: Record<string, string> = {
   reset_mine: "",
   crate_spawn: "",
   pickup: "",
-  tile_placed: "",
   stale: "danger", // client-side: protocol version skew, page needs a refresh
 };
 
