@@ -85,8 +85,9 @@ def test_wave_starts_after_grace_with_a_drone_present():
 
 def test_hud_state_tracks_the_wave_machine():
     world, m = make()
-    assert m.hud() == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
-                       "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0}
+    hud = {k: v for k, v in m.hud().items() if k != "stats"}
+    assert hud == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
+                   "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0}
     world.views = [view("d0", n=-90.0, e=-76.0)]
     world.run(m, 10.0)
     assert m.hud()["timer_s"] == 35 and m.hud()["state"] == "grace"
@@ -94,7 +95,9 @@ def test_hud_state_tracks_the_wave_machine():
     h = m.hud()
     assert h["wave"] == 1 and h["state"] == "active" and h["timer_s"] == 0
     assert h["creeps_alive"] + h["pending"] == 4
-    assert all(isinstance(v, int) for k, v in h.items() if k != "state"), "integers only"
+    assert all(isinstance(v, int) for k, v in h.items() if k not in ("state", "stats")), \
+        "integers only"
+    assert h["stats"]["best_wave"] == 1
 
 
 def test_empty_room_freezes_the_clock():
@@ -342,6 +345,41 @@ def test_creep_chews_through_a_full_ring():
 
 
 # ------------------------------------------------------------------- reset
+
+def test_reset_after_play_emits_a_round_summary():
+    world, m = make()
+    freeze_waves(m)
+    creep = add_creep(m, (4, 0))
+    world.views = [view("d0", n=creep.n, e=creep.e, alt=2.0)]
+    world.run(m, 2.0)  # one zap
+    build_tower(world, m, (4, 1))
+    m._start_wave(world, 3)
+    m.stats.best_wave = 3
+    world.events.clear()
+    m.reset(world)
+    ev = next(ev for ev in world.events if ev["kind"] == "round_end")
+    assert ev["msg"] == f"round over: wave 3, 1 kills, 0 leaked, {world.score} points"
+    assert ev["data"]["zapped"] == 1 and ev["data"]["towers"] == 1
+    assert ev["data"]["best_wave"] == 3 and ev["data"]["round"] == 1
+    assert ("*", "GAME: round over! wave 3, 1 kills") in world.texts
+    assert m.stats.kills == 0 and m.hud()["stats"]["best_wave"] == 0, "fresh tally"
+    assert m.round == 1
+    assert_grammar(world)
+
+
+def test_fresh_reset_is_silent():
+    world, m = make()
+    world.events.clear()
+    m.reset(world)
+    assert [ev["kind"] for ev in world.events] == []
+
+
+def test_round_summary_text_fits_at_the_widest():
+    world, m = make()
+    m.stats.best_wave, m.stats.zapped = 99, 9999
+    m.wave = 99
+    m.reset(world)  # check_text on emission enforces the 50-char law
+    assert any("round over! wave 99, 9999 kills" in t for _t, t in world.texts)
 
 def test_reset_keeps_tile_map_identity():
     world, m = make()

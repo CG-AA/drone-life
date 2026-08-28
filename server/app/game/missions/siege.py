@@ -91,6 +91,30 @@ _HINTS = ("GAME: stack 3 steel = watchtower",
 
 
 @dataclass
+class SiegeStats:
+    """This round's tally — the summary the whiteboard used to get by hand."""
+
+    zapped: int = 0
+    squished: int = 0
+    shot: int = 0  # by towers
+    leaks: int = 0
+    towers: int = 0
+    keep_hits: int = 0
+    keep_falls: int = 0
+    best_wave: int = 0
+
+    @property
+    def kills(self) -> int:
+        return self.zapped + self.squished + self.shot
+
+    def as_dict(self) -> dict:
+        return {"zapped": self.zapped, "squished": self.squished, "shot": self.shot,
+                "kills": self.kills, "leaks": self.leaks, "towers": self.towers,
+                "keep_hits": self.keep_hits, "keep_falls": self.keep_falls,
+                "best_wave": self.best_wave}
+
+
+@dataclass
 class Tower:
     """A completed watchtower: who raised it (kills credit them), its cooldown."""
 
@@ -124,6 +148,7 @@ class SiegeMission(Mission):
         # gate sequence differs between rounds yet stays reproducible per seed
         self.rng = random.Random(0)
         self.round = 0
+        self.stats = SiegeStats()
         self.flow = path.flood(self.tm, KEEP_CELL, climb=CLIMB)
         self._flow_version = self.tm.version
         self.keep_hp = KEEP_HP
@@ -158,6 +183,7 @@ class SiegeMission(Mission):
         return self.tm
 
     def reset(self, world: WorldAPI) -> None:
+        self._round_end(world)
         self.tm.clear()
         self.carry.clear()
         self.tracker.reset()
@@ -167,6 +193,7 @@ class SiegeMission(Mission):
         self.creeps.clear()
         self.zap.clear()
         self.zap_high.clear()
+        self.stats = SiegeStats()
         self.round += 1
         self._reflood()
         self.keep_hp = KEEP_HP
@@ -183,6 +210,7 @@ class SiegeMission(Mission):
     def hud(self) -> dict:
         # integers only: the strip's countdown ticks in whole seconds
         return {
+            "stats": self.stats.as_dict(),
             "wave": self.wave,
             "state": self.state,
             "timer_s": max(0, math.ceil(self.timer)) if self.state != "active" else 0,
@@ -209,6 +237,7 @@ class SiegeMission(Mission):
                 world.send_text(p.drone.id, f"GAME: placed! tile at {fmt_cell(p.cell)}")
             else:
                 self.towers[match.anchor] = Tower(builder=p.drone.student_id)
+                self.stats.towers += 1
                 world.add_score(TOWER_POINTS, f"watchtower at {fmt_cell(match.anchor)}",
                                 student_id=p.drone.student_id, feed=False)
                 world.emit_event("tower_up",
@@ -320,6 +349,14 @@ class SiegeMission(Mission):
         self.zap.pop(uid, None)
         self.zap_high.pop(uid, None)
         if u is not None:
+            if verb == "zap":
+                self.stats.zapped += 1
+            elif verb == "squish":
+                self.stats.squished += 1
+            elif verb == "tower":
+                self.stats.shot += 1
+            else:
+                self.stats.leaks += 1
             if verb != "leak":
                 self.wave_kills += 1
             self._fx(world, "poof", u.n, u.e, u.alt, POOF_S, {"verb": verb})
@@ -331,6 +368,7 @@ class SiegeMission(Mission):
 
     def _keep_hit(self, world: WorldAPI) -> None:
         self.keep_hp -= 1
+        self.stats.keep_hits += 1
         if self.keep_hp > 0:
             world.add_score(KEEP_HIT_POINTS, "keep hit", feed=False)
             world.emit_event("keep_hit",
@@ -340,6 +378,7 @@ class SiegeMission(Mission):
                                  severity=SEV_WARNING)
         else:
             self.keep_hp = KEEP_HP  # co-op never hard-fails: pay and rebuild
+            self.stats.keep_falls += 1
             world.add_score(KEEP_FALL_POINTS, "the keep fell", feed=False)
             world.emit_event("keep_fell",
                              f"the keep fell! {KEEP_FALL_POINTS}, rebuilt at full hp",
@@ -372,6 +411,7 @@ class SiegeMission(Mission):
 
     def _start_wave(self, world: WorldAPI, wave: int) -> None:
         self.state, self.wave = "active", wave
+        self.stats.best_wave = max(self.stats.best_wave, wave)
         self.gate = self.rng.choice(GATES)
         self.pending = _wave_size(wave)
         self.leaks, self.wave_kills = 0, 0
@@ -398,6 +438,20 @@ class SiegeMission(Mission):
     def _reflood(self) -> None:
         self.flow = path.flood(self.tm, KEEP_CELL, climb=CLIMB)
         self._flow_version = self.tm.version
+
+    def _round_end(self, world: WorldAPI) -> None:
+        """A reset after play is a round boundary: say how it went, once, on
+        the projector (overlay + feed) and to every drone still listening. A
+        reset of a fresh room (nobody played) stays silent."""
+        if self.wave == 0 and self.stats.kills == 0 and self.stats.towers == 0:
+            return
+        st = self.stats
+        world.emit_event(
+            "round_end",
+            f"round over: wave {st.best_wave}, {st.kills} kills, {st.leaks} leaked, "
+            f"{world.score} points",
+            data={**st.as_dict(), "score": world.score, "round": self.round + 1})
+        world.broadcast_text(f"GAME: round over! wave {st.best_wave}, {st.kills} kills")
 
     # ---------------------------------------------------------- announcements
 

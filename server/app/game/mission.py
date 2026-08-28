@@ -71,6 +71,11 @@ class WorldAPI(Protocol):
     config: MissionConfig
     now: float  # sim seconds
 
+    @property
+    def score(self) -> int:
+        """The team total — read it for summaries; add_score is how it moves."""
+        ...
+
     def drones(self) -> Sequence[DroneView]: ...
     def emit_event(self, kind: str, msg: str, student_id: str | None = None,
                    data: dict | None = None) -> None: ...

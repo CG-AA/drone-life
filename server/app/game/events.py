@@ -39,5 +39,6 @@ EVENT_KINDS: frozenset[str] = frozenset({
     "keep_fell",
     "tower_up",
     "tower_down",
+    "round_end",
 })
 # END-EVENT-KINDS

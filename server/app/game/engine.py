@@ -35,6 +35,10 @@ class _API:
     def drones(self) -> Sequence[DroneView]:
         return self._views
 
+    @property
+    def score(self) -> int:
+        return self._engine.score
+
     def emit_event(self, kind: str, msg: str, student_id: str | None = None,
                    data: dict | None = None) -> None:
         self._engine.bus.emit(kind, msg, student_id=student_id, data=data, t=self.now)
@@ -130,11 +134,11 @@ class GameEngine:
             return {}
 
     def reset(self, now: float) -> None:
-        self.score = 0
         self.api.now = now
         self.api._views = self.backend.drones()
         try:
-            self.mission.reset(self.api)
+            self.mission.reset(self.api)  # sees the final score: round summaries
         except Exception:
             self._mission_error("reset")
+        self.score = 0
         self.bus.emit("reset", "world reset", t=now)
