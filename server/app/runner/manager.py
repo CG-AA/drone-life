@@ -40,6 +40,7 @@ END_REASONS = (
 # END-END-REASONS
 
 PODMAN_ERROR_CODES = (125, 126, 127)  # podman itself failed, not the student's script
+IMAGE_MISSING_RC = 1  # `podman image exists`: 1 is "no such image", anything else is podman
 
 
 class RunnerError(Exception):
@@ -85,6 +86,14 @@ class Run:
         return {"run_id": self.run_id, "state": self.state, "exit_code": self.exit_code,
                 "reason": self.reason}
 
+    def end(self, reason: str, code: int | None) -> None:
+        """The one place a run becomes "exited" — reasons the web mirror does not
+        know would render as a blank pill, so they never leave here."""
+        assert reason in END_REASONS, f"unregistered end reason {reason!r} — see END_REASONS"
+        self.state = "exited"
+        self.exit_code = code
+        self.reason = reason
+
 
 class RunnerManager:
     def __init__(self, settings: Settings, examples_dir: Path, on_event: RunEventCb) -> None:
@@ -107,21 +116,35 @@ class RunnerManager:
 
     # ------------------------------------------------------------- submitting
 
-    async def _image_ok(self) -> bool:
-        """`--pull=never` turns a missing image into an exit-125 container nobody
-        reads. Probe first so submit fails with a sentence instead. Only the
-        positive is cached: `make image` mid-class must fix the next click."""
+    async def _image_probe(self) -> str | None:
+        """None when the image is there, else the sentence the submit fails with.
+
+        `--pull=never` turns a missing image into an exit-125 container nobody
+        reads, so probe first. A broken podman (wrong XDG_RUNTIME_DIR, missing
+        subuid range) also fails this probe, and must not be reported as a
+        missing image: the fixes are different and `make image` won't help.
+        Only the positive is cached: `make image` mid-class fixes the next click.
+        """
         if self._image_seen:
-            return True
+            return None
         try:
             p = await asyncio.create_subprocess_exec(
                 "podman", "image", "exists", self.s.runner_image,
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
             )
-            self._image_seen = await p.wait() == 0
-        except (FileNotFoundError, OSError):
-            return False
-        return self._image_seen
+            _out, err = await p.communicate()
+        except OSError as exc:
+            return f"podman could not be run ({exc}) — instructor: run `make preflight`"
+        if p.returncode == 0:
+            self._image_seen = True
+            return None
+        if p.returncode == IMAGE_MISSING_RC:
+            return (f"runner image {self.s.runner_image} is not built "
+                    "— instructor: run `make image`")
+        tail = (err.decode(errors="replace").strip().splitlines() or ["no output"])[-1]
+        log.error("podman probe failed (exit %s): %s", p.returncode, tail)
+        return (f"podman is not working here (exit {p.returncode}: {tail}) "
+                "— instructor: run `make preflight`, then check the journal")
 
     def _write_script(self, script_dir: Path, code: str) -> None:
         script_dir.mkdir(parents=True, exist_ok=True)
@@ -131,9 +154,9 @@ class RunnerManager:
         script_dir.chmod(0o755)
 
     async def submit_container(self, student: Student, code: str) -> str:
-        if not await self._image_ok():
-            raise RunnerError(f"runner image {self.s.runner_image} is not built "
-                              "— instructor: run `make image`")
+        problem = await self._image_probe()
+        if problem is not None:
+            raise RunnerError(problem)
         script_dir = self.s.abs_state_dir / "scripts" / student.id
         # off-loop: this runs on the request path the 20 Hz driver shares
         await asyncio.to_thread(self._write_script, script_dir, code)
@@ -173,10 +196,8 @@ class RunnerManager:
                 env=env,
                 start_new_session=True,
             )
-        except (FileNotFoundError, OSError) as exc:
-            run.state = "exited"
-            run.exit_code = -1
-            run.reason = "start_failed"
+        except OSError as exc:
+            run.end("start_failed", -1)
             ring.append("system", f"failed to start: {exc}")
             self._emit(run)
             raise RunnerError(str(exc)) from exc
@@ -226,13 +247,12 @@ class RunnerManager:
             await self._kill(run)
             code = await run.proc.wait()
         if self.runs.get(student.id) is run and run.state != "exited":
-            run.state = "exited"
-            run.exit_code = code
-            run.reason = reason or end_reason(run.mode, code)
-            if run.reason == "runner_failed":
+            ended = reason or end_reason(run.mode, code)
+            run.end(ended, code)
+            if ended == "runner_failed":
                 log.warning("run %s: podman exited %d — image or sandbox problem",
                             run.run_id, code)
-            ring.append("system", end_line(run.reason, code, self.s.run_max_seconds))
+            ring.append("system", end_line(ended, code, self.s.run_max_seconds))
             self._emit(run)
 
     async def _kill(self, run: Run) -> None:
@@ -243,7 +263,7 @@ class RunnerManager:
                     stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
                 )
                 await p.wait()
-            except (FileNotFoundError, OSError):
+            except OSError:
                 pass
         if run.proc and run.proc.returncode is None:
             with contextlib.suppress(ProcessLookupError):
@@ -259,9 +279,7 @@ class RunnerManager:
                 await asyncio.wait_for(run.proc.wait(), 10)
             except TimeoutError:
                 log.warning("run %s did not die within 10s", run.run_id)
-        run.state = "exited"
-        run.exit_code = run.proc.returncode if run.proc else -1
-        run.reason = reason
+        run.end(reason, run.proc.returncode if run.proc else -1)
         self.log_for(student_id).append("system", end_line(reason, run.exit_code,
                                                            self.s.run_max_seconds))
         self._emit(run)
@@ -290,7 +308,7 @@ class RunnerManager:
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             )
             out, _ = await p.communicate()
-        except (FileNotFoundError, OSError):
+        except OSError:
             return  # no podman on this box: container mode will fail loudly at submit
         ids = out.split()
         if ids:

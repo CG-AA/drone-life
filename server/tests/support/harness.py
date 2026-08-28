@@ -13,7 +13,7 @@ import random
 import re
 
 from app.game import hex
-from app.game.engine import MILESTONE_EVERY
+from app.game.engine import milestone_crossed
 from app.game.events import EVENT_KINDS
 from app.game.mission import Mission, MissionConfig
 from app.sim.backend import DroneView
@@ -82,8 +82,8 @@ class FakeWorld:
         if feed:
             self.emit_event("score", f"{points:+d}: {reason}", student_id=student_id,
                             data={"points": points, "total": self.score})
-        if points > 0 and prev // MILESTONE_EVERY < self.score // MILESTONE_EVERY:
-            mark = self.score // MILESTONE_EVERY * MILESTONE_EVERY
+        mark = milestone_crossed(prev, points, self.score)
+        if mark is not None:
             self.emit_event("milestone", f"team passes {mark} points!",
                             data={"total": self.score})
         return self.score

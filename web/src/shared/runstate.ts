@@ -9,15 +9,23 @@ import type { RunState } from "./protocol";
 
 export type RunClass = "idle" | "starting" | "running" | "done" | "failed";
 
+/** Ended on purpose: nobody's script failed, so nothing turns red. A killed
+ * process carries the signal as its code (-9), never null, so the code alone
+ * cannot tell "the student pressed Stop" from "the script crashed". */
+const DELIBERATE = new Set<string>(["stopped", "replaced"]);
+
 export function runClass(rs: RunState | null): RunClass {
   if (rs === null) return "idle";
   if (rs.state !== "exited") return rs.state;
-  // null means we stopped it (kill, resubmit) — deliberate, not a failure
+  if (rs.reason === "done") return "done";
+  if (rs.reason !== null) return DELIBERATE.has(rs.reason) ? "done" : "failed";
+  // no reason at all (an older server): the exit code is all there is
   return rs.exit_code === null || rs.exit_code === 0 ? "done" : "failed";
 }
 
-/** Pinned to manager.py's END_REASONS by ui.test.ts — "error" is absent on
- * purpose: it renders its exit code, which is the student's debugging handle. */
+/** Pinned to protocol.ts's END_REASONS — and through it to manager.py — by
+ * ui.test.ts. "error" is absent on purpose: it renders its exit code, which is
+ * the student's debugging handle. */
 export const END_LABEL: Record<string, string> = {
   done: "finished",
   timeout: "timed out",

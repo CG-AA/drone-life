@@ -12,7 +12,8 @@ Every game talks to you through drone.events() — "crate 3 at N 40 E -12",
 "creep at N 10 E 55" — and position_in(msg) turns one into (north, east).
 Delivery: hover low (under 3 m) over a crate for 2 s, carry it to N 0 E 0.
 Siege: hover low near a creep to zap it; stack 3 steel = a watchtower.
-The templates menu has a starter for each game.
+Whatever your instructor has running, the game tells you what to do next;
+the templates menu has a starter for each game.
 """
 
 from dronelife import connect

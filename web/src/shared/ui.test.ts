@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 
 import { END_LABEL, runLabel } from "./ui";
+import { END_REASONS } from "./protocol";
 import type { RunState } from "./protocol";
 
 function run(over: Partial<RunState> = {}): RunState {
@@ -47,6 +48,9 @@ it("knows every reason the server can send", () => {
   const reasons = [...block!.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
 
   expect(reasons.length).toBeGreaterThan(5);
+  // the wire list first: RunEndReason is derived from it, so a server reason
+  // missing here is a type that lies about what can arrive
+  expect([...END_REASONS].sort()).toEqual([...reasons].sort());
   // "error" deliberately has no label — it keeps its exit code instead
   const labelled = new Set([...Object.keys(END_LABEL), "error"]);
   for (const reason of reasons) {

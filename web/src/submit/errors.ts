@@ -72,20 +72,29 @@ function fromApiError(err: ApiError, status: number, ctx: ErrorContext): ErrorVi
     }
     case "too_big":
       return view(tooBigText());
-    case "runner":
-      // the raw text is a Python exception about the podman binary: true, and
-      // useless to a student. It belongs in the instructor's log, not here.
+    case "runner": {
+      // the raw text can carry a Python exception — true, and useless to a
+      // student. But the server ends these with the instructor's actual fix
+      // ("run `make image`"), and the only person who can act on it is standing
+      // in the room, so that clause is exactly what to put on screen.
+      const fix = /—\s*instructor:\s*(.+)$/.exec(err.msg)?.[1]?.trim();
       return view("the drone box didn't start — that's a server problem, not "
-        + "your code. Tell your instructor.");
+        + "your code. Tell your instructor"
+        + (fix ? `: ${fix}` : "."));
+    }
     case "auth":
       return ctx === "join"
         ? view(err.msg, [RETRY])
         : view("your session expired — join again to keep flying", [REJOIN]);
     case "rate":
-      // the limiter keys on IP, and behind the workshop proxy the whole class
-      // shares one — so this is rarely the student's own doing
-      return view("the whole class is joining at once — wait a moment, then "
-        + "try again", [RETRY]);
+      // two different limiters answer 429. Submitting is per-student, so this
+      // one IS the student's own doing; joining keys on IP, which behind the
+      // workshop proxy the whole class shares.
+      return ctx === "submit"
+        ? view("you're pressing Run too fast — wait a few seconds, then try again",
+               [RETRY])
+        : view("the whole class is joining at once — wait a moment, then "
+          + "try again", [RETRY]);
     case "room_code":
       return view("that room code isn't right — check the board, or ask your "
         + "instructor");

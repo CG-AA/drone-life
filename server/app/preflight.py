@@ -9,17 +9,18 @@ import argparse
 import getpass
 import json
 import os
+import pwd
 import shutil
 import socket
 import subprocess
 import sys
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import DEFAULT_ADMIN_TOKEN, DEFAULT_ROOM_CODE, Settings
+from .config import DEFAULT_ADMIN_TOKEN, DEFAULT_ROOM_CODE, Settings, check_secrets
+from .game.missions import MISSIONS
 
 PASS = "PASS"
 FAIL = "FAIL"
@@ -28,6 +29,7 @@ WARN = "WARN"
 HEALTH_URL = "http://127.0.0.1:8000/healthz"  # the port the Makefile and unit both use
 SMOKE_TIMEOUT = 30
 MIN_FREE_BYTES = 1 << 30  # containers + logs + snapshot: a gig is plenty, less is a smell
+UNIT_PATH = Path("/etc/systemd/system/drone-life.service")
 
 
 @dataclass
@@ -54,7 +56,7 @@ def check_podman(s: Settings) -> Check:
 def check_image(s: Settings) -> Check:
     try:
         rc = _podman("image", "exists", s.runner_image).returncode
-    except (FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         return Check("runner image", FAIL, f"could not ask podman: {exc}")
     if rc != 0:
         return Check("runner image", FAIL, f"{s.runner_image} missing — run `make image`")
@@ -160,56 +162,84 @@ def check_disk(s: Settings) -> Check:
 
 
 def check_defaults(s: Settings) -> Check:
-    """Mirror of config.check_secrets: the server refuses to boot on placeholder or
-    empty secrets unless ALLOW_DEFAULT_SECRETS is set, so preflight must not
-    green-light a config the lifespan will reject a minute later."""
-    weak = []
-    if not s.room_code.strip() or s.room_code == DEFAULT_ROOM_CODE:
-        weak.append("ROOM_CODE")
-    if not s.admin_token.strip() or s.admin_token == DEFAULT_ADMIN_TOKEN:
-        weak.append("ADMIN_TOKEN")
-    if not weak:
-        return Check("secrets", PASS, "overridden")
-    names = " and ".join(weak)
-    if s.allow_default_secrets:
+    """The same call the lifespan makes — preflight must never green-light a
+    config the server will refuse to boot on."""
+    refusal = check_secrets(s)
+    if refusal is not None:
+        return Check("secrets", FAIL, refusal.removeprefix("refusing to start: "))
+    weak = [name for name, value, default in
+            (("ROOM_CODE", s.room_code, DEFAULT_ROOM_CODE),
+             ("ADMIN_TOKEN", s.admin_token, DEFAULT_ADMIN_TOKEN))
+            if not value or value == default]
+    if weak:
         return Check("secrets", WARN,
-                     f"{names} still default — booting only because ALLOW_DEFAULT_SECRETS "
-                     "is set; dev only, never for a room students can reach")
-    return Check("secrets", FAIL,
-                 f"{names} default or empty — the server refuses to start on these; "
-                 "set real values (e.g. `set -a && . /etc/drone-life.env && set +a` "
-                 "before `make preflight`), or ALLOW_DEFAULT_SECRETS=1 for local dev")
+                     f"{' and '.join(weak)} still default — booting only because "
+                     "ALLOW_DEFAULT_SECRETS is set; dev only, never a room students reach")
+    return Check("secrets", PASS, "overridden")
 
 
-def check_runtime_dir(s: Settings, env: Mapping[str, str] | None = None,
-                      uid: int | None = None) -> Check:
-    """Rootless podman keys its state on XDG_RUNTIME_DIR. A login shell sets it
-    right; a systemd unit that wrote `/run/user/%U` sets it to root's (0), and
-    then podman cannot see the image and every submit 503s. If it is set here
-    it must be a directory owned by whoever is running this check."""
-    environ: Mapping[str, str] = os.environ if env is None else env
-    uid = os.getuid() if uid is None else uid
-    value = environ.get("XDG_RUNTIME_DIR", "").strip()
-    if not value:
-        return Check("runtime dir", PASS, "XDG_RUNTIME_DIR not set — podman picks its fallback")
-    path = Path(value)
+def check_mission(s: Settings) -> Check:
+    """MISSION is read at boot and a typo aborts create_app — and the runbook
+    has the operator hand-edit it right before a restart."""
+    if s.mission not in MISSIONS:
+        return Check("mission", FAIL,
+                     f"MISSION={s.mission!r} is not a mission — the server would refuse to "
+                     f"start; one of: {', '.join(sorted(MISSIONS))}")
+    return Check("mission", PASS, s.mission)
+
+
+def check_runtime_dir(s: Settings, unit: Path = UNIT_PATH) -> Check:
+    """Rootless podman needs XDG_RUNTIME_DIR and the unit hardcodes a uid.
+    preflight runs from a login shell, where PAM sets the right one — so a green
+    preflight is no proof the *service* can reach podman. Compare the unit's
+    value against the uid of the unit's own User=, not whoever ran this."""
     try:
-        st = path.stat()
+        rows = [row.strip() for row in unit.read_text().splitlines()]
     except OSError:
-        want = f"/run/user/{uid}"
-        hint = (f"a systemd unit with `/run/user/%U` does this (%U is root's uid) — set "
-                f"`Environment=XDG_RUNTIME_DIR={want}` in the unit"
-                if value != want else
-                f"`sudo loginctl enable-linger {getpass.getuser()}` creates it")
-        return Check("runtime dir", FAIL, f"XDG_RUNTIME_DIR={value} does not exist — {hint}")
-    if not path.is_dir():
-        return Check("runtime dir", FAIL, f"XDG_RUNTIME_DIR={value} is not a directory")
-    if st.st_uid != uid:
+        return Check("runtime dir", PASS,
+                     f"no {unit} on this box — this shell's XDG_RUNTIME_DIR is not a "
+                     "service's; re-check after installing the unit")
+    declared = user = None
+    for row in rows:
+        if row.startswith("Environment=") and "XDG_RUNTIME_DIR=" in row:
+            declared = row.split("XDG_RUNTIME_DIR=", 1)[1].strip().strip('"')
+        elif row.startswith("User="):
+            user = row.split("=", 1)[1].strip()
+    if user is None:
+        return Check("runtime dir", WARN, f"{unit} names no User= — cannot check its uid")
+    try:
+        uid = pwd.getpwnam(user).pw_uid
+    except KeyError:
+        return Check("runtime dir", WARN,
+                     f"{unit} runs as {user!r}, who does not exist here — check on the "
+                     "lab server, where it does")
+    want = f"/run/user/{uid}"
+    if declared is None:
         return Check("runtime dir", FAIL,
-                     f"XDG_RUNTIME_DIR={value} is owned by uid {st.st_uid}, you are uid {uid} — "
-                     "a systemd unit with `/run/user/%U` does this; set "
-                     f"`Environment=XDG_RUNTIME_DIR=/run/user/{uid}` in the unit")
-    return Check("runtime dir", PASS, f"{value} (uid {uid})")
+                     f"{unit} sets no XDG_RUNTIME_DIR — rootless podman needs it; add "
+                     f"`Environment=XDG_RUNTIME_DIR={want}`")
+    if declared != want:
+        return Check("runtime dir", FAIL,
+                     f"{unit} says {declared} but {user} is uid {uid} — every submit would "
+                     f"503 'runner image is not built'; set it to {want}")
+    if not Path(declared).is_dir():
+        return Check("runtime dir", FAIL,
+                     f"{declared} does not exist — `sudo loginctl enable-linger {user}`")
+    return Check("runtime dir", PASS, f"{declared} (uid of {user})")
+
+
+def check_proxy(s: Settings) -> Check:
+    """uvicorn reads FORWARDED_ALLOW_IPS itself (not config.py). Without it every
+    student behind the proxy shares one join bucket, so 30 wrong codes lock out
+    the class — and the projector with them."""
+    value = os.environ.get("FORWARDED_ALLOW_IPS", "").strip()
+    if value:
+        return Check("proxy header", PASS, f"X-Forwarded-For believed from {value}")
+    if s.allow_default_secrets:
+        return Check("proxy header", PASS, "dev box (ALLOW_DEFAULT_SECRETS) — no proxy")
+    return Check("proxy header", WARN,
+                 "FORWARDED_ALLOW_IPS unset — behind the proxy the whole class shares one "
+                 "join bucket; set it in /etc/drone-life.env to the proxy's address")
 
 
 def smoke_run(s: Settings) -> Check:
@@ -220,7 +250,7 @@ def smoke_run(s: Settings) -> Check:
         proc = _podman(*argv, timeout=SMOKE_TIMEOUT)
     except subprocess.TimeoutExpired:
         return Check("smoke run", FAIL, f"container did not finish in {SMOKE_TIMEOUT}s")
-    except (FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         return Check("smoke run", FAIL, f"could not run podman: {exc}")
     if proc.returncode != 0:
         err = (proc.stderr or "").strip().splitlines()
@@ -232,7 +262,7 @@ def smoke_run(s: Settings) -> Check:
 def collect(s: Settings, *, smoke: bool = True) -> list[Check]:
     checks = [check_podman(s), check_image(s), check_subids(s), check_slirp4netns(s),
               check_ports(s), check_web_dist(s), check_state_dir(s), check_disk(s),
-              check_defaults(s), check_runtime_dir(s)]
+              check_defaults(s), check_mission(s), check_runtime_dir(s), check_proxy(s)]
     if not smoke:
         return checks
     blocked = [c for c in checks[:2] if c.status == FAIL]  # podman + image

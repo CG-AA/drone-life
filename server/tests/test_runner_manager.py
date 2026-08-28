@@ -10,7 +10,7 @@ import pytest
 
 from app.config import Settings
 from app.core.registry import Student
-from app.runner.manager import RunnerError, RunnerManager, end_reason
+from app.runner.manager import END_REASONS, Run, RunnerError, RunnerManager, end_reason
 
 
 def make_student() -> Student:
@@ -22,10 +22,15 @@ def make_manager(events: list, **overrides) -> RunnerManager:
                          on_event=lambda sid, payload: events.append((sid, payload)))
 
 
-def fake_image_probe(available: bool):
-    async def _probe(self) -> bool:
-        return available
+def fake_image_probe(problem: str | None):
+    async def _probe(self) -> str | None:
+        return problem
     return _probe
+
+
+async def _awaitable(value):
+    """create_subprocess_exec is awaited, so a fake must be too."""
+    return value
 
 
 async def wait_for(predicate, timeout: float = 5.0) -> None:
@@ -142,7 +147,8 @@ def test_end_reason_maps_podman_failures_apart_from_script_errors():
 async def test_submit_container_without_image_raises_runner_error(tmp_path, monkeypatch):
     events: list = []
     mgr = make_manager(events, state_dir=tmp_path / "state")
-    monkeypatch.setattr(RunnerManager, "_image_ok", fake_image_probe(False))
+    monkeypatch.setattr(RunnerManager, "_image_probe",
+                        fake_image_probe("runner image x is not built — run `make image`"))
 
     with pytest.raises(RunnerError, match="make image"):
         await mgr.submit_container(make_student(), "print('hi')\n")
@@ -157,18 +163,63 @@ async def test_image_probe_caches_the_positive_only(tmp_path, monkeypatch):
     rc = [1]
 
     class FakeProc:
-        async def wait(self) -> int:
-            return rc[0]
+        returncode = 1
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            FakeProc.returncode = self.returncode = rc[0]
+            return b"", b""
 
     async def fake_exec(*argv, **kwargs):
         calls.append(argv)
         return FakeProc()
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
-    assert await mgr._image_ok() is False
-    assert await mgr._image_ok() is False  # negatives re-probe: `make image` must land
+    assert "make image" in (await mgr._image_probe() or "")
+    assert "make image" in (await mgr._image_probe() or "")  # negatives re-probe
     assert len(calls) == 2
     rc[0] = 0
-    assert await mgr._image_ok() is True
-    assert await mgr._image_ok() is True  # positive cached: an image can't un-build
+    assert await mgr._image_probe() is None
+    assert await mgr._image_probe() is None  # positive cached: an image can't un-build
     assert len(calls) == 3
+
+
+async def test_a_broken_podman_is_not_reported_as_a_missing_image(tmp_path, monkeypatch):
+    """The bug this exists for: a wrong XDG_RUNTIME_DIR made every submit say
+    "run `make image`", the one fix that could not help. The two must read
+    differently, and podman's own words must survive."""
+    mgr = make_manager([], state_dir=tmp_path / "state")
+
+    class FakeProc:
+        returncode = 125
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"", b"Error: XDG_RUNTIME_DIR=/run/user/1001 is not owned by you\n"
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec",
+                        lambda *a, **k: _awaitable(FakeProc()))
+    problem = await mgr._image_probe()
+    assert problem is not None
+    assert "make image" not in problem
+    assert "XDG_RUNTIME_DIR" in problem and "preflight" in problem
+    assert not mgr._image_seen  # a podman failure must never cache as "fine"
+
+
+async def test_a_podman_that_cannot_be_run_at_all_says_so(tmp_path, monkeypatch):
+    mgr = make_manager([], state_dir=tmp_path / "state")
+
+    def boom(*argv, **kwargs):
+        raise FileNotFoundError("podman")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", boom)
+    problem = await mgr._image_probe()
+    assert problem is not None and "preflight" in problem
+
+
+async def test_every_end_reason_is_one_the_wire_knows(tmp_path):
+    """Run.end is the only door out, and protocol.ts/runstate.ts mirror this
+    list — an unregistered reason would render as a blank pill."""
+    run = Run(run_id="r1", student_id="s0", mode="local")
+    with pytest.raises(AssertionError, match="unregistered end reason"):
+        run.end("exploded", 1)
+    for reason in END_REASONS:
+        Run(run_id="r1", student_id="s0", mode="local").end(reason, 0)

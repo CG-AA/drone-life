@@ -33,12 +33,12 @@ over and even **land on top**.
   announced spot **at the announced altitude** for **1.5 s** to place it:
 
   ```
-  DRONE: GAME: quarry at N -30 E 40
-  DRONE: GAME: wall gap at N 10 E -55 hover 4
+  DRONE: GAME: quarry at N -32 E 39
+  DRONE: GAME: wall gap at N 9 E -62 hover 4
   ```
 
-  means `drone.goto(-30, 40, 2)`, wait for `got steel`, then
-  `drone.goto(10, -55, 4)` and hold still. Each block climbs the target
+  means `drone.goto(-32, 39, 2)`, wait for `got steel`, then
+  `drone.goto(9, -62, 4)` and hold still. Each block climbs the target
   altitude by 2 m — the game always tells you the right number. Every
   placed tile is **+2**, and finishing the whole wall pays **+40**.
 - **forge** — same ferry loop from the clay pit, but you build anywhere
@@ -129,21 +129,28 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `too high, get under 3 m` | you're over the spot but too high → descend |
 | `hands full, drop at N 0 E 0` | you already carry a crate → deliver it first |
 | `no crate! grab one first` | you're at the dropoff empty-handed → go get one |
-| `crate lost, grab another` | your crash dropped it → a fresh one just spawned |
+| `crate lost, grab another` | your crash dropped it → grab another (the game tops the ground up) |
 
 **Building (rampart / forge / siege share the ferry loop)**
 
 | message | it means → do this |
 |---|---|
-| `quarry at N -31 E 39` / `clay pit at …` | the pile → hover it low (below 3 m) for 2 s |
-| `got steel, place on the wall` (or clay…) | carrying → fly to a target cell |
-| `wall gap at N 10 E -55 hover 4` | rampart tells you where AND the altitude |
+| `quarry at N -32 E 39` / `clay pit at N 27 E -42` | the pile → hover it low (below 3 m) for 2 s |
+| `got steel, place on the wall` (siege: `wall or tower it`) | carrying → fly to a target cell |
+| `got clay, build a ring of 6` | forge: build anywhere, but close a ring |
+| `wall gap at N 9 E -62 hover 4` | rampart tells you where AND the altitude |
 | `hover 6 m to place` | right cell, wrong height → hover at that altitude |
-| `placed! wall 12/34 +2` / `clay placed +1` | it landed — progress and points |
+| `placed! wall 12/22 +2` / `clay placed +1` | it landed — progress and points |
 | `not a wall cell` / `can't build there` | wrong spot → aim for the announced cells |
 | `steel lost, grab another` | a carrier crashed → back to the pile |
-| `hands full, place your steel/clay` | you can carry exactly one tile |
+| `hands full, place on the wall` / `place your clay` / `wall or tower it` | you can carry exactly one tile |
 | `rampart complete! +40` / `furnace lit! +30` | the team finished a structure |
+
+**Canyon**
+
+| message | it means → do this |
+|---|---|
+| `canyon walls up, fly low + safe` | no scoring — the corridor is the challenge |
 
 **Siege**
 
@@ -160,7 +167,7 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `champion down! +20` | the boss fell — everyone hears it |
 | `stack 3 steel = watchtower` / `build a tower at N 20 E -8` | 3 tiles on one cell → auto-firing tower (+15); the game suggests a spot between waves |
 | `tower up! +15` / `tower down at …` | a tower rose / was chewed from under |
-| `wall chewed at N 10 E -55` | a blocked creep is eating through → rebuild, zap it |
+| `wall chewed at N 9 E -62` | a blocked creep is eating through → rebuild, zap it |
 | `wave 3 clear! +10` / `wave 3 clear, 2 leaked +5` | breathe — a clean wave pays double |
 | `wave 4 in 20s, build!` | 20 s of peace: ferry steel, stack a tower |
 | `keep hit! hp 7, -1` / `keep fell! -25, rebuilt` | leaks cost points; it never game-overs |
@@ -207,6 +214,7 @@ connection string and the messages are identical.
 | drone flew home by itself | your script ended (or crashed) | check the log pane for the traceback |
 | `syntax error, line N` in red | Python couldn't parse your script | the editor jumps to the line for you |
 | drone stuck somewhere weird | — | press **reset drone**: script stops, drone back on your pad |
+| drone stops dead at the edge of the map | you flew past ±100 m — the arena clamps you | your log says `DRONE: bounds: clamped at arena edge`; it is **not** a `GAME:` line, so `drone.events()` never sees it — turn around |
 | picked up nothing over a crate | too high, or not 2 full seconds | below 3 m altitude, hold still, count to 2 — the drone now tells you (`too high, get under 3 m`) |
 | `DRONE: CRASH: hit a wall` | flew into a tile stack side-on | go over the top (walls max out at 8 m) or around |
 | tile won't place | wrong altitude, wrong cell, or empty hands | hover at the **announced** altitude on the announced spot, carrying |

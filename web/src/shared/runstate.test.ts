@@ -5,8 +5,9 @@ import { expect, it } from "vitest";
 import type { RunState } from "./protocol";
 import { formatAge, pillLabel, runClass } from "./runstate";
 
-const run = (state: RunState["state"], exit: number | null = null): RunState =>
-  ({ run_id: "r1", state, exit_code: exit, reason: null });
+const run = (state: RunState["state"], exit: number | null = null,
+             reason: RunState["reason"] = null): RunState =>
+  ({ run_id: "r1", state, exit_code: exit, reason });
 
 it("separates a clean exit from a crash", () => {
   expect(runClass(null)).toBe("idle");
@@ -15,8 +16,23 @@ it("separates a clean exit from a crash", () => {
   expect(runClass(run("exited", 0))).toBe("done");
   expect(runClass(run("exited", 1))).toBe("failed");
   expect(runClass(run("exited", 137))).toBe("failed");
-  // we stopped it (kill, resubmit): deliberate, not the student's failure
+  // no reason at all (an older server): the code is all there is to go on
   expect(runClass(run("exited", null))).toBe("done");
+});
+
+it("does not blame the student for a run we ended ourselves", () => {
+  // SIGKILL leaves -9, never null: pressing Stop used to paint the pill red
+  // and sort the student to the top of the instructor's attention list
+  expect(runClass(run("exited", -9, "stopped"))).toBe("done");
+  expect(runClass(run("exited", -9, "replaced"))).toBe("done");
+  expect(runClass(run("exited", 0, "done"))).toBe("done");
+});
+
+it("still shows real trouble as trouble", () => {
+  expect(runClass(run("exited", -9, "timeout"))).toBe("failed");
+  expect(runClass(run("exited", 1, "error"))).toBe("failed");
+  expect(runClass(run("exited", 125, "runner_failed"))).toBe("failed");
+  expect(runClass(run("exited", -1, "start_failed"))).toBe("failed");
 });
 
 it("labels the pill with how long it has been that way", () => {

@@ -121,6 +121,10 @@ worked answer in the repo — don't reveal that until the wrap.
   everyone presses Run again (that's the whole recovery).
 - **Mission misbehaving** (`mission bug in …` on the feed): fall back to
   `MISSION=delivery` via Box A — it's the best-rehearsed content.
+- **`sim error — check server logs` on the feed**: *not* a mission bug —
+  switching missions will not help. The failure is below the mission (sim,
+  gateway, or the socket fan-out); the sim keeps ticking. Restart when there
+  is a natural break; the journal names the file.
 - **Projector feed stuck**: refresh the tab; the viewer replays state on
   connect.
 - **Every submit 503s**: the runner image is missing/broken — preflight
@@ -187,7 +191,7 @@ before the day and watch the round summary on reset.
 - [ ] `set -a && . /etc/drone-life.env && set +a && make preflight` (the env
       file is not read by `make` on its own) / podman path: `make image`,
       `make e2e`, one container-mode submit end-to-end from a real browser.
-- [ ] `make load` on the lab hardware (`MAX_STUDENTS=20`); overruns < 1% on
+- [ ] `make load LOAD_BOTS=20` on the lab hardware; overruns < 1% on
       `/healthz`.
 - [ ] Both transition boxes on the real box (`/etc/drone-life.env` edit +
       `systemctl restart` — time them; they're the 5′ SWITCH blocks).

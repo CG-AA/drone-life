@@ -141,10 +141,15 @@ export interface LogLine {
   line: string;
 }
 
-/** Why a run ended (app/runner/manager.py END_REASONS); null until it has. */
-export type RunEndReason =
-  | "done" | "error" | "timeout" | "stopped" | "replaced"
-  | "start_failed" | "runner_failed";
+/** Every reason a run can end, mirroring the END_REASONS block in
+ * app/runner/manager.py; ui.test.ts pins the two lists together. The union is
+ * derived from the array so a value and a type can never drift apart. */
+export const END_REASONS = [
+  "done", "error", "timeout", "stopped", "replaced", "start_failed", "runner_failed",
+] as const;
+
+/** Why a run ended; null until it has. */
+export type RunEndReason = (typeof END_REASONS)[number];
 
 export interface RunState {
   run_id: string;

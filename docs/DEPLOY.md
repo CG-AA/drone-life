@@ -26,6 +26,8 @@ installed in step 3.
 sudo useradd -m -s /bin/bash dronelife
 sudo loginctl enable-linger dronelife     # rootless podman under systemd needs this
 sudo install -d -o dronelife -g dronelife /opt/drone-life   # dronelife can't mkdir in /opt
+# (already cloned /opt/drone-life as another user in an earlier attempt?
+#  sudo chown -R dronelife:dronelife /opt/drone-life — or uv/npm hit EACCES)
 
 # 2. rootless podman prerequisites (still admin — usermod needs root)
 grep dronelife /etc/subuid /etc/subgid    # must show a range in BOTH files; if not:
@@ -70,6 +72,11 @@ MISSION=freefly
 # the OCI VM's address as the lab server sees it — without this every student
 # shares one rate-limit bucket; see "OCI VM reverse proxy" below. Through the
 # SSH tunnel in docs/deploy/gateway-tunnel/ it is 127.0.0.1.
+# REPLACE 10.0.0.5 with the proxy's address as the lab server sees it — a wrong
+# value fails silently and puts the whole class in one rate-limit bucket, where
+# 30 wrong codes lock everyone out (the projector too); `make preflight` warns
+# when it is unset. Through the ssh reverse tunnel the proxy arrives from
+# 127.0.0.1 (uvicorn's default) — see docs/deploy/gateway-tunnel/README.md.
 FORWARDED_ALLOW_IPS=10.0.0.5
 EOF
 sudo chown root:dronelife /etc/drone-life.env
@@ -207,10 +214,11 @@ make reset                            # clean slate between sessions
 ```
 
 `make preflight` checks podman, the runner image, subuid/subgid, slirp4netns,
-the MAVLink port range, `web/dist`, the state dir and disk, the secrets
-(placeholders FAIL — the server would refuse to boot on them), and that
-`XDG_RUNTIME_DIR`, if set, exists and belongs to you; then it runs one real
-container. Exit 1 means don't start class — every failure line names its fix.
+the MAVLink port range, `web/dist`, the state dir and disk, the access-control
+secrets (the same call the server refuses to boot on), that `MISSION` names a
+real mission, that the unit's `XDG_RUNTIME_DIR` matches the service user's uid,
+and that `FORWARDED_ALLOW_IPS` is set — then runs one real container. Exit 1
+means don't start class — every failure line names its fix.
 `make` does **not** read `/etc/drone-life.env` by itself: the
 `set -a && . /etc/drone-life.env && set +a` prefix above is what makes
 preflight (and `make bots` / `make reset`, which pick up `ADMIN_TOKEN` the same
@@ -239,6 +247,7 @@ line is the fastest read on whether the sim itself is alive.
 | symptom | check | fix |
 |---|---|---|
 | every submit says "runner image … is not built" | `podman image exists drone-life-runner:latest` | `make image` — no restart needed, the next submit picks it up |
+| every submit says "podman is not working here" | `make preflight`, then `journalctl -u drone-life \| grep podman` | podman failed for a reason that is not a missing image — usually `XDG_RUNTIME_DIR` or subuid. Probe it **as the service does**, not from your shell (a login shell gets a working runtime dir from PAM and will lie to you): `sudo -u dronelife XDG_RUNTIME_DIR=/run/user/$(id -u dronelife) podman image exists drone-life-runner:latest` |
 | a student's log ends "the sandbox failed to start (podman exit 125)" | `journalctl -u drone-life \| grep podman` | usually the image or subuid ranges: `make preflight` names which |
 | projector frozen, console says **SIM STALLED** | `curl -s localhost:8000/healthz` | `journalctl -u drone-life -n 100` for the traceback, then `systemctl restart drone-life` |
 | console health line shows climbing "sim errors" | server log has `driver tick failed` | a mission or sim bug — restart clears it, the traceback names the file |
@@ -250,7 +259,7 @@ line is the fastest read on whether the sim itself is alive.
 | every submit 503s "runner image … is not built" under systemd, but `make preflight` passes in a `sudo -iu dronelife` shell | `systemctl show drone-life -p Environment` vs `id -u dronelife` | the unit's `XDG_RUNTIME_DIR` uid is wrong (the `%U` trap) — fix it in `/etc/systemd/system/drone-life.service`, `daemon-reload`, restart |
 | `systemctl status` shows `failed` with "start-limit-hit" and won't come back | `journalctl -u drone-life -n 50` | the env file is bad (placeholder secrets / unknown `MISSION`) — fix it, then `sudo systemctl reset-failed drone-life && sudo systemctl start drone-life` |
 | boot fails on a corrupt snapshot | `journalctl -u drone-life -n 50` | `rm server/state/snapshot.json` and restart — roster, tokens and score are lost, students re-join and same names take the same slots |
-| proxy or OCI VM dead | can you reach the lab server directly? | hotspot fallback: `make run` on the lab server binds `0.0.0.0:8000`, students use `http://<lab-ip>:8000/submit`. Open the room's firewall to that port only, and put the URL on the projector |
+| proxy or OCI VM dead | can you reach the lab server directly? | hotspot fallback: `set -a && . /etc/drone-life.env && set +a && make run` on the lab server binds `0.0.0.0:8000`, students use `http://<lab-ip>:8000/submit`. (Sourcing the env file is not optional — bare `make run` uses the Makefile's placeholder secrets and refuses to start.) Open the room's firewall to that port only, and put the URL on the projector |
 
 "Flaky" is not a diagnosis. A student whose drone flew home on its own didn't
 hit a bug: a script that disconnects gets 10 s of grace, then auto-RTL with

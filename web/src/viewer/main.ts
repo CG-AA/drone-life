@@ -17,6 +17,8 @@ import { TerrainRenderer } from "./terrain";
 const CODE_KEY = "dl_room_code";
 /** Set just before the reload a refused code triggers, read once after it. */
 const REJECTED_KEY = "dl_code_rejected";
+const REFUSED = 403; // this room code is wrong
+const TOO_MANY = 429; // this address is rate-limited, whatever the code says
 const CURSOR_IDLE_MS = 3000;
 const HINT_MS = 8000;
 
@@ -159,7 +161,16 @@ async function boot(): Promise<void> {
       await request("GET", `/api/v1/world?code=${encodeURIComponent(code)}`, {});
       return false;
     } catch (e) {
-      return e instanceof ApiFailure && e.status === 403;
+      if (!(e instanceof ApiFailure)) return false;
+      if (e.status === TOO_MANY) {
+        // wrong codes from this address spent the join budget, and while it is
+        // spent every connection from here is refused — a right code included.
+        // Not our code's fault and not fatal: it clears within the minute, so
+        // say why the screen is dark instead of retrying in silence.
+        hud.setMission("too many wrong room codes from this network — retrying");
+        return false;
+      }
+      return e.status === REFUSED;
     }
   };
   ws.onRejected = () => {

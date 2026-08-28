@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -40,6 +41,7 @@ BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder", "bot_siege", "bot_tow
 SNAPSHOT_INTERVAL = 30.0
 MISSION_EVERY = P.TICK_HZ // P.MISSION_HZ  # mission + WS run every Nth sim tick
 DRIVER_ERROR_EVERY = 30.0  # a 20 Hz bug must not flood the feed (cf. engine.py)
+DRIVER_ERROR_KINDS = 3  # distinct bugs named per quiet window; the rest are counted
 DRIVER_STALL_S = 5.0  # no successful tick for this long: the sim is not running
 
 # What the projector says when a run ends. "exit -9" means nothing across a room.
@@ -98,6 +100,8 @@ class DroneLifeService:
         self._started_at = time.monotonic()
         self._last_tick = self._started_at
         self._last_driver_error = float("-inf")
+        self._driver_errors_quiet = 0  # since the last full traceback
+        self._driver_error_seen: set[str] = set()  # distinct bugs in this window
 
     def _bind_mission(self, settings: Settings) -> None:
         """Instantiate the mission and wire it to the sim and broadcast state.
@@ -165,13 +169,31 @@ class DroneLifeService:
     def _driver_error(self) -> None:
         """A bug anywhere in the tick used to kill this task outright: the sim
         froze, nothing was logged, and /healthz still said ok. Keep ticking,
-        say so on the feed, and let healthz go stale if it never recovers."""
+        say so on the feed, and let healthz go stale if it never recovers.
+
+        Throttling protects the *feed* and the tracebacks; it must not swallow
+        the diagnosis. A bug the operator has not seen since the last traceback
+        still gets one line, so a second, different failure during the quiet
+        window is never invisible.
+        """
         self.driver_errors += 1
+        exc = sys.exc_info()[1]
+        seen = f"{type(exc).__name__}: {exc}"
         now = time.monotonic()
         if now - self._last_driver_error < DRIVER_ERROR_EVERY:
+            self._driver_errors_quiet += 1
+            # naming every distinct message would be its own flood if the text
+            # carries a varying number, so only the first few per window
+            if (seen not in self._driver_error_seen
+                    and len(self._driver_error_seen) < DRIVER_ERROR_KINDS):
+                self._driver_error_seen.add(seen)
+                log.warning("driver tick failed (%s) — traceback throttled", seen)
             return
         self._last_driver_error = now
-        log.exception("driver tick failed")
+        log.exception("driver tick failed (%d more since the last traceback)",
+                      self._driver_errors_quiet)
+        self._driver_errors_quiet = 0
+        self._driver_error_seen = {seen}
         try:
             self.bus.emit("mission_error", "sim error — check server logs", t=self.world.t)
         except Exception:  # emit fans out to the hub: the last defence can't raise either

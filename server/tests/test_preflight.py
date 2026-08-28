@@ -5,7 +5,6 @@ Podman is mocked throughout — this suite has to pass on boxes without it.
 
 from __future__ import annotations
 
-import os
 import socket
 import subprocess
 
@@ -127,65 +126,79 @@ def test_state_dir_probe_and_corrupt_snapshot_warn(settings):
     assert preflight.check_state_dir(settings).status == PASS
 
 
-def test_default_secrets_fail_unless_allowed(tmp_path):
-    # the lifespan refuses to boot on these, so preflight must not green-light them
+def test_default_secrets_fail_exactly_as_the_server_refuses_them(tmp_path):
+    """preflight must never green-light a config the lifespan aborts on: the
+    whole promise of `exit 1 means don't start class` rests on it."""
     defaults = make_settings(tmp_path, room_code="classroom", admin_token="change-me")
     check = preflight.check_defaults(defaults)
     assert check.status == FAIL
     assert "ROOM_CODE" in check.detail and "ADMIN_TOKEN" in check.detail
-    assert "ALLOW_DEFAULT_SECRETS" in check.detail
-
-    empty = make_settings(tmp_path, room_code="  ", admin_token="x")
-    check = preflight.check_defaults(empty)
-    assert check.status == FAIL
-    assert "ROOM_CODE" in check.detail and "ADMIN_TOKEN" not in check.detail
-
-    allowed = make_settings(tmp_path, room_code="classroom", admin_token="change-me",
-                            allow_default_secrets=True)
-    check = preflight.check_defaults(allowed)
-    assert check.status == WARN
-    assert "dev only" in check.detail
-
     assert preflight.check_defaults(make_settings(tmp_path)).status == PASS
 
 
-def test_runtime_dir_unset_passes(settings):
-    assert preflight.check_runtime_dir(settings, env={}).status == PASS
+def test_empty_secrets_fail_too(tmp_path):
+    check = preflight.check_defaults(make_settings(tmp_path, room_code="   "))
+    assert check.status == FAIL and "ROOM_CODE" in check.detail
 
 
-def test_runtime_dir_must_exist(settings):
-    # our own dir, just not created yet (no linger session for this user)
-    check = preflight.check_runtime_dir(settings, env={"XDG_RUNTIME_DIR": "/run/user/424242"},
-                                        uid=424242)
+def test_the_dev_escape_hatch_warns_instead_of_failing(tmp_path):
+    check = preflight.check_defaults(make_settings(
+        tmp_path, room_code="classroom", admin_token="change-me",
+        allow_default_secrets=True))
+    assert check.status == WARN and "ALLOW_DEFAULT_SECRETS" in check.detail
+
+
+def test_an_unknown_mission_fails_before_the_server_refuses_to_boot(tmp_path):
+    """MISSION is read at boot; the runbook has the operator hand-edit it right
+    before a restart, so a typo must surface here, not in the journal."""
+    check = preflight.check_mission(make_settings(tmp_path, mission="seige"))
     assert check.status == FAIL
-    assert "does not exist" in check.detail
-    assert "enable-linger" in check.detail
+    assert "seige" in check.detail and "siege" in check.detail
+    assert preflight.check_mission(make_settings(tmp_path)).status == PASS
 
-    # the %U trap: root's dir, missing, while we are someone else
-    check = preflight.check_runtime_dir(settings, env={"XDG_RUNTIME_DIR": "/run/user/0"},
-                                        uid=1001)
+
+def test_runtime_dir_uid_mismatch_fails(tmp_path, settings):
+    """The bug that made every submit 503 'image not built': the unit's
+    hardcoded uid did not match the service user's."""
+    unit = tmp_path / "drone-life.service"
+    unit.write_text("[Service]\nUser=root\nEnvironment=XDG_RUNTIME_DIR=/run/user/99999\n")
+    check = preflight.check_runtime_dir(settings, unit=unit)
     assert check.status == FAIL
-    assert "/run/user/1001" in check.detail and "%U" in check.detail
+    assert "/run/user/0" in check.detail  # root is uid 0, whatever the unit says
 
 
-def test_runtime_dir_owned_by_someone_else_fails(settings, tmp_path):
-    # tmp_path belongs to us; pretend we are a different uid, as the %U trap does
-    mine = os.getuid()
-    env = {"XDG_RUNTIME_DIR": str(tmp_path)}
-    assert preflight.check_runtime_dir(settings, env=env, uid=mine).status == PASS
-
-    check = preflight.check_runtime_dir(settings, env=env, uid=mine + 1)
-    assert check.status == FAIL
-    assert f"owned by uid {mine}" in check.detail
-    assert f"/run/user/{mine + 1}" in check.detail
+def test_runtime_dir_without_the_setting_at_all_fails(tmp_path, settings):
+    unit = tmp_path / "drone-life.service"
+    unit.write_text("[Service]\nUser=root\n")
+    check = preflight.check_runtime_dir(settings, unit=unit)
+    assert check.status == FAIL and "XDG_RUNTIME_DIR" in check.detail
 
 
-def test_runtime_dir_is_part_of_collect(settings, monkeypatch):
-    monkeypatch.setattr(preflight.shutil, "which", lambda _: None)
-    monkeypatch.setattr(preflight.subprocess, "run", fake_podman(rc=1))
-    monkeypatch.setattr(preflight, "server_running", lambda *a, **k: False)
-    names = [c.name for c in preflight.collect(settings, smoke=False)]
-    assert "runtime dir" in names and "secrets" in names
+def test_runtime_dir_skipped_where_no_unit_is_installed(tmp_path, settings):
+    check = preflight.check_runtime_dir(settings, unit=tmp_path / "nope.service")
+    assert check.status == PASS
+
+
+def test_runtime_dir_for_a_user_this_box_does_not_have_is_a_warning(tmp_path, settings):
+    unit = tmp_path / "drone-life.service"
+    unit.write_text("[Service]\nUser=nobody-here\nEnvironment=XDG_RUNTIME_DIR=/run/user/1\n")
+    check = preflight.check_runtime_dir(settings, unit=unit)
+    assert check.status == WARN
+
+
+def test_proxy_header_warns_when_the_class_would_share_one_bucket(tmp_path, monkeypatch):
+    monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+    prod = make_settings(tmp_path)
+    assert preflight.check_proxy(prod).status == WARN
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "10.0.0.5")
+    check = preflight.check_proxy(prod)
+    assert check.status == PASS and "10.0.0.5" in check.detail
+
+
+def test_proxy_header_is_not_a_dev_box_problem(tmp_path, monkeypatch):
+    monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+    dev = make_settings(tmp_path, allow_default_secrets=True)
+    assert preflight.check_proxy(dev).status == PASS
 
 
 def test_smoke_run_reports_podman_stderr(settings, monkeypatch):

@@ -64,6 +64,7 @@ make lint          # ruff (server) + eslint (web); make lint-fix autofixes ruff 
 make typecheck     # tsc --noEmit (web) + mypy (server)
 make e2e           # needs podman + `make image` — without them the suite SKIPS, it does not fail
 make load          # timing-sensitive: run on a quiet machine (LOAD_BOTS=20 for class size)
+make preflight     # not a test: checks the box a workshop is about to run on
 ```
 
 - Mission tests use `tests/support/harness.py` (`FakeWorld`, `view`,
