@@ -104,20 +104,21 @@ canvas { touch-action: none; }
   font-weight: 800;
   letter-spacing: 0.06em;
   text-align: center;
-  white-space: nowrap;
-  max-width: 94vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* long lines ("wave 5: 13 creeps from 2 gates + a champion") wrap to a
+     second line rather than being cut off mid-word on the wall */
+  white-space: normal;
+  text-wrap: balance;
+  max-width: 88vw;
   border-left: 10px solid var(--text-muted);
 }
 #banner[hidden], #overlay[hidden] { display: none; }
 #banner {
-  top: 24vh;
-  font-size: clamp(1.6rem, 5vmin, 4.5rem);
+  top: 22vh;
+  font-size: clamp(1.5rem, 4.2vmin, 3.8rem);
 }
 #overlay {
-  top: 42vh;
-  font-size: clamp(2rem, 7vmin, 6.5rem);
+  top: 40vh;
+  font-size: clamp(1.8rem, 5.5vmin, 5.5rem);
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
 }
 #banner.warn, #overlay.warn { border-left-color: var(--warn); }
