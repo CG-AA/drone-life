@@ -92,6 +92,43 @@ canvas { touch-action: none; }
 #ms-keep-hp { color: var(--text-muted); font-size: 0.85em; }
 #ms-towers { color: #9fd8ff; }
 
+/* a wave banner across the wall, and a full-screen moment (milestone, keep
+   fell, boss down, round over): big, brief, one at a time */
+#banner, #overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25em 1.2em;
+  border-radius: 14px;
+  background: var(--hud-panel);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-align: center;
+  white-space: nowrap;
+  max-width: 94vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 10px solid var(--text-muted);
+}
+#banner[hidden], #overlay[hidden] { display: none; }
+#banner {
+  top: 24vh;
+  font-size: clamp(1.6rem, 5vmin, 4.5rem);
+}
+#overlay {
+  top: 42vh;
+  font-size: clamp(2rem, 7vmin, 6.5rem);
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+}
+#banner.warn, #overlay.warn { border-left-color: var(--warn); }
+#banner.triumph, #overlay.triumph { border-left-color: var(--ok); }
+#banner.danger, #overlay.danger { border-left-color: var(--danger); }
+@keyframes splash-in {
+  from { opacity: 0; transform: translateX(-50%) scale(0.85); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+#banner.in, #overlay.in { animation: splash-in 260ms ease-out; }
+
 #feed {
   position: absolute;
   left: clamp(12px, 2vmin, 28px);

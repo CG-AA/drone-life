@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { EVENT_CLASS, stripModel } from "./hud";
+import { EVENT_CLASS, splashFor, stripModel } from "./hud";
 
 const CLIENT_ONLY = new Set(["stale"]);
 
@@ -58,4 +58,22 @@ it("words each siege phase for the wall", () => {
   expect(build.keepLow).toBe(true);
   expect(build.keepText).toBe("2/10");
   expect(build.keepPct).toBe(20);
+});
+
+const ev = (kind: string, t: number, msg = kind) =>
+  ({ kind, msg, student_id: null, data: {}, t });
+
+it("puts a wave start on the banner and a milestone on the overlay", () => {
+  expect(splashFor(ev("wave_start", 100, "wave 3: 8 creeps"), 101))
+    .toEqual({ slot: "banner", text: "wave 3: 8 creeps", cls: "warn" });
+  expect(splashFor(ev("milestone", 100), 101)?.slot).toBe("overlay");
+  expect(splashFor(ev("keep_fell", 100), 101)?.cls).toBe("danger");
+  expect(splashFor(ev("score", 100), 101)).toBeNull();
+});
+
+it("ignores replayed history so a reconnect never flashes twenty banners", () => {
+  expect(splashFor(ev("wave_start", 40), 100)).toBeNull();
+  expect(splashFor(ev("wave_start", 97), 100)).not.toBeNull();
+  // before the first world frame the clock is unknown: trust the event
+  expect(splashFor(ev("wave_start", 40), 0)).not.toBeNull();
 });

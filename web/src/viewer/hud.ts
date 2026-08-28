@@ -6,6 +6,10 @@ import { REDUCED_MOTION } from "../shared/theme";
 
 const FEED_MAX = 8;
 const FEED_TTL_MS = 45_000;
+const BANNER_MS = 2800;
+const OVERLAY_MS = 2200;
+/** events older than this (sim seconds) are replay on connect, not news */
+const FRESH_S = 5;
 
 /** Severity class per event kind. The full server-side registry lives in
  * server/app/game/events.py; hud.test.ts pins this table to it, so every kind
@@ -74,14 +78,42 @@ export function stripModel(ms: Record<string, unknown>): StripModel | null {
   };
 }
 
+/** Which events get a big moment on the wall, and where. */
+export interface Splash { slot: "banner" | "overlay"; text: string; cls: string }
+
+const BANNER_KINDS: Record<string, string> = { wave_start: "warn" };
+const OVERLAY_KINDS: Record<string, string> = {
+  milestone: "triumph",
+  keep_fell: "danger",
+  boss_down: "triumph",
+  round_end: "triumph",
+};
+
+/** A splash for `ev`, or null: unknown kind, or stale relative to the sim
+ * clock — a fresh socket replays the last 20 feed events, and a wall that
+ * flashes twenty banners on every reconnect teaches the room to ignore
+ * them. Pure so the rule is testable. */
+export function splashFor(ev: EventData, simT: number): Splash | null {
+  if (simT > 0 && ev.t < simT - FRESH_S) return null;
+  const banner = BANNER_KINDS[ev.kind];
+  if (banner !== undefined) return { slot: "banner", text: ev.msg, cls: banner };
+  const overlay = OVERLAY_KINDS[ev.kind];
+  if (overlay !== undefined) return { slot: "overlay", text: ev.msg, cls: overlay };
+  return null;
+}
+
 export class Hud {
   private score = document.getElementById("score")!;
   private mission = document.getElementById("mission")!;
   private feed = document.getElementById("feed")!;
   private conn = document.getElementById("conn")!;
   private strip = document.getElementById("mstrip")!;
+  private banner = document.getElementById("banner")!;
+  private overlay = document.getElementById("overlay")!;
   private lastScore = 0;
   private lastStrip = "";
+  private simT = 0;
+  private timers = { banner: 0, overlay: 0 };
 
   setScore(value: number): void {
     if (value !== this.lastScore) {
@@ -117,7 +149,31 @@ export class Hud {
     document.getElementById("ms-towers")!.textContent = m.towers;
   }
 
+  /** The sim clock from the latest world frame, for the replay gate. */
+  setSimTime(t: number): void {
+    this.simT = t;
+  }
+
+  /** A wave banner / a full-screen moment — shown for a few seconds, one
+   * at a time per slot; a newer one replaces an older one outright. */
+  splash(s: Splash): void {
+    const el = s.slot === "banner" ? this.banner : this.overlay;
+    el.textContent = s.text;
+    el.className = s.cls;
+    el.hidden = false;
+    if (!REDUCED_MOTION) {
+      el.classList.remove("in");
+      void el.offsetWidth; // restart the entrance animation
+      el.classList.add("in");
+    }
+    window.clearTimeout(this.timers[s.slot]);
+    this.timers[s.slot] = window.setTimeout(
+      () => { el.hidden = true; }, s.slot === "banner" ? BANNER_MS : OVERLAY_MS);
+  }
+
   addEvent(ev: EventData): void {
+    const s = splashFor(ev, this.simT);
+    if (s) this.splash(s);
     const div = document.createElement("div");
     div.textContent = ev.msg;
     div.className = EVENT_CLASS[ev.kind] ?? "";
