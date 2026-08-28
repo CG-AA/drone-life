@@ -11,7 +11,7 @@ runbook and troubleshooting sections below apply to both.
 
 ## One-time setup
 
-Three shells, three user contexts. Do not paste the whole section at once:
+Three blocks, two user contexts. Do not paste the whole section at once:
 `sudo -iu dronelife` opens a new interactive shell, so the blocks after it
 run *inside* that shell. Prerequisites (git, make, curl, uv, Node 22, podman,
 uidmap, slirp4netns) are in the [README](../README.md#what-you-need) —
