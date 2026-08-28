@@ -1,6 +1,6 @@
 /** Submit page: join → edit → run → watch logs and your drone strip. */
 
-import type { DroneState, LogLine, RunState, WorldData } from "../shared/protocol";
+import type { DroneState, HelloData, LogLine, RunState, WorldData } from "../shared/protocol";
 import { $, armedConfirm, banner, guarded, runPill } from "../shared/ui";
 import { GameSocket } from "../shared/ws";
 import { ApiFailure, CODE_KEY, STUDENT_KEY, TOKEN_KEY, fetchStatus, fetchTemplate,
@@ -124,7 +124,13 @@ function connectWs(): void {
   ws?.close();
   const token = localStorage.getItem(TOKEN_KEY) ?? "";
   ws = new GameSocket(`/ws/student?token=${encodeURIComponent(token)}`);
+  // the game the room is playing and the number everyone is adding to — the
+  // student's page is otherwise the only screen in the room that can't tell
+  ws.on<HelloData>("hello", (d) => {
+    $("mission-pill").textContent = `mission: ${d.mission}`;
+  });
   ws.on<WorldData>("world", (d) => {
+    $("score-pill").textContent = `team ${d.score}`;
     const me = d.drones.find((drone) => drone.student_id === studentId);
     if (me) updateStrip(me);
   });

@@ -97,6 +97,21 @@ async def test_template_served(client):
     assert r.status_code == 200 and "dronelife" in r.text
     r = await client.get("/api/v1/template", params={"variant": "pymavlink"})
     assert r.status_code == 200 and "mavutil" in r.text
+    r = await client.get("/api/v1/template", params={"variant": "siege"})
+    assert r.status_code == 200 and "creep" in r.text
+    r = await client.get("/api/v1/template", params={"variant": "nope"})
+    assert r.status_code == 404
+
+
+async def test_every_template_variant_is_a_real_parseable_script(client):
+    # the submit page's menu is only as good as the files behind it
+    import ast
+
+    from app.api.routes_public import TEMPLATES
+    for variant in TEMPLATES:
+        r = await client.get("/api/v1/template", params={"variant": variant})
+        assert r.status_code == 200, variant
+        ast.parse(r.text)
 
 
 async def test_admin_reset_and_auth(client):

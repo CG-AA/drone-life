@@ -110,8 +110,8 @@ canvas { touch-action: none; }
 }
 #nav-hint.gone { opacity: 0; }
 
-/* pre-class attract screen: readable from every seat, gone the moment a
-   drone shows up */
+/* the invitation: full-screen before class (readable from every seat), a
+   corner card once a drone is up — see attract.ts */
 #attract {
   position: absolute;
   inset: 0;
@@ -143,6 +143,28 @@ canvas { touch-action: none; }
   line-height: 1.05;
   max-width: 92vw;
   overflow-wrap: anywhere;
+}
+#attract.corner {
+  inset: auto;
+  top: 12px;
+  left: 12px;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: 0.6em;
+  row-gap: 0.1em;
+  padding: 8px 14px;
+  border-radius: 8px;
+  text-align: left;
+  justify-items: start;
+  background: var(--hud-panel);
+}
+#attract.corner .attract-label { font-size: clamp(0.7rem, 1.4vmin, 1rem); letter-spacing: 0.15em; }
+#attract.corner #attract-url { font-size: clamp(0.9rem, 1.9vmin, 1.4rem); margin: 0; }
+#attract.corner #attract-code {
+  font-size: clamp(1.2rem, 3.2vmin, 2.4rem);
+  letter-spacing: 0.08em;
+  max-width: 40vw;
 }
 
 /* a projector that has lost the server should look wrong from the back row */

@@ -19,9 +19,16 @@ from .auth import constant_time_eq, err, get_service, require_student
 router = APIRouter(prefix="/api/v1")
 
 MAX_CODE_BYTES = 64 * 1024
+# starters first, then the demo bots (the same scripts the instructor console
+# spawns) — a worked example is the fastest way past a blank page
 TEMPLATES = {
     "beginner": "template.py",
+    "siege": "template_siege.py",
     "pymavlink": "template_pymavlink.py",
+    "bot_courier": "bot_courier.py",
+    "bot_siege": "bot_siege.py",
+    "bot_builder": "bot_builder.py",
+    "bot_patrol": "bot_patrol.py",
 }
 
 

@@ -13,11 +13,24 @@
     <div id="editor-pane">
       <div id="toolbar">
         <div class="title">drone life — <span id="pilot-name">…</span></div>
+        <span class="tb-pill" id="mission-pill" title="the game running right now">mission: …</span>
+        <span class="tb-pill" id="score-pill" title="the whole room's score">team 0</span>
+        <a class="tb-link" id="sky-link" href="/" target="_blank" rel="noopener"
+           title="the projector view, in a new tab">sky view ↗</a>
         <label class="visually-hidden" for="template-select">load a starter template</label>
         <select id="template-select">
           <option value="" selected disabled>template…</option>
-          <option value="beginner">beginner</option>
-          <option value="pymavlink">pymavlink</option>
+          <optgroup label="starters">
+            <option value="beginner">beginner — first flight</option>
+            <option value="siege">siege — zap creeps</option>
+            <option value="pymavlink">raw pymavlink</option>
+          </optgroup>
+          <optgroup label="demo bots (the instructor's bots)">
+            <option value="bot_courier">courier bot (delivery)</option>
+            <option value="bot_siege">zapper bot (siege)</option>
+            <option value="bot_builder">builder bot (rampart)</option>
+            <option value="bot_patrol">patrol bot (any)</option>
+          </optgroup>
         </select>
         <button id="reset-btn" title="Stop the script and put your drone back on its pad">reset drone</button>
         <button id="stop-btn">stop</button>

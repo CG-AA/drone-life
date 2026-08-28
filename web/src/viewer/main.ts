@@ -82,8 +82,8 @@ async function boot(): Promise<void> {
     localStorage.setItem(CODE_KEY, code);
   }
 
-  // pre-class attract screen: shown while the sky is empty, so students can
-  // join without being told the code
+  // the invitation: full-screen while the sky is empty, a corner card once
+  // someone flies — students trickle in for the whole warmup
   const attract = document.getElementById("attract")!;
   let connected = false;
   let droneCount = 0;
@@ -91,7 +91,8 @@ async function boot(): Promise<void> {
     const v = attractView(connected, droneCount, code, location.origin);
     document.getElementById("attract-url")!.textContent = v.joinUrl;
     document.getElementById("attract-code")!.textContent = v.code;
-    attract.classList.toggle("hidden", !v.show);
+    attract.classList.toggle("hidden", v.mode === "hidden");
+    attract.classList.toggle("corner", v.mode === "corner");
   };
 
   let prev: Frame | null = null;

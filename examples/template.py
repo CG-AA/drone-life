@@ -5,12 +5,14 @@ Cheat sheet (full guide on the workshop page):
     drone.goto(north, east, alt)     fly there; arena is -100..100 on both axes
     drone.move(vn, ve, vup, secs)    fly by velocity (m/s)
     drone.position()                 -> (north, east, altitude)
-    drone.events()                   -> new GAME messages (crate locations!)
+    drone.events()                   -> new GAME messages (where things are!)
     drone.land()   drone.rtl()       land here / fly home
 
-Today's main game — co-op delivery: hover low (below 3 m) over a crate for
-2 seconds to pick it up, then carry it to the dropoff pad at north=0, east=0
-and hover low again. Watch drone.events() — the game tells you what to do next.
+Every game talks to you through drone.events() — "crate 3 at N 40 E -12",
+"creep at N 10 E 55" — and position_in(msg) turns one into (north, east).
+Delivery: hover low (under 3 m) over a crate for 2 s, carry it to N 0 E 0.
+Siege: hover low near a creep to zap it; stack 3 steel = a watchtower.
+The templates menu has a starter for each game.
 """
 
 from dronelife import connect
