@@ -100,6 +100,8 @@ sudo chown "$USER" /etc/drone-life.env && sudo chmod 600 /etc/drone-life.env
 cat /etc/drone-life.env                       # ROOM_CODE goes on the projector; ADMIN_TOKEN stays with you
 set -a && . /etc/drone-life.env && set +a && make preflight   # 0 FAILED?
 set -a && . /etc/drone-life.env && set +a && make run         # binds 0.0.0.0:8000; leave this terminal open
+make reset                                    # (second terminal) the first `make run` restores whatever
+                                              # server/state holds — the demo bots from *Try it* included
 ```
 
 `make run` refuses placeholder secrets by design; `make` does not read the
@@ -137,7 +139,7 @@ Full list: [SESSION_PLAN.md → Day −1 checklist](docs/SESSION_PLAN.md#day-1-c
 cd drone-life
 set -a && . /etc/drone-life.env && set +a     # once per terminal
 make preflight                                # 0 FAILED, or the doors stay shut
-systemctl status drone-life                   # deploy B — for deploy A: is your `make run` terminal alive? (curl -s localhost:8000/healthz)
+systemctl status drone-life || curl -s localhost:8000/healthz   # B: unit green?  A: your `make run` answering?
 make bots N=3                                 # three drones move on the projector?
 make reset                                    # clean slate: kills the bots, zeroes the score
 ```
@@ -164,9 +166,11 @@ They need only a browser — no installs. The longer handout is
 
 ### Switching missions
 
-`MISSION` is read at boot: edit it in `/etc/drone-life.env`, restart the
-server (`sudo systemctl restart drone-life`, or Ctrl-C and `make run` again),
-then `make reset` for a fresh score. The two rehearsed procedures (with and
+`MISSION` is read at boot: edit it in `/etc/drone-life.env`
+(`sudo sed -i 's/^MISSION=.*/MISSION=siege/' /etc/drone-life.env` — `sudo`
+even on deploy A: `/etc` is root's, so a plain `sed -i` cannot write there),
+restart the server (`sudo systemctl restart drone-life`, or Ctrl-C and
+`make run` again), then `make reset` for a fresh score. The two rehearsed procedures (with and
 without carrying the score over) are
 [SESSION_PLAN.md → Transition procedures](docs/SESSION_PLAN.md#5-transition-procedures).
 

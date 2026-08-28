@@ -35,8 +35,8 @@ run:
 
 # kill every dev instance: uvicorn --reload servers and vite dev servers
 kill-dev:
-	-pkill -f 'uvicorn app.main:app --reload'
-	-pkill -f 'vite'
+	-pkill -f 'uvicorn app.main:app --reload' || true
+	-pkill -f 'vite' || true
 
 # kill every prod instance: uvicorn servers (non-reload) plus any bot containers
 kill-prod:
