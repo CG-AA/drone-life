@@ -19,6 +19,7 @@ only the web unit; it still needs `TUNNEL_KEY` and `TUNNEL_REMOTE` in that file.
 ## Install (on the lab server, as an admin)
 
 ```bash
+cd /opt/drone-life                       # the paths below are relative to the clone
 # 1. a key for the tunnel, owned by the user the units run as (edit User= in
 #    both .service files — they say `lamb`; use the account that owns this key)
 sudo -u dronelife ssh-keygen -t ed25519 -N "" -f /home/dronelife/.ssh/tunnel_ed25519

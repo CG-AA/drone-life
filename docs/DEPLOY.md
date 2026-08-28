@@ -5,14 +5,25 @@ needs to reach. MAVLink stays on 127.0.0.1 — unreachable from outside by
 construction; student containers reach it through slirp4netns host-loopback
 (10.0.2.2).
 
+This is the proxied deploy. The simpler one — one box on the classroom wifi,
+no proxy, `make run` — is in the [README](../README.md#run-a-workshop); the
+runbook and troubleshooting sections below apply to both.
+
 ## One-time setup
 
-Steps 1–2 run as your admin account, steps 3–4 as `dronelife`, step 5 back as
-admin — the prompts below mark the switches.
+Three shells, three user contexts. Do not paste the whole section at once:
+`sudo -iu dronelife` opens a new interactive shell, so the blocks after it
+run *inside* that shell. Prerequisites (git, make, curl, uv, Node 22, podman,
+uidmap, slirp4netns) are in the [README](../README.md#what-you-need) —
+install the apt packages and Node as admin first; uv is per-user and is
+installed in step 3.
+
+### Steps 1–2 — as your admin account
 
 ```bash
-# 1. a dedicated non-root user (admin account)
-sudo useradd -m dronelife
+# 1. a dedicated non-root user. -s /bin/bash: useradd's default is /bin/sh
+#    (dash), where `source` and other bashisms fail later.
+sudo useradd -m -s /bin/bash dronelife
 sudo loginctl enable-linger dronelife     # rootless podman under systemd needs this
 sudo install -d -o dronelife -g dronelife /opt/drone-life   # dronelife can't mkdir in /opt
 
@@ -20,21 +31,32 @@ sudo install -d -o dronelife -g dronelife /opt/drone-life   # dronelife can't mk
 grep dronelife /etc/subuid /etc/subgid    # must show a range in BOTH files; if not:
 #   sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 dronelife
 command -v slirp4netns                    # required for the container network mode
+```
 
-# 3. code + toolchain (as dronelife)
-sudo -iu dronelife
+### Steps 3–4 — as `dronelife`
+
+```bash
+sudo -iu dronelife                        # opens a new shell; the rest of this block runs in it
+```
+
+```bash
+# 3. code + toolchain
 podman system migrate                     # once, after any subuid/subgid change
-git clone <repo> /opt/drone-life && cd /opt/drone-life
+git clone https://github.com/CG-AA/drone-life.git /opt/drone-life && cd /opt/drone-life
 curl -LsSf https://astral.sh/uv/install.sh | sh     # uv → ~/.local/bin
-source ~/.local/bin/env                   # put uv on PATH in this shell
+. ~/.local/bin/env                        # put uv on PATH in this shell (works in sh and bash)
 cd server && uv sync && cd ..
-# node ≥ 20, only needed to build the frontend (or build web/dist elsewhere and copy)
+# Node ≥ 20 is only needed to build the frontend (or build web/dist elsewhere and copy it in)
 cd web && npm ci && npm run build && cd ..
 
 # 4. the sandbox image (still dronelife — the rootless image store is per-user)
 make image
 exit                                      # back to the admin account
+```
 
+### Step 5 — as your admin account again
+
+```bash
 # 5. config. The generated ADMIN_TOKEN is real — keep it. Swap ROOM_CODE for
 #    something students can type from the projector. Don't hand-type either:
 #    the startup guard only rejects the literal defaults (`classroom` /
@@ -42,13 +64,16 @@ exit                                      # back to the admin account
 sudo tee /etc/drone-life.env <<EOF
 ROOM_CODE=$(openssl rand -hex 4)
 ADMIN_TOKEN=$(openssl rand -base64 24)
-MISSION=delivery
+# the day starts on freefly (SESSION_PLAN.md §3); switch missions later by
+# editing this line and restarting — see "Restarts and mission switches"
+MISSION=freefly
 # the OCI VM's address as the lab server sees it — without this every student
-# shares one rate-limit bucket; see "OCI VM reverse proxy" below
+# shares one rate-limit bucket; see "OCI VM reverse proxy" below. Through the
+# SSH tunnel in docs/deploy/gateway-tunnel/ it is 127.0.0.1.
 FORWARDED_ALLOW_IPS=10.0.0.5
 EOF
 sudo chown root:dronelife /etc/drone-life.env
-sudo chmod 640 /etc/drone-life.env   # dronelife must read it: preflight sources it
+sudo chmod 640 /etc/drone-life.env   # dronelife must read it: the unit's EnvironmentFile= does, and so does the runbook's `. /etc/drone-life.env`
 ```
 
 ## Configuration reference
@@ -93,22 +118,44 @@ sets `ALLOW_DEFAULT_SECRETS=1`; `make run` deliberately does not.
 ## systemd
 
 ```bash
+cd /opt/drone-life
 sudo cp docs/deploy/drone-life.service /etc/systemd/system/
+# the unit hardcodes XDG_RUNTIME_DIR=/run/user/1001 — make it *your* dronelife uid
+sudo sed -i "s#/run/user/[0-9]*#/run/user/$(id -u dronelife)#" /etc/systemd/system/drone-life.service
+grep XDG_RUNTIME_DIR /etc/systemd/system/drone-life.service   # /run/user/<uid of dronelife>
 sudo systemctl daemon-reload
 sudo systemctl enable --now drone-life
 curl -s localhost:8000/healthz
 ```
 
-Note: the unit runs as user `dronelife` via `User=`; because rootless podman
-needs a session, `enable-linger` (step 1) is what makes containers work when
-nobody is logged in. The unit assumes the clone lives at `/opt/drone-life`
-and uv at `/home/dronelife/.local/bin/uv` — edit both paths if yours differ,
-and put `MISSION=` in `/etc/drone-life.env` or the deploy runs `delivery`.
+Notes on the unit ([docs/deploy/drone-life.service](deploy/drone-life.service)):
+
+- It runs as user `dronelife` via `User=`; because rootless podman needs a
+  session, `enable-linger` (step 1) is what makes containers work when nobody
+  is logged in. It assumes the clone lives at `/opt/drone-life` and uv at
+  `/home/dronelife/.local/bin/uv` — edit both paths if yours differ.
+- **`XDG_RUNTIME_DIR` is a literal uid, on purpose.** `%U` in a *system* unit
+  expands to the service manager's uid (0), not `User=`'s, so podman inside
+  the service looks in `/run/user/0`, sees no image, and every submit fails
+  with "runner image … is not built" — while `make preflight` in a
+  `sudo -iu dronelife` shell passes. The `sed` above sets the right uid; the
+  file's comment says the same.
+- **`StartLimitBurst=5` / `StartLimitIntervalSec=60`**: a bad env file
+  (placeholder secrets, unknown `MISSION`) makes the server exit non-zero
+  deliberately. The limit stops systemd from restarting it every 3 s forever
+  behind a green-looking status: after 5 failures in a minute the unit stays
+  *failed* — read `journalctl -u drone-life -n 50`, fix the file, then
+  `sudo systemctl reset-failed drone-life && sudo systemctl start drone-life`.
+- `MISSION` is read from `/etc/drone-life.env` only; without it the deploy
+  runs `delivery`.
 
 ## OCI VM reverse proxy
 
 nginx on the OCI VM, forwarding to the lab server (here via a wireguard/SSH
-tunnel address `LAB`):
+tunnel address `LAB`). If the lab server sits behind NAT, the autossh units in
+[docs/deploy/gateway-tunnel/](deploy/gateway-tunnel/README.md) put it on the
+VM's loopback: `LAB` becomes `127.0.0.1`, no lab-side firewall opening is
+needed, and `FORWARDED_ALLOW_IPS` is `127.0.0.1` (that README explains why).
 
 ```nginx
 server {
@@ -154,17 +201,23 @@ than keying the limiter on anything else a client can set.
 sudo -iu dronelife
 cd /opt/drone-life && set -a && . /etc/drone-life.env && set +a && make preflight
 
-systemctl status drone-life           # green?
-make bots N=3 HOST=localhost:8000 ADMIN_TOKEN=...   # smoke: three drones on the projector
-make reset HOST=localhost:8000 ADMIN_TOKEN=...      # clean slate between sessions
+systemctl status drone-life           # green? (`failed` + "start-limit-hit": see the systemd section)
+make bots N=3                         # smoke: three drones on the projector (ADMIN_TOKEN comes from the sourced env file)
+make reset                            # clean slate between sessions
 ```
 
 `make preflight` checks podman, the runner image, subuid/subgid, slirp4netns,
-the MAVLink port range, `web/dist`, the state dir and disk, then runs one real
+the MAVLink port range, `web/dist`, the state dir and disk, the secrets
+(placeholders FAIL — the server would refuse to boot on them), and that
+`XDG_RUNTIME_DIR`, if set, exists and belongs to you; then it runs one real
 container. Exit 1 means don't start class — every failure line names its fix.
-It sources the env file so it checks the deploy you are about to run; without
-that it checks the defaults instead. `make preflight PREFLIGHT_ARGS=--no-smoke`
-skips the container run when you only want the fast checks.
+`make` does **not** read `/etc/drone-life.env` by itself: the
+`set -a && . /etc/drone-life.env && set +a` prefix above is what makes
+preflight (and `make bots` / `make reset`, which pick up `ADMIN_TOKEN` the same
+way) see the deploy you are about to run. `make preflight PREFLIGHT_ARGS=--no-smoke`
+skips the container run when you only want the fast checks. Preflight checks
+*your shell's* environment, not the service's — for that, compare
+`systemctl show drone-life -p Environment` with `id -u dronelife`.
 
 - Projector: open `https://drones.example.org/`, enter the room code once.
 - Students: `https://drones.example.org/submit` + the room code.
@@ -193,7 +246,9 @@ line is the fastest read on whether the sim itself is alive.
 | joins return 500 | `ss -ltnp` over 5760–5779 | something squats a MAVLink port — kill it, restart |
 | students can reach the page but not join | the room code they were given vs `ROOM_CODE` in `/etc/drone-life.env` | tell them the right one — a wrong code is a clear message on their page, not a hang |
 | a script won't die | console **kill script** | `podman ps --filter label=drone-life=1` then `podman rm -f -t 0 <id>` |
-| server boots but serves no page | `ls /opt/drone-life/web/dist` | `make build` — the server starts fine without it and silently serves nothing |
+| server boots but serves no page | `ls /opt/drone-life/web/dist` | `make build`, then `systemctl restart drone-life` — the static mount is decided at boot, so a server that started without `web/dist` keeps serving nothing until restarted |
+| every submit 503s "runner image … is not built" under systemd, but `make preflight` passes in a `sudo -iu dronelife` shell | `systemctl show drone-life -p Environment` vs `id -u dronelife` | the unit's `XDG_RUNTIME_DIR` uid is wrong (the `%U` trap) — fix it in `/etc/systemd/system/drone-life.service`, `daemon-reload`, restart |
+| `systemctl status` shows `failed` with "start-limit-hit" and won't come back | `journalctl -u drone-life -n 50` | the env file is bad (placeholder secrets / unknown `MISSION`) — fix it, then `sudo systemctl reset-failed drone-life && sudo systemctl start drone-life` |
 | boot fails on a corrupt snapshot | `journalctl -u drone-life -n 50` | `rm server/state/snapshot.json` and restart — roster, tokens and score are lost, students re-join and same names take the same slots |
 | proxy or OCI VM dead | can you reach the lab server directly? | hotspot fallback: `make run` on the lab server binds `0.0.0.0:8000`, students use `http://<lab-ip>:8000/submit`. Open the room's firewall to that port only, and put the URL on the projector |
 
@@ -228,10 +283,13 @@ do not need to re-join — their page reconnects with the token it already has.
 Switching missions is a restart, since `MISSION` is read at boot:
 
 ```bash
-sudoedit /etc/drone-life.env        # MISSION=siege
-systemctl restart drone-life        # ~5 s
-make reset HOST=localhost:8000 ADMIN_TOKEN=...   # fresh score for the new mission
+sudo sed -i 's/^MISSION=.*/MISSION=siege/' /etc/drone-life.env
+sudo systemctl restart drone-life   # ~5 s
+set -a && . /etc/drone-life.env && set +a && make reset   # fresh score for the new mission
 ```
+
+(The first two lines need your admin account; `make reset` works from any
+account that can read the env file — root or `dronelife`.)
 
 Footguns:
 
