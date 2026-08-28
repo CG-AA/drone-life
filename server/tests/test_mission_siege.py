@@ -737,7 +737,44 @@ def test_a_newcomer_is_briefed_not_backfilled():
     world.texts.clear()
     world.drone_event(m, late, "connected")
     assert ("d1", "GAME: wave 2 in 13s, build!") in world.texts
+    m._start_wave(world, 5)
+    world.texts.clear()
+    world.drone_event(m, late, "connected")
+    assert any(t.startswith("GAME: wave 5 at N") and t.endswith("creeps + boss")
+               for target, t in world.texts if target == "d1")
     assert_grammar(world)
+
+
+def test_a_brief_is_not_followed_by_the_same_lines_again():
+    from app.game.missions.siege import ANNOUNCE_EVERY
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    freeze_waves(m)
+    world.run(m, ANNOUNCE_EVERY - 0.05)  # the periodic announce is due next tick
+    late = view("d1", n=-90.0, e=-68.0)
+    world.views.append(late)
+    world.drone_event(m, late, "connected")
+    world.run(m, 1.0)
+    keeps = [t for target, t in world.texts if target in ("d1", "*") and "keep at" in t]
+    assert len(keeps) == 1, "the brief already said it"
+    world.run(m, 3.0)
+    keeps = [t for target, t in world.texts if target in ("d1", "*") and "keep at" in t]
+    assert len(keeps) == 2, "…and the room's announce still comes, a moment later"
+
+
+def test_the_suggested_site_is_a_ghost_on_the_wall_until_built():
+    world, m = make()
+    world.views = [view("d0", n=-90.0, e=-76.0)]
+    world.run(m, 0.2)
+    ghost = next(e for e in m.entities(world) if e.kind == "ghost_tile")
+    assert ghost.id == "site" and ghost.data["need"] == 3 and ghost.data["have"] == 0
+    site = hex.world_to_axial(ghost.n, ghost.e)
+    build_tower(world, m, site)
+    assert not [e for e in m.entities(world) if e.kind == "ghost_tile"], "built: ghost gone"
+    m._start_wave(world, 2)
+    m._call_build_site(world)
+    assert m.site != site
+    assert not [e for e in m.entities(world) if e.kind == "ghost_tile"], "not during a wave"
 
 
 def test_last_round_stays_on_the_hud_until_the_next_wave_one():

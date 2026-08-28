@@ -259,6 +259,8 @@ class SiegeMission(Mission):
         self.last_announce = 0.0
         self.last_target = 0.0
         self.last_build_hint = float("-inf")
+        self.last_brief = float("-inf")  # a periodic announce right after a brief is a dup
+        self.site: Axial | None = None  # the suggested tower cell (drawn as a ghost)
         self.hints = SourceHints(self.carry, FERRY.full_say)
         self.place_hints = PlaceHints(self.tm, self.carry, self.hints.throttle)
 
@@ -279,6 +281,7 @@ class SiegeMission(Mission):
     def _brief(self, world: WorldAPI, drone: DroneView) -> None:
         """What a newcomer needs, and nothing that already happened: the
         landmarks and where the game is right now."""
+        self.last_brief = world.now
         world.send_text(drone.id, f"GAME: keep at {fmt_world(*KEEP)}, protect it!")
         world.send_text(drone.id, f"GAME: quarry at {fmt_world(*QUARRY)}")
         left_s = max(0, math.ceil(self.timer))
@@ -288,8 +291,10 @@ class SiegeMission(Mission):
             world.send_text(drone.id, f"GAME: wave {self.wave + 1} in {left_s}s, build!")
         else:
             left = len(self.creeps) + self.pending
+            boss = " + boss" if self.wave % BOSS_EVERY == 0 else ""
             world.send_text(
-                drone.id, f"GAME: wave {self.wave} at {fmt_world(*self.gate)}, {left} creeps")
+                drone.id,
+                f"GAME: wave {self.wave} at {fmt_world(*self.gate)}, {left} creeps{boss}")
 
     def reset(self, world: WorldAPI) -> None:
         self._round_end(world)
@@ -315,7 +320,8 @@ class SiegeMission(Mission):
         self.beams.clear()
         self.fx.clear()
         self.last_announce = self.last_target = 0.0
-        self.last_build_hint = float("-inf")
+        self.last_build_hint = self.last_brief = float("-inf")
+        self.site = None
         self.hints.clear()
         self.place_hints.clear()
         self.setup(world)
@@ -395,7 +401,8 @@ class SiegeMission(Mission):
         self._zap(world, drones, dt)
         self._wave_machine(world, dt)
 
-        if world.now - self.last_announce > ANNOUNCE_EVERY:
+        if (world.now - self.last_announce > ANNOUNCE_EVERY
+                and world.now - self.last_brief > 2.0):  # a newcomer just heard it
             self.last_announce = world.now
             self._announce(world)
         if self.creeps and world.now - self.last_target > TARGET_EVERY:
@@ -671,9 +678,9 @@ class SiegeMission(Mission):
         return None
 
     def _call_build_site(self, world: WorldAPI) -> None:
-        site = self.build_site()
-        if site is not None:  # widest: "GAME: build a tower at N -100 E -100" = 37
-            world.broadcast_text(f"GAME: build a tower at {fmt_cell(site)}")
+        self.site = self.build_site()
+        if self.site is not None:  # widest: "GAME: build a tower at N -100 E -100" = 37
+            world.broadcast_text(f"GAME: build a tower at {fmt_cell(self.site)}")
 
     def _call_targets(self, world: WorldAPI, drones: list[DroneView]) -> None:
         for d in drones:
@@ -697,6 +704,15 @@ class SiegeMission(Mission):
             out.append(Entity(id=f"creep{uid}", kind="troop", n=u.n, e=u.e, alt=u.alt,
                               data={"dir": u.heading, "chewing": u.chewing,
                                     "kind": u.kind, "hp": u.hp, "max": u.max_hp}))
+        # the suggested site, as a ghost the instructor can point at, while
+        # there is time to build and until a tower stands there
+        if (self.state in ("grace", "build") and self.site is not None
+                and self.tm.height(self.site) < TOWER_HEIGHT):
+            n, e = hex.axial_to_world(self.site)
+            out.append(Entity(id="site", kind="ghost_tile", n=n, e=e,
+                              alt=self.tm.top_alt(self.site),
+                              data={"material": "steel", "need": TOWER_HEIGHT,
+                                    "have": self.tm.height(self.site), "size": hex.HEX_SIZE}))
         for cell in self.towers:
             n, e = hex.axial_to_world(cell)
             out.append(Entity(id=f"tower_{cell[0]}_{cell[1]}", kind="tower",
