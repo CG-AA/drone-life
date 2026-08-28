@@ -193,7 +193,7 @@ Select with `MISSION=<name>` (env file for deploys, `MISSION=siege make dev-serv
 | `canyon` | two pre-placed steel walls — terrain in the sky; drones crash into and land on them |
 | `rampart` | guided building: ferry steel from the quarry, stack it along the ghost wall |
 | `forge` | free building in clay: close a ring of 6 tiles and a furnace lights |
-| `siege` | tower defense: creeps march on the Keep — zap them, squish them under tiles, stack 3 steel into auto-firing watchtowers |
+| `siege` | tower defense: grunts, runners, brutes, sappers and a champion every 5th wave march on the Keep through up to three gates — zap them, squish them under tiles, stack 3 steel into auto-firing watchtowers; the wall shows wave, countdown and Keep hp, and a reset reads out the round |
 
 Demo bots (`make bots N=3 SCRIPT=<bot>`) are mission-specific; a bot on the
 wrong mission just idles. `MODE=container` runs them through the real sandbox.
@@ -203,7 +203,8 @@ wrong mission just idles. `MODE=container` runs them through the real sandbox.
 | `bot_patrol` | any |
 | `bot_courier` | `delivery` |
 | `bot_builder` | `rampart` |
-| `bot_siege` | `siege` |
+| `bot_siege` | `siege` (zapper) |
+| `bot_tower` | `siege` (ferries steel to the announced site, raises watchtowers) |
 
 Missions are plugins (`server/app/game/missions/`): implement the small
 `Mission` interface, register it, done — [docs/MISSIONS.md](docs/MISSIONS.md).

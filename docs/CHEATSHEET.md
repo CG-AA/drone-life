@@ -39,9 +39,12 @@ gives you `"crate 3 at N 12 E -40"` (prefix stripped). Every position is
 | `quarry at …` / `got steel …` | building games: same hover-low pickup |
 | `wall gap at N 10 E -55 hover 4` | go there, hover **at 4 m**, 1.5 s |
 | `hover 6 m to place` | right cell, wrong altitude — use the number |
-| `creep at N 12 E -40` | siege: hover low on it 1.5 s → zap (+2) |
-| `stack 3 steel = watchtower` | 3 tiles, one cell → auto-turret (+15) |
+| `creep at N 12 E -40` | siege: hover low on it 1.5 s → zap (1 hp; grunts +2, brutes +5) |
+| `zap! brute hp 2` / `drop under 3 m to zap` | keep hovering / get lower |
+| `wave 5 at N 0 E 83, 12 creeps + boss` | a champion (8 hp, +20) comes last — gang up |
+| `build a tower at N 20 E -8` | between waves: ferry 3 steel there → auto-turret (+15) |
 | `wall chewed at …` | a creep is eating your wall — zap, rebuild |
+| `wave 3 clear! +10` (or `2 leaked +5`) | leaks = -1 each and half the bonus |
 
 ## Top 5 errors
 

@@ -46,21 +46,33 @@ over and even **land on top**.
   lights for +30.
 - **canyon** — no scoring, just walls in the sky. Practice flying over
   (or through the corridor) without becoming a wreck on the ramparts.
-- **siege** — tower defense. Creep waves march from a gate toward the
-  **Keep at (0, 0)**; every one that arrives costs it hp (and the class
-  points — the Keep falling is **−25**, though it rebuilds). Every kill
-  pays **+2** and a cleared wave **+10**. Three ways to fight back:
-  1. **Zap**: hover low over a creep for **1.5 s** — the game texts you your
-     nearest target (`GAME: creep at N 12 E -40`) every few seconds.
-  2. **Squish**: place a tile right on top of one (same ferry loop as
-     rampart — steel comes from the announced quarry).
+- **siege** — tower defense, the main event. Creep waves march from the
+  three **gates** at the arena's edge toward the **Keep at (0, 0)**; every
+  one that arrives is a *leak*: **−1** and a Keep hp — and when the Keep
+  falls it's **−25**, though it rebuilds at once. A cleared wave pays
+  **+10** if nothing leaked, **+5** if something did. Three ways to fight:
+  1. **Zap**: hover low over a creep (within 4 m, under its feet + 3 m) for
+     **1.5 s** — one hp per zap. The game texts you your nearest target
+     (`GAME: creep at N 12 E -40`) every few seconds, and nags you if you
+     park too high (`drop under 3 m to zap`).
+  2. **Squish**: place a tile right on top of one — flattens anything, any
+     hp (same ferry loop as rampart; steel comes from the announced quarry).
   3. **Watchtower**: stack **3 steel on one cell** (+15) and it auto-fires
-     at everything within 12 m.
+     at everything within 12 m, one hp per shot every 3 s. Between waves the
+     game says where one pays off: `build a tower at N 20 E -8`.
+
+  The creeps change as the waves grow: **grunts** (1 hp) from wave 1,
+  fast **runners** from wave 3, **brutes** (3 hp, +5, chew twice as fast)
+  from 5, wall-eating **sappers** from 7 — and behind every **5th wave a
+  champion** (8 hp, +20, three Keep hits if it gets through). From wave 4
+  creeps pour through **two gates at once**, from wave 8 all three. Waves
+  grow with the room too: more pilots, more creeps.
 
   Walls 2 tiles high reroute the creeps into your kill zones — but nothing
   is forever: a blocked creep **chews** through (watch for `wall chewed`
   warnings, and rebuild). You get 45 s of peace before wave 1, and 20 s
-  between waves. Waves grow; the Keep pays -25 if it falls, then rebuilds.
+  between waves. When the instructor resets, the game reads out the round:
+  best wave, kills, leaks, points — beat it next round.
 
 Crashing into a wall costs you your tile and 5 s on the ground — the arena
 edges are still soft, but steel is not.
@@ -138,15 +150,21 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | message | it means → do this |
 |---|---|
 | `keep at N 0 E 0, protect it!` | the thing creeps are marching toward |
-| `wave 3 at N 85 E 0, 8 creeps` | where they enter, how many are coming |
+| `wave 3 at N 86 E 3, 8 creeps` | where they enter, how many are coming |
+| `wave 8 also at N 0 E -83, 7 creeps` | a second (or third) gate this wave — split up |
+| `wave 5 at N 0 E 83, 12 creeps + boss` | a champion walks in last: 8 hp, +20 |
 | `creep at N 12 E -40` | your nearest target — it's moving, lead it |
-| `hover low on a creep to zap it` | stay within ~4 m, low, for 1.5 s |
-| `zap! creep down +2` / `squish! creep under tile +2` | a kill, either way |
-| `stack 3 steel = watchtower` | 3 tiles on one cell → auto-firing tower (+15) |
+| `hover low on a creep to zap it` / `drop under 3 m to zap` | stay within ~4 m, low, for 1.5 s |
+| `zap! brute hp 2` | one hp down, keep hovering — it re-arms every 1.5 s |
+| `zap! grunt down +2` / `squish! brute under tile +5` | a kill; bounty by kind |
+| `champion down! +20` | the boss fell — everyone hears it |
+| `stack 3 steel = watchtower` / `build a tower at N 20 E -8` | 3 tiles on one cell → auto-firing tower (+15); the game suggests a spot between waves |
 | `tower up! +15` / `tower down at …` | a tower rose / was chewed from under |
 | `wall chewed at N 10 E -55` | a blocked creep is eating through → rebuild, zap it |
-| `wave 3 clear! +10` / `wave 4 in 20s, build!` | breathe, then build |
-| `keep hit! hp 7` / `keep fell! -25, rebuilt` | leaks cost points; it never game-overs |
+| `wave 3 clear! +10` / `wave 3 clear, 2 leaked +5` | breathe — a clean wave pays double |
+| `wave 4 in 20s, build!` | 20 s of peace: ferry steel, stack a tower |
+| `keep hit! hp 7, -1` / `keep fell! -25, rebuilt` | leaks cost points; it never game-overs |
+| `round over! wave 7, 63 kills` | the instructor reset — that's the score to beat |
 
 ## What's really happening (the pymavlink underneath)
 
@@ -192,7 +210,7 @@ connection string and the messages are identical.
 | picked up nothing over a crate | too high, or not 2 full seconds | below 3 m altitude, hold still, count to 2 — the drone now tells you (`too high, get under 3 m`) |
 | `DRONE: CRASH: hit a wall` | flew into a tile stack side-on | go over the top (walls max out at 8 m) or around |
 | tile won't place | wrong altitude, wrong cell, or empty hands | hover at the **announced** altitude on the announced spot, carrying |
-| creep won't die under me | too high, or it walked out from under you | stay within ~4 m of it, **below its feet + 3 m**, for a full 1.5 s |
+| creep won't die under me | too high, or it walked out from under you, or it has more hp | stay within ~4 m of it, **below its feet + 3 m**, for a full 1.5 s — the game says `drop under 3 m to zap` if you're high, and `zap! brute hp 2` if it just needs more |
 | my wall is disappearing | a blocked creep is chewing it | that's the `wall chewed` warning — zap the chewer, rebuild the tile |
 
 ## Pro moves
