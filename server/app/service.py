@@ -131,6 +131,8 @@ class DroneLifeService:
         if data:
             self.registry.restore(data.get("students", []))
             self.engine.score = int(data.get("score", 0))
+            self.engine.scores = {str(k): int(v) for k, v in data.get("scores", {}).items()
+                                  if k in self.registry.students}
             log.info("restored %d students, score %d",
                      len(self.registry.students), self.engine.score)
         for student in self.registry.students.values():
@@ -240,6 +242,7 @@ class DroneLifeService:
         snapshot.save(self._snapshot_path, {
             "students": self.registry.to_dict(),
             "score": self.engine.score,
+            "scores": self.engine.scores,
         })
 
     # ---------------------------------------------------------------- joins
@@ -269,6 +272,7 @@ class DroneLifeService:
             return False
         await self.runner.stop(student_id)
         await self.backend.remove(self.drone_id_for(student))
+        self.engine.scores.pop(student_id, None)
         self.bus.emit("kicked", f"{student.name} left", student_id=student_id, t=self.world.t)
         self._save_snapshot()
         return True

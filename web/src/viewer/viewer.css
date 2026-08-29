@@ -173,6 +173,34 @@ canvas { touch-action: none; }
 #conn::before { content: "●"; margin-right: 6px; color: var(--danger); }
 #conn.up::before { color: var(--ok); }
 
+/* per-pilot scoreboard under the live dot: who is carrying the team */
+#board {
+  position: absolute;
+  top: calc(clamp(12px, 2vmin, 28px) + clamp(2.6rem, 5vmin, 4rem));
+  right: clamp(14px, 2vmin, 30px);
+  min-width: clamp(160px, 18vmin, 300px);
+  background: var(--hud-panel);
+  border-radius: 10px;
+  padding: 8px 14px 10px;
+  font-size: clamp(0.85rem, 1.7vmin, 1.4rem);
+}
+#board[hidden] { display: none; }
+#board-title {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-size: 0.75em;
+  margin-bottom: 4px;
+}
+#board-rows { list-style: none; margin: 0; padding: 0; }
+#board-rows li {
+  display: flex; justify-content: space-between; gap: 14px;
+  line-height: 1.5; white-space: nowrap;
+}
+#board-rows li .pts { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+#board-rows li:first-child { font-weight: 700; }
+#board-rows li .name { overflow: hidden; text-overflow: ellipsis; max-width: 12ch; }
+
 /* navigation hint: shown briefly, then out of the projector's way for good */
 #nav-hint {
   position: absolute;

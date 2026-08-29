@@ -174,3 +174,15 @@ def test_milestone_recelebrates_a_recrossed_mark():
     engine.api.add_score(-25, "keep fell")
     engine.api.add_score(30, "wave clear")  # back over 100
     assert len(milestones(engine)) == 2, "a re-earned mark is worth re-celebrating"
+
+
+def test_per_pilot_tally_follows_the_team_score_and_clears_on_reset():
+    engine = make_engine(QuietMission())
+    engine.api.add_score(10, "crate", student_id="s1")
+    engine.api.add_score(10, "crate", student_id="s2")
+    engine.api.add_score(15, "tower", student_id="s1", feed=False)
+    engine.api.add_score(-25, "keep fell")  # a team loss belongs to nobody
+    assert engine.scores == {"s1": 25, "s2": 10}
+    assert engine.score == 10
+    engine.reset(now=1.0)
+    assert engine.scores == {} and engine.score == 0

@@ -45,9 +45,15 @@ def world_message(service: DroneLifeService) -> dict:
          "e": _f(World.pad_position(s.slot)[1]), "name": s.name}
         for s in service.registry.students.values()
     ]
+    students = service.registry.students
+    ranked = sorted(((pts, students[sid].name, sid)
+                     for sid, pts in service.engine.scores.items()
+                     if sid in students and pts),
+                    key=lambda r: (-r[0], r[1]))
+    scores = [{"student_id": sid, "name": name, "points": pts} for pts, name, sid in ranked]
     return {"epoch": service.world.epoch, "t": round(service.world.t, 2),
-            "score": service.engine.score, "drones": drones, "entities": entities,
-            "pads": pads, "mission_state": service.engine.hud()}
+            "score": service.engine.score, "scores": scores, "drones": drones,
+            "entities": entities, "pads": pads, "mission_state": service.engine.hud()}
 
 
 def hello_message(service: DroneLifeService) -> dict:

@@ -1,7 +1,7 @@
 /** DOM overlay: big team score, mission status strip, event feed ticker,
  * connection dot. */
 
-import type { EventData } from "../shared/protocol";
+import type { EventData, ScoreRow } from "../shared/protocol";
 import { REDUCED_MOTION } from "../shared/theme";
 
 const FEED_MAX = 8;
@@ -113,8 +113,21 @@ export function splashFor(ev: EventData, simT: number): Splash | null {
   return null;
 }
 
+/** The board's rows: top `limit` pilots by points, best first (the server
+ * already sorts, but never trust the wire for what the wall shows). Empty
+ * when nobody has scored — the panel hides rather than listing zeros. */
+export function boardModel(scores: ScoreRow[] | undefined, limit = 8): ScoreRow[] {
+  return (scores ?? [])
+    .filter((r) => r.points !== 0)
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
+
 export class Hud {
   private score = document.getElementById("score")!;
+  private board = document.getElementById("board")!;
+  private boardRows = document.getElementById("board-rows")!;
+  private lastBoard = "";
   private mission = document.getElementById("mission")!;
   private feed = document.getElementById("feed")!;
   private conn = document.getElementById("conn")!;
@@ -140,6 +153,25 @@ export class Hud {
 
   setMission(text: string): void {
     this.mission.textContent = text;
+  }
+
+  setScores(scores: ScoreRow[] | undefined): void {
+    const rows = boardModel(scores);
+    const key = rows.map((r) => `${r.student_id}:${r.points}`).join("|");
+    if (key === this.lastBoard) return;  // 10 Hz frames, but the board rarely moves
+    this.lastBoard = key;
+    this.board.hidden = rows.length === 0;
+    this.boardRows.replaceChildren(...rows.map((r) => {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = r.name;
+      const pts = document.createElement("span");
+      pts.className = "pts";
+      pts.textContent = String(r.points);
+      li.append(name, pts);
+      return li;
+    }));
   }
 
   /** The mission's own numbers, under the score: siege shows the wave, the
