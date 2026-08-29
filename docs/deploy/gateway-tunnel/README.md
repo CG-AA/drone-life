@@ -75,6 +75,11 @@ Then point nginx at it: `proxy_pass http://127.0.0.1:8000;` in the snippet in
   `FORWARDED_ALLOW_IPS=10.0.0.5` example in DEPLOY.md is only for a direct
   (wireguard / LAN) route to the gateway. Through this tunnel, set
   `FORWARDED_ALLOW_IPS=127.0.0.1` (or leave it unset).
+- **`PUBLIC_URL`**: the projector's "join the sky at" card advertises the
+  page's own origin unless told otherwise, and the projector is opened on the
+  lab server or its LAN — not through the gateway. Set
+  `PUBLIC_URL=http://<gateway-ip>:8000` (or the nginx hostname) in
+  `/etc/drone-life.env` so the wall shows the address students can reach.
 
 ## Troubleshooting
 

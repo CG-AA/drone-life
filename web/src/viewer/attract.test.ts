@@ -36,3 +36,16 @@ it("builds one join url whatever the origin's trailing slashes", () => {
   expect(attractView(true, 0, "x", "http://localhost:8000/").joinUrl)
     .toBe("http://localhost:8000/submit");
 });
+
+it("advertises the server's PUBLIC_URL over the projector's own origin", () => {
+  // the projector is opened on localhost; students come in through the gateway
+  expect(attractView(true, 0, "x", "http://localhost:8000", "http://203.0.113.5:8000/").joinUrl)
+    .toBe("http://203.0.113.5:8000/submit");
+  expect(attractView(true, 3, "x", "http://localhost:8000", "http://203.0.113.5:8000").joinUrl)
+    .toBe("http://203.0.113.5:8000/submit");
+});
+
+it("falls back to its own origin while PUBLIC_URL is unset or blank", () => {
+  expect(attractView(true, 0, "x", HOST, "").joinUrl).toBe("https://drones.example.org/submit");
+  expect(attractView(true, 0, "x", HOST, "  ").joinUrl).toBe("https://drones.example.org/submit");
+});
