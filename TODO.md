@@ -14,91 +14,51 @@
   holding a WebSocket, through the OCI VM's nginx and one autossh reverse
   tunnel. Drive N headless browsers (Playwright) against the *public* URL:
   student WS at 10 Hz, one viewer feed, submit bursts; watch tunnel
-  throughput, nginx worker/connection limits, `proxy_read_timeout`, and
-  whether the 30/min per-IP join budget (`X-Forwarded-For` must reach
-  uvicorn) survives a whole room joining in the same minute. Also the
-  in-person case where the room's wifi is one NAT address.
+  throughput, the proxy's worker/connection limits if one is in the path,
+  and the join budget: on the direct `:8000` tunnel the whole room is one IP
+  to the limiter (`JOIN_RATE_LIMIT_PER_MINUTE` must exceed the class size);
+  behind nginx `X-Forwarded-For` must reach uvicorn (`FORWARDED_ALLOW_IPS`).
+  Also the in-person case where the room's wifi is one NAT address.
 
-## Siege enrichment (decided 2026-08-29; balance session last)
+## Siege enrichment — shipped 2026-08-29 (PRs #16–#23)
 
-Ground truth from the 64-seat playtest: a room this size trivialises siege
-(`WAVE_MAX = 20`; 52 kills, 0 leaks, Keep untouched by wave 3), forty zappers
-stack on one creep because every pilot is told the same nearest target, and
-the quarry is infinite so towers cost only ferry time. Everything below is
-in `server/app/game/missions/siege.py` unless noted.
+The 64-seat playtest trivialised siege (a flat cap of 20 creeps, an
+infinite quarry, forty zappers on one creep). What landed, in the order it
+stacks: the `say()` channel with a team pot paid per pilot per kill and
+wallets on every wave clear, a finite quarry; the shop (personal zap /
+speed / tower tiers, colour and outline); quests — opt-in route / predict /
+compute challenges drawn per pilot, one room quest a wave whose miss buffs
+the next wave, worked answers in `examples/answers/`; the clay pit, ring
+tower, beacon and bell; repair and scout roles with a per-pilot tally on the
+board and two house bots; the sealed gate S formation puzzle and the
+chokepoint answer; `rounds.jsonl` at every reset and `make balance`; the
+wave cap scaling with the room. Where it is written down: the siege block
+of `docs/CHEATSHEET.md`, `docs/QUESTS.md`, `docs/STUDENT_GUIDE.md`,
+`docs/SESSION_PLAN.md` §6–§9, `docs/MISSIONS.md`, and the before-class
+list in `docs/PRE_WORKSHOP.md`.
 
-- **Reward rule (write it down first).** A puzzle or advanced play pays in
-  *team* currency — an unlock for everyone (a building, a lane, a buff for a
-  wave) or a multiplier on the wave bonus — never in personal points that
-  make the rest of the room decorative. The per-pilot board stays for
-  bragging; the round score is what the class beats. *(proposed)*
-- **Roles.** *(shipped 2026-08-29: repair + scout callouts, per-pilot
-  tally on the board, `bot_repair` / `bot_scout`; ferry vs build are
-  separate stats — a true depot hand-off is a balance-session question)*
-  Give each role a callout stream, a stat, and a house bot:
-  ferry (quarry → site, `tile_carried`), builder (walls/towers at ghosts),
-  zapper (lane assignment), repair (rebuild chewed cells — the ghost for a
-  chewed wall already exists), scout/spotter (an event-driven pilot that
-  relays creep kinds to the room). House bots are the *demo* of every role,
-  task and building — the room should watch one ferry, one build, one
-  repair happen — and they must stay beatable: a deliberately naive bot per
-  role (`examples/bot_*.py`, SESSION_PLAN §7), not an optimal one; "beat
-  the house bot" is the ladder, so the house bot has to be catchable.
-- **Buildings.** *(shipped 2026-08-29: clay pit, ring tower, beacon, bell —
-  see the siege block of the cheat sheet and §9 of SESSION_PLAN)* The
-  original notes, for the record: the 4-high stack is legal and currently means nothing:
-  4 steel = long-range tower (or a different weapon); clay in siege as cheap
-  chew-fodder vs steel that only sappers eat fast; a repairable gate at a
-  lane; a beacon/lure tile that pulls creeps into a kill zone. Each is a
-  `Blueprint` (`server/app/game/building.py`) plus a viewer sprite.
-- **Playstyles / economy.** The quarry is `TileSource(remaining=None)`:
-  make stock finite per wave (a real ferry economy), pay bounty into a team
-  pool that buys unlocks, and let squishing (currently free, any hp) cost
-  the tile. Zapping vs building vs ferrying should each be a viable round.
-- **Upgrades.** *(decided 2026-08-29, shipped: say() channel, pot →
-  wallets, finite quarry, the shop)* The pot is the team's, the spending is
-  personal: every wave clear splits the pot into wallets and
-  `drone.say("buy zap|speed|tower|colour|outline")` buys tiers that last
-  the round. No team-bought upgrades; Keep armour / wave-skip / one-time
-  repair are dropped.
-- **Quests.** *(shipped 2026-08-29)* The advanced-play programming
-  challenge: opt-in per pilot (`say quest`), three families (route /
-  predict / compute) drawn per pilot from the live world, one room quest a
-  wave whose miss buffs the next wave. `docs/QUESTS.md`; worked answers in
-  `examples/answers/`. Balance the knobs with the rest in the balance session.
-- **Puzzles.** *(shipped 2026-08-29: the sealed gate S formation puzzle
-  and the chokepoint worked answer; the interceptor ladder and sapper alarm
-  were dropped in favour of quests)*
-- **Puzzles for the "this is boring" crowd.** In-game, co-op, rewarding
-  without carrying: a sealed gate that opens only when 3 drones hold a
-  formation over it (rewards the *lane*, not the trio); a chokepoint
-  problem — walls that force the flow field into one kill zone
-  (`server/app/game/path.py` is Dijkstra with chew costs, the graph is real);
-  an event-driven interceptor that must beat the house zapper's lead model;
-  a sapper alarm that only a listener catches. Each ships with a worked
-  answer hidden until the wrap (SESSION_PLAN §6 pattern).
-- **The blob is a feature.** Forty zappers on one creep is the unedited
-  starter doing exactly what it says; the fix (pick a lane, lead further,
-  ignore a creep with three drones on it already) is a ten-line edit and the
-  easiest coding win of the day. Do not engineer it away server-side — keep
-  starter flaws that a student can see on the projector and fix themselves,
-  and list them as "easy practices" on the cheat sheet. *(decided)*
-- **Instrumentation.** *(shipped 2026-08-29: `rounds.jsonl` at every reset,
-  `make balance`, and the one projector change — pickup rows fold)*
-- **Instrumentation before balance.** `SiegeStats` per round → append a
-  JSONL line at reset (pilots, waves, kills by verb, leaks, towers, steel
-  ferried, time-to-first-tower); `make balance` runs N headless bot-only
-  rounds with fixed `SIM_SEED`s so the balance session works from numbers.
-  *(proposed)*
-- **Projector at scale.** Hide pad-row labels past ~20 seats, throttle
-  per-kind feed rows at 60 pilots, keep the PILOTS board as the readable
-  surface. *(proposed)*
-- **Balance.** *(2026-08-29: the wave cap scales with the room —
-  `WAVE_MAX 20 + 0.5/pilot`; room quests and their penalty need one
-  enrolled pilot; numbers from `make balance` in SESSION_PLAN §9. Still
-  open, needs a human room: shop prices, ring/beacon/bell value, whether
-  60 s room quests are the right length.)*
-- **Balance session — last.** Scale `WAVE_MAX` with pilots (60 pilots met
-  the cap on wave 1), then tune bounties/tower stats/quarry stock against
-  the JSONL, with the reward rule as the constraint. Not before the content
-  above exists, or it gets tuned twice.
+Decisions that are settled, so nobody re-litigates them: the pot is the
+team's, the spending is personal (no team-bought upgrades); a quest or
+puzzle pays the pot plus a small named bonus; **the blob stays** — forty
+zappers on one creep is the unedited starter doing what it says, the fix is
+a ten-line student edit, never a server-side lane assignment; the projector
+keeps its chaos (pad labels and the feed untouched, except that repeated
+pickup rows fold).
+
+Still open:
+
+- **Balance with a human room.** Bots never buy, ring a tower, light a
+  beacon or ring the bell, so shop prices (`SHOP`), the value of a ring
+  tower / beacon / bell against their ferry cost, `PLACE`/`REPAIR` points,
+  whether 60 s is right for a room quest, and the `WAVE_MAX_PER_PILOT` slope
+  past wave 8 are judged from the first real class: read `rounds.jsonl` at
+  the wrap against SESSION_PLAN §9's 2026-08-29 baseline; every knob is
+  named there.
+- **A depot for a true ferry / builder split.** Today one pilot carries and
+  places, so `ferried ≈ placed + crashes`; a hand-off cell (a `TileSource`
+  that placements refill) would make ferrying its own role. Balance-session
+  material.
+- **Predict quests and the map.** A wall raised after a predict is issued
+  can make the locked answer wrong; the eligibility filter (empty-map and
+  real-map marches must agree) makes it rare, not impossible. Watch
+  `quests_missed` vs solved in the class's `rounds.jsonl`.
