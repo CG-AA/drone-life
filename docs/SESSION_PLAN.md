@@ -47,7 +47,7 @@ under one minute; the rest is students pressing Run again.
 |---|---|---|---|---|
 | −0:20 | boot + smoke | §3 checklist; end on `make reset` | arena + room code | trickle in, join |
 | 0:00 | welcome (10′) | the pitch: real pymavlink, one shared sky; join walkthrough on screen | join feed | join at `/submit` |
-| 0:10 | first flight (15′) | run the unedited template live; then "everyone press Run" | 20 drones climb and move | run template, unedited |
+| 0:10 | first flight (15′) | run the unedited template live; then "everyone press Run" | every drone climbs and moves | run template, unedited |
 | 0:25 | freefly play (20′) | tour `goto` / `move` / `position` / `events` from the cheat sheet; invite crashes — arena walls are soft | drones everywhere | change the numbers, break things safely |
 | 0:45 | SWITCH → delivery (5′) | **Box A** (§5) | restart, then crates appear | wait, then press Run again |
 | 0:50 | delivery I (25′) | narrate the first pickup and delivery; read the GAME hints aloud as they land in someone's log | score climbing, feed names | write the courier loop |
@@ -206,8 +206,8 @@ upgrade shop spends: `SHOP` prices zap 20/40/80 (+1 m reach, −0.25 s dwell
 per tier), speed 30/60 (+25 % caps per tier), tower 40/80 (+4 m range,
 −0.5 s reload per tier on the builder's towers, floored at
 `TOWER_COOLDOWN_MIN` 1 s), colour/outline 10 (cosmetic, repeatable). Tiers
-are personal and last the round; at ~15 coins a wave a pilot buys one tier
-by wave 2 and reaches the top rungs only in a long round.
+are personal and last the round; at ~10–15 coins a wave a pilot buys one
+tier by wave 2–3 and reaches the top rungs only in a long round.
 
 Gate S (`BONUS_GATE_CELL` (8, −14) = N −63 E 5, a row north of the 64-seat
 pads): `FORM_RADIUS` 12, `FORM_MIN`/`FORM_MAX` 6/12 m, `FORM_MIN_ANGLE`
@@ -217,7 +217,8 @@ and `RAIDER_POOL_EACH` 1 coin per seat, no name on the board. Raider leaks
 still hit the Keep — that is the puzzle's risk.
 
 Roles: a chewed cell is a ghost and a `repair at … hover N` callout to
-carriers within `REPAIR_CALL_RADIUS` 40 m every `TARGET_EVERY`, for
+carriers within `REPAIR_CALL_RADIUS` 40 m (checked every `TARGET_EVERY`
+3 s, said to each carrier at most every `HINT_EVERY` 10 s), for
 `REPAIR_TTL_S` 90; a tile back on it pays `REPAIR_POINTS` 1. A drone
 within `SPOT_RADIUS` 10 m of a gate for `SPOT_DWELL` 2 s is its spotter:
 it hears every spawn through that gate (`gate E: 3 grunt 1 sapper`) and
@@ -233,9 +234,11 @@ wall reroutes like steel and only *loses* faster). Ring tower (6 steel
 around a watchtower): `RING_RANGE` 28, `RING_COOLDOWN` 1.5, `RING_POINTS`
 25; the builder's tower tier adds range only. Beacon (clay-steel-clay
 singles): `BEACON_RADIUS` 25, `BEACON_MAX` 2, `LURE_BONUS_EACH` 1 coin per
-seat per lured kill; arrivals chew the steel in `CHEW_S`. Bell (6-clay ring
-+ 3 clay): `BELL_DWELL_S` 3 at `BELL_ALT_ABOVE` 3 m over the top, `FREEZE_S`
-15, one shot. Costs in ferry time (both piles are ~67 m from the Keep,
+seat per lured kill; arrivals chew the steel in `CHEW_S` (one clock per
+beacon at the fastest jaw present — a crowd is no faster). Bell (6-clay
+ring + 3 clay): `BELL_DWELL_S` 3 at `BELL_ALT_ABOVE` 3 m over the top,
+armed `BELL_ARM_S` 6 after `bell up` and only while a wave is active,
+`FREEZE_S` 15, one shot. Costs in ferry time (both piles are ~67 m from the Keep,
 ~30 s a tile): a watchtower ≈ 1.5 min solo, the ring +3 min solo (1 min
 with three ferries), a bell ≈ 3 min solo.
 
@@ -246,8 +249,9 @@ bands (waves ≤ 4 / ≤ 7 / 8+). Route: `ROUTE_STOPS` 3/4/5, touch 2.5 m,
 limit `ceil(length / 6) + 4 × stops` in 30–90 s. Predict: `PREDICT_T`
 8/12/15 s, within 6 m, still 2 s. Compute: 45 s, ±1 m for 2 s, answers in
 3–55 m. Room quest from `ROOM_QUEST_FROM_WAVE` 3 (issued at a wave start
-when none is open; it keeps its own clock across wave clears),
-`ROOM_QUEST_S` 60; a miss buffs the next wave `BUFF_HP` +1 / `BUFF_SPEED`
+when none is open and someone has enrolled — a room where nobody said
+`quest` gets no room quest and no penalty; it keeps its own clock across
+wave clears), `ROOM_QUEST_S` 60; a miss buffs the next wave `BUFF_HP` +1 / `BUFF_SPEED`
 ×1.2, alternating. Payouts:
 `QUEST_POINTS` 5 personal, pot += `QUEST_POOL_EACH` 1 (room: 3) × seats.
 
@@ -255,14 +259,16 @@ The roster (`KINDS` / `SHARES`): grunts 1 hp from wave 1; runners (1.5×
 speed) from 3; brutes (3 hp, 0.65× speed, chew 2×) from 5; sappers (2 hp,
 chew 3×) from 7; a champion (8 hp, 0.6×, three Keep hits) behind every 5th
 wave (`BOSS_EVERY`). Gates: one lane through wave 3, two from 4, all three
-from 8 (`_gates_for`). Between waves the game announces a tower site four
-cells before the Keep beside the last lane (`BUILD_SITE_STEPS`, 8 ≈ 40 m out —
-past where gate-camping zappers already emptied it); towers reach 16 m and
+from 8 (`_gates_for`). Between waves the game announces a tower site
+`BUILD_SITE_STEPS` 8 cells (≈ 40 m, past where gate-camping zappers already
+emptied the lane) before the Keep, beside the lane of the wave that is
+*coming* — the lanes are drawn at the clear, so the hint and the ghost
+point at the right gate; towers reach 16 m and
 fire every 2 s; a drone zaps one creep per 1.5 s (`ZAP_DWELL`), never a clump.
 
 **Balance from numbers.** Every reset that ends a played round appends one
-line to `server/state/<room>/rounds.jsonl` (`ts`, `room`, `seed`, `seats`,
-`names`, then the round: `best_wave`, `kills`/`zapped`/`squished`/`shot`,
+line to `server/state/<room>/rounds.jsonl` (`ts`, `room`, `mission`, `seed`,
+`seats`, `names`, then the round: `best_wave`, `kills`/`zapped`/`squished`/`shot`,
 `leaks`, `towers`, `ring_towers`, `bells`, `first_tower_s`,
 `quests_solved`/`missed`, `coins_spent`, `pool`, `wallets`, `score`,
 `duration_s`, and the per-pilot tally). `make balance ROUNDS=3
@@ -288,7 +294,7 @@ zap tier (20) comes after wave 2–3, not wave 2. One zapper bot takes ~75 %
 of the kills (all bots chase the same callout and the first to arrive
 wins): the blob, as intended. Four-minute rounds never reach the cap;
 `SECONDS=600` does (wave 8+), which is where `WAVE_MAX_PER_PILOT` should be
-judged with a human room. Bots never buy, ring or ring the bell, so shop
+judged with a human room. Bots never buy, ring a tower or ring the bell, so shop
 prices, ring/beacon/bell value and `PLACE`/`REPAIR` points are still
 human-only calls — the class is the measurement.
 
@@ -311,8 +317,8 @@ before the day and watch the round summary on reset.
 ## Day −1 checklist (cannot be verified off the lab server)
 
 `sudo -v && bash docs/deploy/pre-workshop.sh` runs the mechanical half of
-this list (deploy → build → image → restart → preflight → smoke) and prints
-the rest; the boxes below are the whole list.
+this list (deploy → build → image → preflight with the units stopped →
+start → smoke) and prints the rest; the boxes below are the whole list.
 
 - [ ] `set -a && . /etc/drone-life.env && set +a && make preflight` (the env
       file is not read by `make` on its own) / podman path: `make image`,

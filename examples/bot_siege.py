@@ -3,7 +3,8 @@
 Zap loop: the game calls out your nearest creep every few seconds. The
 announcement is where the creep WAS — but creeps always march toward the
 Keep at (0, 0), so aim a few meters ahead along that line and hover low;
-the creep walks into your zap circle. Retarget on every fresh call.
+the creep walks into your zap circle. Retarget on every fresh call. It
+crosses the map at 9 m (above the 8 m walls) and drops to 2 m to zap.
 """
 
 import math

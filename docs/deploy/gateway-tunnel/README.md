@@ -70,11 +70,19 @@ Then point nginx at it: `proxy_pass http://127.0.0.1:8000;` in the snippet in
 - **Firewall**: with the tunnel, port 8000 on the lab server is reached over
   its own loopback (sshd delivers the forwarded connection locally). Nothing
   needs to be opened in the lab-server firewall at all.
-- **`FORWARDED_ALLOW_IPS`**: for the same reason the proxy's requests arrive
-  from `127.0.0.1`, which is uvicorn's default trusted peer — so the
-  `FORWARDED_ALLOW_IPS=10.0.0.5` example in DEPLOY.md is only for a direct
-  (wireguard / LAN) route to the gateway. Through this tunnel, set
-  `FORWARDED_ALLOW_IPS=127.0.0.1` (or leave it unset).
+- **The join limiter** (`JOIN_RATE_LIMIT_PER_MINUTE`, per client IP as
+  uvicorn sees it) depends on what sits on the gateway end of the tunnel:
+  - **nginx in front** (the snippet above): the proxy's requests arrive from
+    `127.0.0.1` and carry `X-Forwarded-For`; set
+    `FORWARDED_ALLOW_IPS=127.0.0.1` so uvicorn believes that header and the
+    limit stays per student. (The `FORWARDED_ALLOW_IPS=10.0.0.5` shape in
+    DEPLOY.md is for a direct wireguard / LAN route to the gateway.)
+  - **`:8000` exposed straight through the tunnel, no nginx** (the tunnel
+    bind made public on the gateway and its firewall opened): there is no
+    proxy and no header — every student *is* `127.0.0.1` to the server, the
+    whole room is one address to the limiter, and `FORWARDED_ALLOW_IPS` does
+    nothing. Set `JOIN_RATE_LIMIT_PER_MINUTE` above the class size (300)
+    instead; preflight's `proxy header` WARN is expected.
 - **`PUBLIC_URL`**: the projector's "join the sky at" card advertises the
   page's own origin unless told otherwise, and the projector is opened on the
   lab server or its LAN — not through the gateway. Set

@@ -50,9 +50,10 @@ holds the 2026-08-29 playtest's); leave it off between sessions of the same
 class.
 
 It deploys `main` into `/opt/drone-life`, builds server + web, builds the
-runner image as the service user, restarts `drone-life@main` and every
-`drone-life@rN`, runs `make preflight --all-rooms`, flies three bots, resets,
-and prints the checklist below. It stops at the first failure and says why;
+runner image as the service user, stops `drone-life@main` and every
+`drone-life@rN`, runs `PREFLIGHT_ARGS=--all-rooms make preflight` against
+the free ports, starts the units again, flies three bots, resets, and
+prints the checklist below. It stops at the first failure and says why;
 fix and re-run (`ONLY=preflight bash docs/deploy/pre-workshop.sh` reruns one
 step; by hand it is `PREFLIGHT_ARGS=--all-rooms make preflight`). It never
 edits `/etc/drone-life.env` and never prints secrets.
@@ -72,7 +73,8 @@ edits `/etc/drone-life.env` and never prints secrets.
       arrives as `127.0.0.1` and there is no header with their real address,
       so the whole room shares one budget — set
       `JOIN_RATE_LIMIT_PER_MINUTE=300` (or more than the class size) and leave
-      `FORWARDED_ALLOW_IPS` alone. **Behind nginx:** keep the default and set
+      `FORWARDED_ALLOW_IPS` alone (preflight's `proxy header` WARN is
+      expected then — it is not a FAIL). **Behind nginx:** keep the default and set
       `FORWARDED_ALLOW_IPS=127.0.0.1` so the `X-Forwarded-For` header is
       trusted from the tunnel.
 - [ ] `/etc/drone-life.d/*.env` for every room (docs/ROOMS.md;

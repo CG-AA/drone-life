@@ -1,8 +1,8 @@
 """Demo bot: the repair crew in the siege game.
 
 When a creep chews a wall the game says "steel chewed at N .. E .." (or
-clay) to everyone, and to a drone carrying the right tile nearby it says
-"repair at N .. E .. hover 6" every few seconds. This bot ferries steel
+clay) to everyone, and to a drone carrying the right tile within 40 m it
+says "repair at N .. E .. hover 6" every 10 s. This bot ferries steel
 from the quarry to the most recent chewed cell it heard, hovering at the
 altitude the game names. Naive on purpose: it always takes the newest
 chew, never the nearest, and forgets the target once a tile lands — a

@@ -4,7 +4,7 @@ Creeps march on the Keep at north=0, east=0 from the gates at the arena's
 edge. Three ways to fight (all on the cheat sheet):
 
     ZAP     hover LOW (within 3 m above the creep) and within 4 m of it
-            for 1.5 s — the game says "zap! creep down +2"
+            for 1.5 s — the game says "zap! grunt down +2"
     SQUISH  carry a steel tile from the quarry and drop it on a creep
     TOWER   stack 3 steel on one cell: a watchtower that shoots by itself
 

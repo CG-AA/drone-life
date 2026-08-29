@@ -76,8 +76,9 @@ ALLOW_DEFAULT_SECRETS=1 make preflight        # can this box run a class? 0 FAIL
 
 `make preflight` checks podman, the runner image, subuid/subgid ranges,
 slirp4netns, the 20 MAVLink ports, `web/dist`, the state dir, disk, the
-secrets (placeholders FAIL unless `ALLOW_DEFAULT_SECRETS`), `XDG_RUNTIME_DIR`,
-and then runs one real container. Every FAIL line names its fix. Then open
+secrets (placeholders FAIL unless `ALLOW_DEFAULT_SECRETS`), that `MISSION`
+exists, `XDG_RUNTIME_DIR`, the proxy header setting (a WARN, see DEPLOY.md),
+the room files, and then runs one real container. Every FAIL line names its fix. Then open
 `/submit`, join with `classroom`, press **Run** on the unedited template: the
 drone climbs and moves on the projector view.
 
@@ -120,7 +121,11 @@ every terminal where you run `make preflight` / `bots` / `reset`). Then:
 **B. Lab server behind a reverse proxy / gateway** (internet-reachable,
 TLS, a NAT'd lab box): [docs/DEPLOY.md](docs/DEPLOY.md), including the
 optional SSH reverse tunnel in
-[docs/deploy/gateway-tunnel/](docs/deploy/gateway-tunnel/README.md).
+[docs/deploy/gateway-tunnel/](docs/deploy/gateway-tunnel/README.md). Two
+shapes of it: nginx in front (set `FORWARDED_ALLOW_IPS` so the per-IP join
+limit stays per student) or `:8000` forwarded straight through the tunnel
+(no proxy: the whole room is one address to the limiter — set
+`JOIN_RATE_LIMIT_PER_MINUTE` above the class size; DEPLOY.md has both).
 
 ### Day −1 checklist
 
@@ -139,10 +144,11 @@ Full list: [SESSION_PLAN.md → Day −1 checklist](docs/SESSION_PLAN.md#day-1-c
 
 The whole before-the-class list, in order, is [docs/PRE_WORKSHOP.md](docs/PRE_WORKSHOP.md).
 One script does the mechanical part in order and stops at the first thing
-that is wrong — deploy `main` into `/opt`, build, image, restart every room,
-preflight, a three-bot smoke and a reset — then prints the checklist of what
-only a person can do (env values, the public address from outside, the
-projector, the printouts):
+that is wrong — deploy `main` into `/opt`, build, image, preflight with
+every room's unit stopped, start them again, a three-bot smoke and a reset
+— then prints the checklist of what only a person can do (env values, the
+join limiter, the public address from outside, the projector, the
+printouts):
 
 ```bash
 sudo -v && bash docs/deploy/pre-workshop.sh        # ONLY=<step> for one step
@@ -170,7 +176,9 @@ laptop. Minute-by-minute from here:
 
 The URL, the room code, and a printed [docs/CHEATSHEET.md](docs/CHEATSHEET.md).
 They need only a browser — no installs. The longer handout is
-[docs/STUDENT_GUIDE.md](docs/STUDENT_GUIDE.md).
+[docs/STUDENT_GUIDE.md](docs/STUDENT_GUIDE.md); the engineers in the room
+get [docs/QUESTS.md](docs/QUESTS.md) in the last siege round, and
+`examples/answers/` only at the wrap.
 
 ### Limits & requirements
 
@@ -215,7 +223,7 @@ Select with `MISSION=<name>` (env file for deploys, `MISSION=siege make dev-serv
 | `canyon` | two pre-placed steel walls — terrain in the sky; drones crash into and land on them |
 | `rampart` | guided building: ferry steel from the quarry, stack it along the ghost wall |
 | `forge` | free building in clay: close a ring of 6 tiles and a furnace lights |
-| `siege` | tower defense: grunts, runners, brutes, sappers and a champion every 5th wave march on the Keep through up to three gates — zap them, squish them under tiles, stack 3 steel into auto-firing watchtowers; the wall shows wave, countdown and Keep hp, and a reset reads out the round |
+| `siege` | tower defense: grunts, runners, brutes, sappers and a champion every 5th wave march on the Keep through up to three gates — zap them, squish them under tiles, stack 3 steel into auto-firing watchtowers (plus a ring tower, a beacon and a bell in clay and steel); kills fill a team pot that every wave clear splits into wallets, spent through `drone.say()` on personal upgrades, and `say("quest")` opts into coding challenges; the wall shows wave, countdown, Keep hp, pot and quest, and a reset reads out the round into `rounds.jsonl` |
 
 Demo bots (`make bots N=3 SCRIPT=<bot>`) are mission-specific; a bot on the
 wrong mission just idles. `MODE=container` runs them through the real sandbox.
@@ -227,6 +235,11 @@ wrong mission just idles. `MODE=container` runs them through the real sandbox.
 | `bot_builder` | `rampart` |
 | `bot_siege` | `siege` (zapper) |
 | `bot_tower` | `siege` (ferries steel to the announced site, raises watchtowers) |
+| `bot_repair` | `siege` (ferries steel to the newest chewed cell) |
+| `bot_scout` | `siege` (parks over the wave's gate, relays what comes through) |
+
+The worked quest answers in `examples/answers/` are spawnable only when
+`EXTRA_BOT_SCRIPTS` names them (dev; never in class before the wrap).
 
 Missions are plugins (`server/app/game/missions/`): implement the small
 `Mission` interface, register it, done — [docs/MISSIONS.md](docs/MISSIONS.md).
@@ -238,6 +251,9 @@ Missions are plugins (`server/app/game/missions/`): implement the small
 - [docs/deploy/gateway-tunnel/README.md](docs/deploy/gateway-tunnel/README.md) — optional SSH reverse tunnel from a NAT'd lab server to the gateway VM
 - [docs/STUDENT_GUIDE.md](docs/STUDENT_GUIDE.md) — the pilot's guide: helper API, GAME messages, what the pymavlink underneath does
 - [docs/CHEATSHEET.md](docs/CHEATSHEET.md) — the printable one-pager for every seat
+- [docs/QUESTS.md](docs/QUESTS.md) — siege's coding challenges: the three families, every line's grammar
+- [docs/ROOMS.md](docs/ROOMS.md) — several ~20-seat rooms for the small missions, merged into one siege
+- [docs/PRE_WORKSHOP.md](docs/PRE_WORKSHOP.md) — the whole before-the-class list, in order
 - [docs/MISSIONS.md](docs/MISSIONS.md) — the mission contract for authors (enforced by tests)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — architecture seams, bring-up order, where code goes
 
@@ -251,6 +267,7 @@ make build       # tsc + vite build → web/dist
 make dev-web     # hot-reload frontend on :5173, proxying /api and /ws to :8000 (DL_SERVER=http://host:8000 to point elsewhere)
 make e2e         # a real podman container delivers a crate — needs `make image`, else it silently SKIPS
 make load        # 10 bots, 60 s: tick overruns <1%, world feed ≥9 Hz (LOAD_BOTS=20 for class size)
+make balance     # ROUNDS=3 BOTS="6:bot_siege 2:bot_tower" SECONDS=300: headless bot-only siege rounds → server/state/balance/rounds.jsonl + a table (real time)
 make kill-dev    # stop stray uvicorn --reload / vite instances; kill-prod: `make run` instances + leftover containers
 make clean       # rm -rf server/state web/dist — deletes every student token; never mid-class
 ```
@@ -268,12 +285,13 @@ PR with Node 22; the podman e2e runs weekly (`e2e.yml`).
 | `server/app/runner/` | podman-per-student script sandbox + live logs |
 | `server/app/api/` | REST + WebSocket (viewer/student feeds) |
 | `server/app/preflight.py` | `make preflight` — the workshop-morning box check |
+| `server/app/headless.py`, `server/tools/balance.py` | the service with nobody watching: the load test and `make balance` (siege rounds → `rounds.jsonl`) |
 | `web/src/viewer/` | PixiJS isometric sky view |
 | `web/src/submit/` | CodeMirror editor, run controls, live logs |
 | `web/src/admin/` | instructor console: roster, kill/kick, reset, bots |
-| `examples/` | `dronelife.py` helper, student templates, demo bots |
+| `examples/` | `dronelife.py` helper, student templates, demo bots; `answers/` — the worked quest answers, for the wrap |
 | `runner/` | Containerfile for the student-script sandbox image |
-| `docs/` | the documentation map above; `docs/deploy/` holds the systemd unit and tunnel units |
+| `docs/` | the documentation map above; `docs/deploy/` holds the systemd unit, the room env files, the tunnel units and `pre-workshop.sh` |
 
 ## Gotchas we already hit for you
 

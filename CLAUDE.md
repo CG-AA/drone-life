@@ -1,8 +1,11 @@
 # drone-life — agent notes
 
 Workshop co-op drone game: FastAPI/asyncio server (`server/`), Vite+TS
-frontend (`web/`), podman student sandbox (`runner/`). Students fly simulated
-drones with real pymavlink scripts; missions are server-side plugins.
+frontend (`web/`), podman student sandbox (`runner/`), operator tooling in
+`server/tools/` (`balance.py`, on `app/headless.py`). Students fly simulated
+drones with real pymavlink scripts; missions are server-side plugins;
+`examples/answers/` holds the worked quest answers, kept out of the template
+menu and the default bot allowlist (`EXTRA_BOT_SCRIPTS` widens it, dev only).
 
 ## Commands
 
@@ -14,6 +17,7 @@ make build         # tsc + vite build
 make e2e           # needs podman + `make image` — silently SKIPS (not fails) without them
 make load          # timing-sensitive, local only
 make preflight     # workshop-morning box check (podman, image, secrets, XDG_RUNTIME_DIR…)
+make balance       # ROUNDS= BOTS= SECONDS=: headless bot-only siege rounds → server/state/balance/rounds.jsonl (real time)
 make dev-server    # http://localhost:8000  (MISSION=<name> selects content)
 make dev-web       # hot-reload frontend on :5173, proxies /api and /ws to :8000
 ```
@@ -35,6 +39,10 @@ Setup from a fresh box, deploys, and the workshop-day flow: `README.md`.
   HUD table is test-pinned to that file (marker block — keep its format).
 - **Wire shapes**: `server/app/api/messages.py` ↔ `web/src/shared/protocol.ts`
   mirror each other; update both sides together.
+- **Per-pilot mission data rides `Mission.pilot(student_id)`** on the
+  drone rows, never `hud()`/`mission_state` (one dict for the room, at
+  10 Hz to every socket). A mission's `round_end` event data is what
+  `rounds.jsonl` records at reset (`docs/MISSIONS.md`).
 - **The page may live under a prefix** (`/rN/` rooms, `docs/ROOMS.md`):
   frontend REST/WS go through `web/src/shared/http.ts` / `ws.ts`, which add
   `shared/prefix.ts`; never `fetch("/api/…")` or root-absolute hrefs/assets

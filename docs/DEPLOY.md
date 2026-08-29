@@ -73,15 +73,22 @@ MISSION=freefly
 # usually opened on localhost or the LAN, and its own address would send
 # students to the wrong place — give them the one they can reach.
 PUBLIC_URL=http://203.0.113.5:8000
-# the OCI VM's address as the lab server sees it — without this every student
-# shares one rate-limit bucket; see "OCI VM reverse proxy" below. Through the
-# SSH tunnel in docs/deploy/gateway-tunnel/ it is 127.0.0.1.
-# REPLACE 10.0.0.5 with the proxy's address as the lab server sees it — a wrong
-# value fails silently and puts the whole class in one rate-limit bucket, where
-# 30 wrong codes lock everyone out (the projector too); `make preflight` warns
-# when it is unset. Through the ssh reverse tunnel the proxy arrives from
-# 127.0.0.1 (uvicorn's default) — see docs/deploy/gateway-tunnel/README.md.
-FORWARDED_ALLOW_IPS=10.0.0.5
+# The join limiter is per client IP as uvicorn sees it, and how students
+# reach the box decides which of two knobs is the right one (see "OCI VM
+# reverse proxy" below) — set ONE of them:
+#
+# (a) :8000 forwarded straight through the SSH tunnel, no nginx
+#     (docs/deploy/gateway-tunnel/): every student arrives as 127.0.0.1 and
+#     no header carries a real address, so the whole room is one bucket —
+#     raise the ceiling above the class size. FORWARDED_ALLOW_IPS does nothing
+#     here; `make preflight` still WARNs that it is unset, which is expected.
+JOIN_RATE_LIMIT_PER_MINUTE=300
+# (b) nginx in front: keep the limiter's default (30) and instead name the peer
+#     whose X-Forwarded-For is believed — 127.0.0.1 through the tunnel, the
+#     VM's address on a direct wireguard/LAN route (REPLACE 10.0.0.5). A wrong
+#     value fails silently: one bucket for the class, where 30 wrong codes lock
+#     everyone out, the projector too. Preflight warns only when it is unset.
+# FORWARDED_ALLOW_IPS=10.0.0.5
 EOF
 # This file is what every room shares. The one-room deploy also needs the
 # room's own file — sh docs/deploy/rooms/mkrooms.sh 0 | sudo sh writes
@@ -120,7 +127,7 @@ target); the systemd unit passes `PORT` from the room's env file
 | `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`); the unit sets `state/<ROOM_ID>`; also `rounds.jsonl` there — one line per played siege round, appended at reset, survives resets and restarts, deleted by `make clean` |
 | `EXTRA_BOT_SCRIPTS` | (empty) | dev only: more scripts `/admin` may spawn as bots, by path under `examples/` without `.py`, comma-separated (`answers/quest_route,…`) — the worked answers stay out of the default allowlist so a class never meets them before the wrap |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
-| `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |
+| `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too. On a direct `:8000` tunnel (no proxy header) the whole room is one IP: set it above the class size |
 | `JOIN_STRIKES` | `3` | wrong room codes from one IP before it is locked out of `/join`, `/world` and the viewer (right code or not); `0` disables |
 | `JOIN_LOCKOUT_S` | `900` | how long that lockout lasts; `0` = until restart. `POST /api/v1/admin/unlock` (admin token) lifts all lockouts and bans now |
 | `SUBMIT_RATE_LIMIT_PER_MINUTE` | `10` | per-student script submissions, guards container churn |
@@ -130,7 +137,9 @@ One variable in `/etc/drone-life.env` is **not** a `config.py` setting:
 `FORWARDED_ALLOW_IPS` is read by uvicorn itself (it is the default for
 `--forwarded-allow-ips`; pydantic ignores it). It is the comma-separated list
 of peers whose `X-Forwarded-For` header is believed — IPs or CIDRs, defaulting
-to `127.0.0.1`. Set it to the proxy's address, never to `*`.
+to `127.0.0.1`. Set it to the proxy's address, never to `*`. It only matters
+when a proxy sends that header; with `:8000` forwarded straight through the
+tunnel there is none, and `JOIN_RATE_LIMIT_PER_MINUTE` is the knob instead.
 
 The server **refuses to start** when `ROOM_CODE` or `ADMIN_TOKEN` is still the
 placeholder (`classroom` / `change-me`) or is empty — uvicorn aborts with the
@@ -225,6 +234,18 @@ prankster hitting the join endpoint locks the whole room out. The firewall rule
 is what makes trusting the header safe: nobody else can reach port 8000 to
 forge one.
 
+**No nginx — `:8000` straight through the tunnel** (the deploy in use on
+2026-08-29: the tunnel's bind on the gateway made public, the VM's firewall
+rule opened, `PUBLIC_URL=http://<gateway-ip>:8000`): there is no proxy and
+no `X-Forwarded-For`; every request reaches uvicorn from `127.0.0.1`, so
+`FORWARDED_ALLOW_IPS` is irrelevant (preflight's WARN about it is expected)
+and the per-IP join limit is one bucket for the whole room. Set
+`JOIN_RATE_LIMIT_PER_MINUTE` above the class size (300) or the 31st join of
+the minute is refused with the right code. The strike guard (`JOIN_STRIKES`)
+is per address too: three wrong codes from anyone lock the whole room out
+for `JOIN_LOCKOUT_S` — `POST /api/v1/admin/unlock` lifts it — so put the
+code on the projector, not in people's memory.
+
 Residual risk worth knowing: if the whole class sits behind one school NAT,
 even a correct `X-Forwarded-For` shows one address for everyone. Raise the
 ceiling for the day (`JOIN_RATE_LIMIT_PER_MINUTE=120` in the env file) rather
@@ -233,9 +254,12 @@ than keying the limiter on anything else a client can set.
 ## Workshop-day runbook
 
 `bash docs/deploy/pre-workshop.sh` (as your admin account, `sudo -v` first)
-is steps 0–2 below plus a bot smoke and a reset, in order, stopping at the
-first failure; `ONLY=preflight` (or `deploy|build|image|restart|smoke|checklist`)
-runs one step. The manual version:
+does the deploy, build and image, runs step 0 below with every room's unit
+stopped (so the port checks are real), starts the units, then the bot smoke
+and a reset, in order, stopping at the first failure; `ONLY=preflight` (or
+`deploy|build|image|start|smoke|checklist`) runs one step, `FRESH=1` wipes
+the rooms' state first, `BRANCH=` deploys something other than `main`. The
+manual version:
 
 ```bash
 # 0. before anything else: does this box have what a submit needs?
@@ -251,7 +275,8 @@ make reset                            # clean slate between sessions
 the MAVLink port range, `web/dist`, the state dir and disk, the access-control
 secrets (the same call the server refuses to boot on), that `MISSION` names a
 real mission, that the unit's `XDG_RUNTIME_DIR` matches the service user's uid,
-that `FORWARDED_ALLOW_IPS` is set, and that the room files in
+whether `FORWARDED_ALLOW_IPS` is set (a WARN when not — expected on a direct
+`:8000` tunnel, a real gap behind nginx), and that the room files in
 `/etc/drone-life.d/` can run side by side (distinct ports and state dirs,
 no MAVLink overlap, one shared code) — then runs one real container. Exit 1
 means don't start class — every failure line names its fix.
@@ -273,9 +298,12 @@ for that, compare `systemctl show drone-life@main -p Environment` with
   live roster, kill a stuck script, kick a student, reset the world, spawn bots.
 - A student stuck? Their **reset drone** button, the console's **kill script**, or:
   `curl -X POST .../api/v1/admin/kill -H "X-Admin-Token: ..." -d '{"student_id":"s3"}'`
-- Between class sessions: `make reset` (kills all scripts, respawns drones,
-  fresh crates + score). `server/state/main/` keeps the roster across restarts —
-  delete it for a completely fresh class.
+- Between class sessions: `make reset` (kills all scripts, removes the
+  `Bot-*` seats, respawns drones, fresh mission state + score 0; a played
+  siege round is read out on the wall and appended to
+  `server/state/main/rounds.jsonl`). `server/state/main/` keeps the roster
+  across restarts — delete it for a completely fresh class (`FRESH=1` with
+  the pre-workshop script).
 - Minute-by-minute session plan (mission order, transitions, bots, balance
   knobs): `docs/SESSION_PLAN.md`.
 
@@ -320,6 +348,7 @@ hit a bug: a script that disconnects gets 10 s of grace, then auto-RTL with
 | `ticks` / `overruns` | overruns/ticks < 1% | counters since boot, not rates — take a delta |
 | `driver_errors` | `0` | ticks that raised; anything above 0 is in the server log |
 | `drones` / `students` / `score` / `mission` / `uptime_s` | — | what's flying, who's in, where the game is |
+| `room` / `label` / `max_students` | — | `ROOM_ID`, `ROOM_LABEL`, `MAX_STUDENTS` of the process that answered — what the student page's room list shows ([ROOMS.md](ROOMS.md)) |
 
 `ok` says nothing about podman or the image — those cost a subprocess and
 belong to `make preflight`, not to a poll that runs every few seconds.
@@ -331,6 +360,8 @@ A restart keeps the **roster, student tokens and the team score** (from
 keep drone positions, mission entities (crates, tiles, waves) or running
 scripts: the mission runs `setup()` again and every container is swept. Students
 do not need to re-join — their page reconnects with the token it already has.
+A restart mid-siege also writes no `rounds.jsonl` line (only `make reset`
+does, through the mission's `round_end`) — reset first if the round matters.
 
 Switching missions is a restart, since `MISSION` is read at boot:
 
@@ -404,8 +435,10 @@ request from it, including one carrying the right code: answering correct
 codes while declining to charge for wrong ones would leave the guessing
 unbounded, only with a 429 in place of a 403. A correct code costs nothing
 while the address is under its ceiling, so the projector is unaffected.
-This depends on `FORWARDED_ALLOW_IPS` being set (see the proxy section)
-— without it the whole class shares one bucket. Submissions are capped per
+Behind nginx this depends on `FORWARDED_ALLOW_IPS` being set (see the proxy
+section) — without it the whole class shares one bucket; on a direct `:8000`
+tunnel the class *is* one bucket and `JOIN_RATE_LIMIT_PER_MINUTE` above the
+class size is what keeps joins flowing. Submissions are capped per
 student, and each run's log output is capped at ~50 lines/s to keep a runaway
 `print` loop from drowning the hub. Admin auth is deliberately *not* limited:
 the token is long and random and compared in constant time, and a limiter there

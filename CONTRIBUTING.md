@@ -4,7 +4,8 @@
 
 - Every commit leaves `make test`, `make lint`, `make typecheck`, and
   `make build` green — CI (`.github/workflows/ci.yml`) checks all four on
-  every PR.
+  every PR. `make lint` covers `server/app`, `server/tests` and
+  `server/tools` (the operator tooling, `make balance`).
 - New game content = a mission plugin. Read `docs/MISSIONS.md` first; it is
   the contract, and `tests/test_mission_contract.py` enforces it.
 - Keep the seams below intact. If a change needs to cross one, that's a
@@ -22,6 +23,7 @@ directly.
 | `DroneBackend` / `DroneView` | `app/sim/backend.py` | everything above the sim sees snapshots and an async spawn/remove/send_text interface, plus one deliberate physics knob, `set_speed(drone_id, scale)` (siege's speed upgrade — a backend that cannot honour it may ignore it); a future ArduPilot-SITL backend implements the same ABC out-of-process |
 | `Terrain` (structural Protocol) | `app/sim/terrain.py` | the sim asks only `height_at(n, e)`; a mission's `TileMap` satisfies it without importing sim behavior |
 | `WorldAPI` / `Mission` | `app/game/mission.py` | missions see the world only through WorldAPI and describe themselves only as `Entity` records — physics, networking, rendering never change for content |
+| `WorldSink` | `app/service.py` | what the driver hands each frame to (`broadcast_world`, `broadcast_tiles`, `send_run_state`): the WS `Hub` in the app, `app/headless.py`'s `NullHub` when nobody is watching (the load test, `make balance`) |
 | `Hub` | `app/api/ws.py` | fan-out only: latest-wins world slot per socket, bounded FIFO for events/logs, one sender task per socket; the driver loop never awaits a send |
 | wire shapes | `app/api/messages.py` ↔ `web/src/shared/protocol.ts` | one module per side mirrors the other; the event-kind registry (`app/game/events.py` ↔ `hud.ts`) is test-pinned |
 
@@ -55,6 +57,9 @@ See the Layout table in `README.md`. Rules of thumb:
   settings in `docs/DEPLOY.md`'s table.
 - Web: wire types in `shared/protocol.ts`, page-shared DOM helpers in
   `shared/ui.ts`, per-mission renderers in `viewer/entities/`.
+- Operator tooling that drives the service headless lives in
+  `server/tools/` (`python -m tools.balance` from `server/`) on top of
+  `app/headless.py` (`NullHub`, `find_port_base`) — never in `app/`.
 
 ## Tests
 
@@ -65,6 +70,7 @@ make typecheck     # tsc --noEmit (web) + mypy (server)
 make e2e           # needs podman + `make image` — without them the suite SKIPS, it does not fail
 make load          # timing-sensitive: run on a quiet machine (LOAD_BOTS=20 for class size)
 make preflight     # not a test: checks the box a workshop is about to run on
+make balance       # not a test: N headless bot-only siege rounds → state/balance/rounds.jsonl (real minutes)
 ```
 
 - Mission tests use `tests/support/harness.py` (`FakeWorld`, `view`,

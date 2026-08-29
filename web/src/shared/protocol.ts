@@ -145,6 +145,12 @@ export interface SiegeHudState {
   /** quests: solved this round, room quests missed, and the live room quest */
   quests: { solved: number; missed: number;
             room: { id: number; family: string; left_s: number; solved: boolean } | null };
+  frozen_s: number; // whole seconds of a bell's freeze left, 0 otherwise
+  gate_s: "open" | "sealed";
+  /** the round tally (missions/siege.py SiegeStats.as_dict, without its per-pilot map) */
+  stats: Record<string, number | null>;
+  /** the record to beat, until the next wave 1 */
+  last_round: { round: number; wave: number; kills: number; score: number } | null;
 }
 
 /** delivery's mission_state */

@@ -29,7 +29,9 @@ Two kinds of file on the lab box, both read by the template unit
 [`docs/deploy/drone-life@.service`](deploy/drone-life@.service):
 
 - **`/etc/drone-life.env`** — what every room shares: `ROOM_CODE`,
-  `ADMIN_TOKEN`, `MISSION`, `PUBLIC_URL`, `FORWARDED_ALLOW_IPS`, and
+  `ADMIN_TOKEN`, `MISSION`, `PUBLIC_URL`, the join-limiter knob for how
+  students reach the box (`JOIN_RATE_LIMIT_PER_MINUTE` on a direct `:8000`
+  tunnel, `FORWARDED_ALLOW_IPS` behind nginx — DEPLOY.md), and
   `ROOMS=r1,r2,r3,r4,r5` (the rooms the student page lists).
 - **`/etc/drone-life.d/<id>.env`** — one per instance: `PORT`,
   `MAVLINK_BASE_PORT`, `MAX_STUDENTS`, `STATE_DIR`, and optionally
@@ -140,8 +142,11 @@ between rooms) keeps both seats, the later one as `Sam 2`; more pilots than
 `--dry-run` shows the seating, `--fresh` drops the big room's existing
 roster, `--force` writes even if a server answers on `PORT` (it would
 overwrite the file within 30 s, so the tool refuses by default). Score is
-zeroed: it belongs to the round, not the pilot. Bans are in memory only and
-do not carry — re-ban in the big room's console if it comes to that.
+zeroed (the team total and the per-pilot points): it belongs to the round,
+not the pilot. Bans are in memory only and do not carry — re-ban in the big
+room's console if it comes to that. Each room's `state/<id>/rounds.jsonl`
+(one line per played siege round, written at reset) stays where it is; the
+merge moves rosters, not records.
 
 `ROOMS=` is emptied for the siege so a latecomer sees the join form, not
 five closed rooms; put it back the next morning.
@@ -156,7 +161,8 @@ five closed rooms; put it back the next morning.
   whole loopback — all rooms' MAVLink ports and APIs — to every sandbox
   (DEPLOY.md, threat model). Accepted for a supervised class; the room code
   and tokens still gate everything that matters.
-- **`make clean` deletes `server/state/`** — every room's roster and tokens.
+- **`make clean` deletes `server/state/`** — every room's roster and tokens,
+  and every `rounds.jsonl`.
 - **The join limiter and strike guard are per process.** A student who
   guesses wrong on three rooms burns strikes on each; `POST
   /api/v1/admin/unlock` is per room too.

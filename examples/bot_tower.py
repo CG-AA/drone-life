@@ -2,9 +2,11 @@
 
 Ferry loop: hover low at the quarry until steel lands in your hands, then
 hover over the announced build site at the right height until the tile
-places. Three tiles on one cell and the game says "tower up!". Between
-waves the game announces where a tower pays off ("build a tower at N .. E ..");
-during a wave this bot keeps stacking at the last site it heard.
+places. Three tiles on one cell and the game says "tower up at N .. E ..!
++15" to everyone. Between waves the game announces where a tower pays off
+("build a tower at N .. E .." — beside the coming wave's lane); during a
+wave this bot keeps stacking at the last site it heard. It crosses the map
+at 9 m, above the tallest wall (8 m).
 """
 
 import re

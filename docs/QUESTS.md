@@ -22,7 +22,7 @@ wave comes **buffed** (`+1 hp` or `faster`, alternating)
 and `wave 7 buffed: +1 hp`.
 
 Every line matches
-`^(room )?quest (\d+)(:| stop (\d+)| solved| expired| off)` — the id follows
+`^(room )?quest (\d+)(:| stop (\d+)| solved| expired| missed| off)` — the id follows
 `quest`, positions come last as `N <int> E <int>` (so `position_in()` reads
 them), and `room ` prefixes a room quest.
 
@@ -52,7 +52,8 @@ quest 7: runner at N 40 E -12, in 15 s?   where will THAT creep be in 15 s?
 Be within **6 m** of the spot when the clock hits, and **still** (under
 1 m/s) for the last **2 s** — a drone chasing the callouts does not count.
 The answer is locked when the quest is issued (if the creep dies meanwhile,
-the place still counts). What you need to know:
+the place still counts; if a bell rings, the clock stretches by the 15 s
+freeze — the creep stood still that long). What you need to know:
 
 - creeps walk cell-centre to cell-centre on the hex grid toward the Keep at
   (0, 0), at `min(2.5, 1.5 + 0.1 × (wave − 1))` m/s × the kind's multiplier:

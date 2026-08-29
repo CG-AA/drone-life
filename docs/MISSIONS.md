@@ -71,8 +71,8 @@ world.drones()     # Sequence[DroneView] — read-only snapshots
 world.score        # the team total, read-only (round summaries)
 world.emit_event(kind, msg, student_id=None, data=None)   # projector feed
 world.add_score(points, reason, student_id=None, feed=True) -> total
-world.send_text(drone_id, text)       # STATUSTEXT to one drone
-world.broadcast_text(text)            # STATUSTEXT to everyone
+world.send_text(drone_id, text, severity=SEV_INFO)   # STATUSTEXT to one drone
+world.broadcast_text(text, severity=SEV_INFO)        # STATUSTEXT to everyone
 world.set_speed(drone_id, scale)      # scale one drone's speed caps (1.0 = stock)
 ```
 
@@ -84,6 +84,9 @@ feed blank. Put the points in your event's message instead.
 
 `send_text` wants a **drone id** (`DroneView.id`); `emit_event`/`add_score`
 want a **student id**. Adjacent lines often need both — don't swap them.
+`send_text`/`broadcast_text` take an optional `severity` (`SEV_INFO`,
+`SEV_WARNING` from `mission.py`) — the STATUSTEXT severity on the wire;
+siege marks chews, losses and Keep hits as warnings.
 
 ## The GAME text grammar (law) **[enforced]**
 
@@ -129,13 +132,13 @@ frame **[enforced]**. Kinds in play today, and who renders them
 | `tower` | `range`, `tier`, `ring` | siege.ts |
 | `beacon` | `radius`, `lured`, `chew` | siege.ts |
 | `bell` | `hover`, `charge` | siege.ts |
-| `bell_ring` | — (an fx, ~1 s) | siege.ts |
+| `bell_ring` | — (an fx, 1.2 s) | siege.ts |
 | `quest_mark` | `label`, `quest`, `done` | siege.ts |
-| `beam` | `tn`, `te`, `talt` | siege.ts (tower shot, 0.35 s) |
+| `beam` | `tn`, `te`, `talt` | siege.ts (tower shot, 0.6 s) |
 | `zap_arc` | `tn`, `te`, `talt` | siege.ts (a drone's zap, 0.3 s) |
 | `poof` | `verb` (zap/squish/tower/leak) | siege.ts (a creep died, 0.6 s) |
 
-Short-lived cosmetics (`beam`, `zap_arc`, `poof`) are entities like any
+Short-lived cosmetics (`beam`, `zap_arc`, `poof`, `bell_ring`) are entities like any
 other: the mission keeps them in a list with a wall-clock expiry and prunes
 them every tick *before* any "empty room" early return, so they vanish even
 when nobody is connected (`test_beams_expire_even_in_an_empty_room`). Ids
@@ -150,17 +153,22 @@ on WS connect, possibly before the first tick, and after `reset()`). Siege
 returns `wave`, `state`, `timer_s`, `keep_hp`, `keep_max`, `creeps_alive`,
 `pending`, `towers`, `pool`, `quests` (`solved`, `missed`, and the live `room`
 quest or null), `frozen_s`, `gate_s`, `stats` (the round tally without its
-per-pilot map — that rides the drone rows); delivery returns `crates`,
+per-pilot map — that rides the drone rows), `last_round` (the record to
+beat until wave 1 starts, else null); delivery returns `crates`,
 `delivered`.
 The strip's wording lives in `web/src/viewer/hud.ts` (`stripModel`, pure and
 tested); add a branch there when your mission publishes something new.
 
 **A round's summary is the `round_end` event.** Whatever a mission emits as
 `round_end` from its `reset()` — siege does, with `data=stats.as_dict()` plus
-`score`, `round`, `duration_s` — the service appends to
-`<state>/rounds.jsonl` (`core/rounds.py`) once the reset completes, with
-`ts`, `room`, `mission`, `seed`, `seats`, `names` in front. Keep the data
-JSON-safe and flat-ish: it is what `make balance` tabulates.
+`score`, `round`, `duration_s`, `pool`, `wallets`, and only when the round
+was played (a reset of an untouched room emits nothing) — the service
+appends to `<state>/rounds.jsonl` (`core/rounds.py`) once the reset
+completes, with `ts`, `room`, `mission`, `seed`, `seats`, `names` in front
+(`seats`/`names` are taken before the reset removes the bots). Only
+`reset()` writes a line: a restart mid-round records nothing. Keep the data
+JSON-safe and flat-ish: it is what `make balance` (`server/tools/balance.py`)
+tabulates.
 
 **Per-pilot state goes in `pilot(student_id)`, not `hud()`.** `hud()` is
 one dict for the room; `Mission.pilot(student_id) -> dict` (default `{}`)

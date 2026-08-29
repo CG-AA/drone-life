@@ -56,7 +56,7 @@ over and even **land on top**.
      (`GAME: creep at N 12 E -40`) every few seconds, and nags you if you
      park too high (`drop under 3 m to zap`).
   2. **Squish**: place a tile right on top of one — flattens anything, any
-     hp (same ferry loop as rampart; steel comes from the announced quarry).
+     hp (same ferry loop as rampart; steel from the quarry, clay from the pit).
   3. **Watchtower**: stack **3 steel on one cell** (+15) and it auto-fires
      at everything within 16 m, one hp per shot every 2 s. Between waves the
      game says where one pays off: `build a tower at N 20 E -8`.
@@ -173,15 +173,16 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `stack 3 steel = watchtower` / `build a tower at N 20 E -8` | 3 tiles on one cell → auto-firing tower (+15); the game suggests a spot between waves |
 | `tower up at N 20 E -8! +15` / `tower down at …` | a tower rose (everyone hears where) / was chewed from under |
 | `formation! hold 5 s to open gate S` / `south gate open! raiders pay the pool` / `formation broken, gate S sealed` | the sealed gate at N −63 E 5: three drones in a triangle (6–12 m apart, not in a line) over it for 5 s open it for 6 raiders (2 hp, fast, +6 each) — their bounty goes to the team and the pot, never to a name; once per wave; leave and it seals |
-| `steel chewed at N 9 E -62` / `clay chewed at …` | a creep is eating through — walls *reroute* creeps (a detour up to ~12 cells is cheaper than chewing), so this only happens to a closed ring or a beacon → rebuild, zap it; clay goes 3× faster than steel; the hole stays a ghost on the wall |
-| `repair at N 9 E -62 hover 6` | you carry the right material and a chewed cell is within 40 m: hover it at that altitude → `repaired! N 9 E -62 whole again +1` |
+| `steel chewed at N 9 E -62` / `clay chewed at …` | a creep is eating through — walls *reroute* creeps (a detour up to ~12 cells is cheaper than chewing), so this happens where the way round is longer than that: a closed ring, a long wall, a beacon → rebuild, zap it; clay goes 3× faster than steel; the hole stays a ghost on the wall |
+| `repair at N 9 E -62 hover 6` | you carry the right material and a chewed cell is within 40 m (the nag repeats every 10 s while it holds): hover it at that altitude → `repaired! N 9 E -62 whole again +1` (or `one more +1` if the stack was taller) |
 | `you spot gate E` / `gate E: 3 grunt 1 sapper` / `gate E unwatched` | hover within 10 m of a gate for 2 s and you are its scout: every creep through it is reported to you (kinds and counts), and the room hears you on the wall; leave and the post is free |
-| `clay pit at N 50 E -44` / `got clay, cheap walls, chewed 3x faster` | the second pile — infinite, unlike the quarry — for walls, beacons and the bell |
+| `clay pit at N 50 E -44` | the second pile — infinite, unlike the quarry — for walls, beacons and the bell |
+| `placed! tile at N 9 E -62` / `can't build there` | a tile landed (siege builds anywhere legal) / a keep-out zone (pads, landmarks, gates), a full 4-stack, or a drone hovering too low over that cell |
+| `first wave in 45s, build!` / `wave 4 in 20s, build!` | the countdown: ferry steel, stack a tower |
 | `ring tower at N 20 E -8! +25` / `ring lost at …, watchtower again` | 6 steel around a standing watchtower: 28 m reach, 1.5 s reload; a chewed ring cell drops it back |
-| `beacon up at N 8 E 31, creeps lured` / `beacon chewed at …` | clay–steel–clay, each cell exactly one high: creeps within 25 m walk to it instead of the Keep and eat the steel (6 s); kills in that zone pay the pot one extra coin per seat; two beacons at most |
-| `bell up at N -18 E 9, hover 8 m to ring` / `bell rung! creeps frozen 15 s` | a 6-clay ring with 3 clay in the middle; hover on top (8 m) for 3 s and every creep freezes for 15 s — towers and zaps keep working; the bell is spent |
+| `beacon up at N 8 E 31, creeps lured` / `beacon chewed at …` | clay–steel–clay, each cell exactly one high: creeps within 25 m walk to it instead of the Keep and eat the steel (6 s — a crowd no faster, a brute's jaw twice as fast); kills in that zone pay the pot one extra coin per seat; two beacons at most |
+| `bell up at N -18 E 9, hover 8 m to ring` / `bell rung! creeps frozen 15 s` / `bell chewed at …` | a 6-clay ring with 3 clay in the middle; hover on top (8 m) for 3 s and every creep freezes for 15 s — towers and zaps keep working; the bell is spent. It arms 6 s after `bell up` and rings only while a wave is on |
 | `wave 3 clear! +10` / `wave 3 clear, 2 leaked +5` | breathe — a clean wave pays double |
-| `wave 4 in 20s, build!` | 20 s of peace: ferry steel, stack a tower |
 | `+8 coins, wallet 23` | every kill pays the team pot one coin per pilot; each wave clear splits the pot evenly into wallets — `drone.say("wallet")` to ask your balance |
 | `quarry restocked, 27 steel` | the quarry is a stock per wave (more pilots, more steel), refilled — not topped up — when a wave starts |
 | `quarry empty, restock next wave` | the pile is spent → zap until the next wave |
@@ -190,15 +191,17 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `need 40 coins, have 17` / `zap maxed at III` | not yet / no further |
 | `bought colour #ff8800 (7 left)` | `drone.say("buy colour #ff8800")` (or `outline`) — your drone on the wall wears it; 10 coins, buy again to change |
 | `bad colour, use #RRGGBB` / `no such item, say shop` | the shop is picky about spelling |
-| `quests on, first one soon` | `drone.say("quest")` — you opted in to quests, the coding challenges (`QUESTS.md`); `say("quest off")` to stop |
+| `say shop, wallet, quest or buy <item>` | the menu — the answer to anything else you `say` |
+| `quests on, first one soon` / `quests already on` / `quests off` | `drone.say("quest")` — you opted in to quests, the coding challenges (`QUESTS.md`); `say("quest off")` to stop |
 | `quest 7: route 3 stops, 42 s` + `quest 7 stop 1 at N 20 E -30` … | fly the stops in order (`back` = reverse, `at 18 m,` = at that height, `any order` = pick the best order) within the time |
 | `quest 7: runner at N 40 E -12, in 15 s?` | model its march: be within 6 m of where it will be, still for the last 2 s |
 | `quest 7: alt = dist to N 40 E -12 / 4` (`hexes`, `dist pad`, `gates x 10 + wave`, `creeps this wave`) | compute the number, hover the Keep at that altitude ±1 m for 2 s |
-| `quest 7 stop 1 ok, 2 to go` / `quest 7 solved! +5, pool +64` / `quest 7 expired` | progress, the payout, the clock ran out |
-| `room quest 6: …` / `room quest 6 solved!` / `room quest 6 missed, next wave +1 hp` | one per wave for everyone; the first solver pays the pot; nobody solving it buffs the next wave |
+| `quest 7 stop 1 ok, 2 to go` / `quest 7 solved! +5, pool +64` / `quest 7 expired` / `quest 7 off: crashed` | progress, the payout, the clock ran out, a crash ended it (the next one comes after the usual gap) |
+| `room quest 6: …` / `room quest 6 solved!` / `room quest 6 missed, next wave +1 hp` | for everyone, once anyone has said `quest`: broadcast at a wave start (from wave 3) whenever none is open, on its own 60 s clock; the first solver pays the pot; nobody solving it buffs the next wave |
 | `wave 7 buffed: +1 hp` (or `faster`) | the penalty for a missed room quest — one wave |
 | `keep hit! hp 7, -1` / `keep fell! -25, rebuilt` | leaks cost points; it never game-overs |
 | `round over! wave 7, 63 kills` | the instructor reset — that's the score to beat |
+| `2-high walls turn creeps aside`, `clay walls: cheap, chewed 3x faster`, `ring a tower with 6 steel = long range`, `clay-steel-clay line = beacon, lures creeps`, `bell: 6 clay ring + 3 clay, hover to ring`, `drop a tile on a creep to squish it`, `clean wave +10, each leak costs -1`, `towers shoot 16 m, build by the path`, `say shop to spend your coins`, `bored? say quest for a challenge` | the rotating hint (with `stack 3 steel = watchtower` and `hover low on a creep to zap it` above), one every 30 s — nothing to do |
 
 ## What's really happening (the pymavlink underneath)
 
@@ -263,5 +266,9 @@ connection string and the messages are identical.
 Done early? Pick **pymavlink** from the templates menu and re-fly your script
 in the raw protocol — everything `dronelife` does is ~150 lines you can read.
 Then try beating the house bots (`examples/bot_courier.py`,
-`examples/bot_siege.py` — note how the siege bot *leads* its target). Your
-instructor has more where that came from.
+`examples/bot_siege.py` — note how the siege bot *leads* its target;
+`bot_tower.py`, `bot_repair.py` and `bot_scout.py` play the other siege
+roles, naively on purpose). In siege, `drone.say("quest")` opts you into
+the coding challenges — `QUESTS.md` is the spec, three families, and the
+worked answers are handed out at the wrap. Your instructor has more where
+that came from.

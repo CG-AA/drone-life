@@ -14,7 +14,8 @@ The arena spans -100..100 on both axes; max altitude is 60 m.
 
 GAME messages ("crate 3 at N 40 E -12", "creep at N 10 E 55") arrive through
 drone.events(); position_in(msg) pulls the (north, east) pair out of one.
-drone.say("wallet") talks back to the game (siege: coins and the shop).
+drone.say("wallet") talks back to the game (siege: wallet, shop, buy <item>,
+quest; anything else gets the menu back).
 """
 
 from __future__ import annotations
