@@ -137,6 +137,7 @@ Full list: [SESSION_PLAN.md → Day −1 checklist](docs/SESSION_PLAN.md#day-1-c
 
 ### Workshop morning
 
+The whole before-the-class list, in order, is [docs/PRE_WORKSHOP.md](docs/PRE_WORKSHOP.md).
 One script does the mechanical part in order and stops at the first thing
 that is wrong — deploy `main` into `/opt`, build, image, restart every room,
 preflight, a three-bot smoke and a reset — then prints the checklist of what
