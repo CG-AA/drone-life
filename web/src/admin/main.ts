@@ -5,7 +5,7 @@
 import type { BotsResult, RosterStudent } from "../shared/protocol";
 import { $, actionButton, banner, guarded, runPill, typedConfirm } from "../shared/ui";
 import { ApiFailure, clearToken, fetchHealth, fetchRoster, getToken, kickStudent, killScript,
-  resetWorld, setToken, spawnBots } from "./api";
+  resetWorld, setToken, spawnBots, tokenProblem } from "./api";
 import { formatHealth, type HealthSample } from "./health";
 import { ageMs, attention, orderRoster, updateAges } from "./glance";
 
@@ -28,7 +28,13 @@ function showGate(error = ""): void {
 
 async function handleToken(ev: Event): Promise<void> {
   ev.preventDefault();
-  setToken(($("token-input") as HTMLInputElement).value.trim());
+  const raw = ($("token-input") as HTMLInputElement).value.trim();
+  const problem = tokenProblem(raw);
+  if (problem !== null) {
+    showGate(problem);
+    return;
+  }
+  setToken(raw);
   try {
     await poll();
     $("join-overlay").classList.add("hidden");
