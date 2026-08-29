@@ -170,7 +170,11 @@ $("signout-btn").addEventListener("click", () => {
 
 $("token-form").addEventListener("submit", (ev) => void handleToken(ev));
 
-if (getToken()) {
+const storedProblem = getToken() ? tokenProblem(getToken()) : "";
+if (storedProblem) {
+  clearToken(); // a stored paste that fetch() would reject: back to the gate, not a retry loop
+  showGate(storedProblem);
+} else if (getToken()) {
   poll().catch(() => { /* gate shown by poll on 403; transient errors retry */ });
 } else {
   showGate();
