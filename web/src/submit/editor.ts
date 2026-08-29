@@ -1,12 +1,22 @@
 /** CodeMirror 6 python editor. */
 
+import { indentWithTab } from "@codemirror/commands";
 import { python } from "@codemirror/lang-python";
+import { indentUnit } from "@codemirror/language";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { keymap } from "@codemirror/view";
 import { EditorView, basicSetup } from "codemirror";
 import { diagnosticRange } from "./position";
 
 const DRAFT_KEY = "dl_draft";
+
+/** Python indentation the way the templates are written: four spaces, and
+ * Tab indents instead of moving focus to the next button (CodeMirror leaves
+ * Tab unbound by default; Escape then Tab still walks out of the editor). */
+export function pythonIndentation() {
+  return [indentUnit.of("    "), keymap.of([indentWithTab])];
+}
 
 export class Editor {
   view: EditorView;
@@ -18,6 +28,7 @@ export class Editor {
       extensions: [
         basicSetup,
         python(),
+        pythonIndentation(),
         oneDark,
         lintGutter(),
         EditorView.updateListener.of((update) => {
