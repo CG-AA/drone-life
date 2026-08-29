@@ -50,9 +50,12 @@ in `server/app/game/missions/siege.py` unless noted.
   make stock finite per wave (a real ferry economy), pay bounty into a team
   pool that buys unlocks, and let squishing (currently free, any hp) cost
   the tile. Zapping vs building vs ferrying should each be a viable round.
-- **Upgrades.** Team-bought, not personal: tower range/cooldown tiers,
-  Keep armour, a wave-skip "call the next wave early for +bonus" (the classic
-  TD risk knob), a one-time wall repair. Spend from the team pool above.
+- **Upgrades.** *(decided 2026-08-29, shipped: say() channel, pot →
+  wallets, finite quarry, the shop)* The pot is the team's, the spending is
+  personal: every wave clear splits the pot into wallets and
+  `drone.say("buy zap|speed|tower|colour|outline")` buys tiers that last
+  the round. No team-bought upgrades; Keep armour / wave-skip / one-time
+  repair are dropped.
 - **Puzzles for the "this is boring" crowd.** In-game, co-op, rewarding
   without carrying: a sealed gate that opens only when 3 drones hold a
   formation over it (rewards the *lane*, not the trio); a chokepoint

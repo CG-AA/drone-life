@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 from dataclasses import dataclass
 from typing import Final
 
@@ -117,7 +118,49 @@ def _quarry_stock(pilots: int, wave: int) -> int:
     towers' worth), a lone rehearsal drone 8 (7 during grace, wave 0)."""
     return QUARRY_STOCK_BASE + QUARRY_STOCK_PER_PILOT * pilots + QUARRY_STOCK_PER_WAVE * wave
 
+
+# --------------------------------------------------------------------- shop
+# Wallets buy *personal* tiers — the pot is the team's, the spending is yours.
+# Prices assume a pilot earns about the wave's kill count per wave (10-20):
+# one zap tier by wave 2, the ladder's top rungs only for a long round.
+SHOP: Final[dict[str, tuple[int, ...]]] = {
+    "zap": (20, 40, 80),  # reach + faster dwell
+    "speed": (30, 60),  # horizontal and climb caps
+    "tower": (40, 80),  # range + rate of every tower you built
+    "colour": (10,),  # cosmetics: repeatable, one price
+    "outline": (10,),
+}
+COSMETICS = ("colour", "outline")
+ZAP_RADIUS_PER_TIER = 1.0  # 4 -> 5 -> 6 -> 7 m
+ZAP_DWELL_PER_TIER = 0.25  # 1.5 -> 1.25 -> 1.0 -> 0.75 s
+SPEED_SCALE_PER_TIER = 0.25  # 10 -> 12.5 -> 15 m/s (climb scales the same)
+TOWER_RANGE_PER_TIER = 4.0  # 16 -> 20 -> 24 m
+TOWER_COOLDOWN_PER_TIER = 0.5  # 2.0 -> 1.5 -> 1.0 s
+TOWER_COOLDOWN_MIN = 1.0  # the floor, so stacking bonuses never makes a turret
+_ROMAN = ("0", "I", "II", "III")
+_HEX_RE = re.compile(r"#[0-9a-f]{6}")
+SAY_MENU = "GAME: say shop, wallet or buy <item>"
+
+
+@dataclass
+class Upgrades:
+    """One pilot's purchases this round: tiers and two cosmetics."""
+
+    zap: int = 0
+    speed: int = 0
+    tower: int = 0
+    colour: str | None = None
+    outline: str | None = None
+
+    def as_dict(self) -> dict:
+        return {"zap": self.zap, "speed": self.speed, "tower": self.tower,
+                "colour": self.colour, "outline": self.outline}
+
+
+_NO_UPGRADES = Upgrades()  # the read-only default for a pilot who bought nothing
+
 _HINTS = ("GAME: stack 3 steel = watchtower",
+          "GAME: say shop to spend your coins",
           "GAME: hover low on a creep to zap it",
           "GAME: 2-high walls turn creeps aside",
           "GAME: drop a tile on a creep to squish it",
@@ -296,6 +339,7 @@ class SiegeMission(Mission):
             QUARRY_EMPTY_SAY, "empty", self.hints.throttle)
         self.pool = 0  # team coins not yet paid out
         self.wallets: dict[str, int] = {}  # student_id -> coins to spend
+        self.upgrades: dict[str, Upgrades] = {}  # student_id -> what they bought
 
     # ------------------------------------------------------------- lifecycle
 
@@ -319,6 +363,8 @@ class SiegeMission(Mission):
     def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:
         if kind == "connected":
             self._brief(world, drone)
+            # a fresh link means a fresh (or respawned) drone: stock caps
+            world.set_speed(drone.id, self._speed_scale(drone.student_id))
 
     def on_text(self, world: WorldAPI, drone: DroneView, text: str) -> None:
         """The command surface: what `drone.say(...)` understands."""
@@ -326,11 +372,79 @@ class SiegeMission(Mission):
         if cmd == "wallet":
             coins = self.wallets.get(drone.student_id, 0)
             world.send_text(drone.id, f"GAME: wallet {coins} coins")
+        elif cmd == "shop":
+            world.send_text(drone.id, "GAME: shop: zap 20/40/80, speed 30/60")
+            world.send_text(drone.id, "GAME: shop: tower 40/80, colour 10, outline 10")
+            world.send_text(drone.id, "GAME: buy colour #RRGGBB, buy outline #RRGGBB")
+        elif cmd.startswith("buy "):
+            self._buy(world, drone, cmd[4:].split())
         else:
-            world.send_text(drone.id, "GAME: say wallet")
+            world.send_text(drone.id, SAY_MENU)
 
     def pilot(self, student_id: str) -> dict:
-        return {"wallet": self.wallets.get(student_id, 0)}
+        return {"wallet": self.wallets.get(student_id, 0),
+                **self._up(student_id).as_dict()}
+
+    # ------------------------------------------------------------------ shop
+
+    def _up(self, student_id: str | None) -> Upgrades:
+        return self.upgrades.get(student_id or "", _NO_UPGRADES)
+
+    def _zap_radius(self, d: DroneView) -> float:
+        return ZAP_RADIUS + ZAP_RADIUS_PER_TIER * self._up(d.student_id).zap
+
+    def _zap_dwell(self, d: DroneView) -> float:
+        return ZAP_DWELL - ZAP_DWELL_PER_TIER * self._up(d.student_id).zap
+
+    def _speed_scale(self, student_id: str) -> float:
+        return 1.0 + SPEED_SCALE_PER_TIER * self._up(student_id).speed
+
+    def _tower_stats(self, tower: Tower) -> tuple[float, float, int]:
+        """(range, cooldown, tier) for a tower, from its builder's tier."""
+        tier = self._up(tower.builder).tower
+        return (TOWER_RANGE + TOWER_RANGE_PER_TIER * tier,
+                max(TOWER_COOLDOWN_MIN, TOWER_COOLDOWN - TOWER_COOLDOWN_PER_TIER * tier),
+                tier)
+
+    def _buy(self, world: WorldAPI, drone: DroneView, words: list[str]) -> None:
+        item = words[0] if words else ""
+        if item == "color":
+            item = "colour"
+        if item not in SHOP:
+            world.send_text(drone.id, "GAME: no such item, say shop")
+            return
+        sid = drone.student_id
+        wallet = self.wallets.get(sid, 0)
+        up = self.upgrades.setdefault(sid, Upgrades())
+        if item in COSMETICS:
+            value = words[1] if len(words) > 1 else ""
+            if not _HEX_RE.fullmatch(value):
+                world.send_text(drone.id, "GAME: bad colour, use #RRGGBB")
+                return
+            price = SHOP[item][0]
+            if wallet < price:
+                world.send_text(drone.id, f"GAME: need {price} coins, have {wallet}")
+                return
+            setattr(up, item, value)
+            bought, level = value, value
+        else:
+            tier = getattr(up, item)
+            if tier >= len(SHOP[item]):
+                world.send_text(drone.id, f"GAME: {item} maxed at {_ROMAN[tier]}")
+                return
+            price = SHOP[item][tier]
+            if wallet < price:
+                world.send_text(drone.id, f"GAME: need {price} coins, have {wallet}")
+                return
+            setattr(up, item, tier + 1)
+            bought, level = _ROMAN[tier + 1], tier + 1
+            if item == "speed":
+                world.set_speed(drone.id, self._speed_scale(sid))
+        self.wallets[sid] = wallet - price
+        # widest: "GAME: bought outline #ff8800 (9999 left)" = 41
+        world.send_text(drone.id, f"GAME: bought {item} {bought} ({wallet - price} left)")
+        world.emit_event("upgrade", f"{drone.name} bought {item} {bought}", student_id=sid,
+                         data={"item": item, "level": level, "price": price})
 
     def _brief(self, world: WorldAPI, drone: DroneView) -> None:
         """What a newcomer needs, and nothing that already happened: the
@@ -381,6 +495,9 @@ class SiegeMission(Mission):
         self.empty_hint.clear()
         self.pool = 0
         self.wallets.clear()
+        self.upgrades.clear()
+        for d in world.drones():  # the sim's World.reset does this too; missions
+            world.set_speed(d.id, 1.0)  # must not depend on the order of the two
         self.setup(world)
 
     def hud(self) -> dict:
@@ -482,13 +599,14 @@ class SiegeMission(Mission):
     def _fire_towers(self, world: WorldAPI) -> None:
         for cell in sorted(self.towers):
             tower = self.towers[cell]
-            if world.now - tower.last_shot < TOWER_COOLDOWN:
+            reach, cooldown, _tier = self._tower_stats(tower)
+            if world.now - tower.last_shot < cooldown:
                 continue
             tn, te = hex.axial_to_world(cell)
             target = min(
                 ((math.hypot(u.n - tn, u.e - te), uid) for uid, u in self.creeps.items()),
                 default=None)
-            if target is None or target[0] > TOWER_RANGE:
+            if target is None or target[0] > reach:
                 continue
             u = self.creeps[target[1]]
             tower.last_shot = world.now
@@ -508,7 +626,8 @@ class SiegeMission(Mission):
             # to zap. Same shape as delivery's TOO_HIGH_SAY, per creep because
             # the creep moves and the ceiling moves with it.
             high = self.zap_high.setdefault(
-                uid, DwellTracker(ZAP_RADIUS, float("inf"), HINT_SUSTAIN))
+                uid, DwellTracker(ZAP_RADIUS, float("inf"), HINT_SUSTAIN,
+                                  radius_of=self._zap_radius))
 
             def too_high(d: DroneView, c: float = ceiling) -> bool:
                 return d.alt > c
@@ -516,7 +635,9 @@ class SiegeMission(Mission):
             nag = high.update(drones, u.n, u.e, dt, eligible=too_high)
             if nag is not None and self.hints.throttle.ready(f"zap_high:{nag.id}", world.now):
                 world.send_text(nag.id, f"GAME: drop under {round(ceiling)} m to zap")
-            tracker = self.zap.setdefault(uid, DwellTracker(ZAP_RADIUS, 0.0, ZAP_DWELL))
+            tracker = self.zap.setdefault(
+                uid, DwellTracker(ZAP_RADIUS, 0.0, ZAP_DWELL,
+                                  radius_of=self._zap_radius, dwell_of=self._zap_dwell))
             tracker.max_alt = ceiling
             winner = tracker.update(drones, u.n, u.e, dt)
             if winner is not None:
@@ -525,7 +646,7 @@ class SiegeMission(Mission):
                 # parked drone is not an area weapon and splitting up pays
                 if world.now < self.zap_ready.get(winner.id, -math.inf):
                     continue
-                self.zap_ready[winner.id] = world.now + ZAP_DWELL - _EPS
+                self.zap_ready[winner.id] = world.now + self._zap_dwell(winner) - _EPS
                 self._fx(world, "zap_arc", winner.n, winner.e, winner.alt, ZAP_ARC_S,
                          {"tn": u.n, "te": u.e, "talt": u.alt})
                 # the dwell re-armed itself: another 1.5 s takes the next hp
@@ -792,11 +913,12 @@ class SiegeMission(Mission):
                               alt=self.tm.top_alt(self.site),
                               data={"material": "steel", "need": TOWER_HEIGHT,
                                     "have": self.tm.height(self.site), "size": hex.HEX_SIZE}))
-        for cell in self.towers:
+        for cell, tower in self.towers.items():
             n, e = hex.axial_to_world(cell)
+            reach, _cooldown, tier = self._tower_stats(tower)
             out.append(Entity(id=f"tower_{cell[0]}_{cell[1]}", kind="tower",
                               n=n, e=e, alt=self.tm.top_alt(cell),
-                              data={"range": TOWER_RANGE}))
+                              data={"range": reach, "tier": tier}))
         for beam_id, _expiry, (n, e, alt), (tn, te, talt) in self.beams:
             out.append(Entity(id=beam_id, kind="beam", n=n, e=e, alt=alt,
                               data={"tn": tn, "te": te, "talt": talt}))

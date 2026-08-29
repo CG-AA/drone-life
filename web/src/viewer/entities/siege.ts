@@ -111,6 +111,10 @@ export const tower: KindRenderer = {
     vis.g.circle(0, -r * 0.3, r * 1.8).fill({ color: 0x7cc7ff, alpha: glow * 0.2 });
     vis.g.ellipse(0, 0, r * 1.2, r * 0.6).fill({ color: 0x274a63 });
     vis.g.circle(0, -r * 0.5, r * 0.8).fill({ color: 0x9fd8ff, alpha: 0.6 + glow * 0.4 });
+    const tier = Math.max(0, Math.floor(Number(ent.data.tier ?? 0))); // builder's tier
+    for (let i = 0; i < tier; i++) {  // pips on the dome, one per tier
+      vis.g.circle((i - (tier - 1) / 2) * r * 0.5, -r * 1.3, r * 0.18).fill({ color: 0xffd166 });
+    }
     const range = Number(ent.data.range ?? 0); // faint ring on the ground
     if (range > 0) {
       const ring: number[] = [];

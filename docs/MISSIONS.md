@@ -55,6 +55,10 @@ Facts that bite if you don't know them:
   mission step), and the engine hands it to you verbatim. Interpret it
   yourself, reply with `send_text`.
   Ignored by default; must tolerate any string. **[enforced]**
+- `set_speed` is the one physics knob a mission has, and it is per drone
+  and stateless on the sim side: a respawned or rejoined drone is stock
+  again, so re-apply what a pilot bought on every `connected` event (siege
+  does), and put everyone back to 1.0 in `reset()`.
 
 ## WorldAPI — everything a mission may do
 
@@ -68,6 +72,7 @@ world.emit_event(kind, msg, student_id=None, data=None)   # projector feed
 world.add_score(points, reason, student_id=None, feed=True) -> total
 world.send_text(drone_id, text)       # STATUSTEXT to one drone
 world.broadcast_text(text)            # STATUSTEXT to everyone
+world.set_speed(drone_id, scale)      # scale one drone's speed caps (1.0 = stock)
 ```
 
 `add_score(..., feed=False)` moves the total (and milestones) without the
@@ -120,7 +125,7 @@ frame **[enforced]**. Kinds in play today, and who renders them
 | `keep` | `hp`, `max` | siege.ts |
 | `gate` | `label`, `active` | siege.ts |
 | `troop` | `dir` (deg), `chewing`, `kind`, `hp`, `max` | siege.ts |
-| `tower` | `range` | siege.ts |
+| `tower` | `range`, `tier` | siege.ts |
 | `beam` | `tn`, `te`, `talt` | siege.ts (tower shot, 0.35 s) |
 | `zap_arc` | `tn`, `te`, `talt` | siege.ts (a drone's zap, 0.3 s) |
 | `poof` | `verb` (zap/squish/tower/leak) | siege.ts (a creep died, 0.6 s) |
@@ -144,8 +149,8 @@ tested); add a branch there when your mission publishes something new.
 
 **Per-pilot state goes in `pilot(student_id)`, not `hud()`.** `hud()` is
 one dict for the room; `Mission.pilot(student_id) -> dict` (default `{}`)
-rides each drone's own row as `DroneState.pilot` — siege's wallet — and
-lights up the student page's strip. Both reach every socket at 10 Hz, so a
+rides each drone's own row as `DroneState.pilot` — siege's wallet, bought
+tiers and colours — and lights up the student page's strip. Both reach every socket at 10 Hz, so a
 64-entry map inside `hud()` is 64× the bytes of the same data on the rows.
 
 - **`data.carried_by` is magic**: `api/messages.py` derives the drone's

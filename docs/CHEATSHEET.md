@@ -15,6 +15,7 @@ drone.next_event(timeout=10)         # block for the next one (or None)
 drone.land()          drone.rtl()    # land here / fly home and land
 drone.wait(2)         drone.armed    # sleep / motors-armed flag
 drone.say("wallet")                  # talk to the game (siege: your coins)
+drone.say("buy zap")                 # spend them: say("shop") lists prices
 ```
 
 ## The map
@@ -47,6 +48,7 @@ gives you `"crate 3 at N 12 E -40"` (prefix stripped). Every position is
 | `wall chewed at …` | a creep is eating your wall — zap, rebuild |
 | `wave 3 clear! +10` (or `2 leaked +5`) | leaks = -1 each and half the bonus |
 | `+8 coins, wallet 23` | every kill feeds a team pot; each wave clear splits it into everyone's wallet |
+| `bought zap II (3 left)` / `need 40 coins, have 17` | `say("buy zap")`: zap 20/40/80 (reach, faster), speed 30/60, tower 40/80 (your towers), colour/outline 10 (`buy colour #ff8800`) |
 | `quarry restocked, 27 steel` / `quarry empty, restock next wave` | the quarry is finite per wave — ferry what you will build |
 
 ## Top 5 errors

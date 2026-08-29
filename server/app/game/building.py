@@ -37,12 +37,16 @@ _EPS = 1e-9  # dt accumulates in floats; N*dt may land a hair under N*dt exactly
 
 @dataclass
 class DwellTracker:
-    """Point-radius hover dwell: per-drone accumulation, reset on exit."""
+    """Point-radius hover dwell: per-drone accumulation, reset on exit.
+    `radius_of` / `dwell_of` override the scalars per drone (siege's zap
+    tiers: one tracker per creep, every drone its own reach and dwell)."""
 
     radius: float
     max_alt: float
     dwell_s: float
     acc: dict[str, float] = field(default_factory=dict)
+    radius_of: Callable[[DroneView], float] | None = None
+    dwell_of: Callable[[DroneView], float] | None = None
 
     def update(self, drones: Iterable[DroneView], n: float, e: float, dt: float,
                eligible: Callable[[DroneView], bool] | None = None) -> DroneView | None:
@@ -56,11 +60,13 @@ class DwellTracker:
                 continue
             if eligible is not None and not eligible(d):
                 continue
-            if math.hypot(d.n - n, d.e - e) > self.radius:
+            radius = self.radius if self.radius_of is None else self.radius_of(d)
+            if math.hypot(d.n - n, d.e - e) > radius:
                 continue
             in_range.add(d.id)
             self.acc[d.id] = self.acc.get(d.id, 0.0) + dt
-            if winner is None and self.acc[d.id] >= self.dwell_s - _EPS:
+            dwell = self.dwell_s if self.dwell_of is None else self.dwell_of(d)
+            if winner is None and self.acc[d.id] >= dwell - _EPS:
                 winner = d
         for drone_id in list(self.acc):  # leaving the circle resets your timer
             if drone_id not in in_range:

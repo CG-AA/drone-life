@@ -65,6 +65,7 @@ class FakeWorld:
         self.texts: list[tuple[str, str]] = []  # (target, text); "*" = broadcast
         self.scores: list[tuple[int, str, str | None]] = []
         self.score = 0
+        self.speeds: dict[str, float] = {}  # drone id -> last set_speed scale
 
     def drones(self):
         return self.views
@@ -95,6 +96,9 @@ class FakeWorld:
     def broadcast_text(self, text, severity=6):
         check_text(text)
         self.texts.append(("*", text))
+
+    def set_speed(self, drone_id, scale):
+        self.speeds[drone_id] = scale
 
     # --------------------------------------------- engine-shaped drivers
 

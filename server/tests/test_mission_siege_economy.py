@@ -67,7 +67,7 @@ def test_wave_clear_splits_the_pool_and_carries_the_remainder():
     ev = next(ev for ev in world.events if ev["kind"] == "wave_clear")
     assert ev["msg"].endswith("+10, 8 coins each")
     assert ev["data"]["share"] == 8 and ev["data"]["pool"] == 1
-    assert m.pilot("s-d1") == {"wallet": 8} and m.pilot("nobody") == {"wallet": 0}
+    assert m.pilot("s-d1")["wallet"] == 8 and m.pilot("nobody")["wallet"] == 0
     assert m.hud()["pool"] == 1
     assert_grammar(world)
 
@@ -150,7 +150,7 @@ def test_say_wallet_answers_with_the_balance():
 def test_say_anything_else_gets_the_menu():
     world, m = make(seated=("d0",))
     world.text(m, world.views[0], "hello?")
-    assert world.texts[-1] == ("d0", "GAME: say wallet")
+    assert world.texts[-1] == ("d0", "GAME: say shop, wallet or buy <item>")
     assert_grammar(world)
 
 
@@ -163,7 +163,7 @@ def test_reset_zeroes_the_economy_and_restocks():
     m.reset(world)
     assert m.pool == 0 and m.wallets == {}
     assert m.quarry.remaining == _quarry_stock(2, 0)
-    assert m.pilot("s-d0") == {"wallet": 0}
+    assert m.pilot("s-d0")["wallet"] == 0
 
 
 def test_quarry_entity_carries_the_stock():

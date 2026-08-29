@@ -84,6 +84,9 @@ class _API:
         for view in self._views:
             self._engine.backend.send_text(view.id, text, severity)
 
+    def set_speed(self, drone_id: str, scale: float) -> None:
+        self._engine.backend.set_speed(drone_id, scale)
+
 
 class GameEngine:
     def __init__(self, backend: DroneBackend, bus: EventBus, mission: Mission,

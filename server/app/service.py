@@ -78,6 +78,11 @@ class KinematicBackend(DroneBackend):
         if drone:
             drone.say(text, severity)
 
+    def set_speed(self, drone_id: str, scale: float) -> None:
+        drone = self.world.drones.get(drone_id)
+        if drone:
+            drone.speed_scale = max(0.1, float(scale))
+
 
 class DroneLifeService:
     def __init__(self, settings: Settings) -> None:

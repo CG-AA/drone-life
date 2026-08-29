@@ -173,7 +173,12 @@ whatever the room size. The quarry is finite: `QUARRY_STOCK_BASE` 6 +
 `QUARRY_STOCK_PER_PILOT` 1 × seats + `QUARRY_STOCK_PER_WAVE` 1 × wave, set
 (not added) at every wave start and at reset — 20 pilots at wave 1 see 27
 steel, nine towers' worth; a lone rehearsal drone 8 (7 during grace). Wallets are what the
-upgrade shop spends (see the siege block of the cheat sheet).
+upgrade shop spends: `SHOP` prices zap 20/40/80 (+1 m reach, −0.25 s dwell
+per tier), speed 30/60 (+25 % caps per tier), tower 40/80 (+4 m range,
+−0.5 s reload per tier on the builder's towers, floored at
+`TOWER_COOLDOWN_MIN` 1 s), colour/outline 10 (cosmetic, repeatable). Tiers
+are personal and last the round; at ~15 coins a wave a pilot buys one tier
+by wave 2 and reaches the top rungs only in a long round.
 
 The roster (`KINDS` / `SHARES`): grunts 1 hp from wave 1; runners (1.5×
 speed) from 3; brutes (3 hp, 0.65× speed, chew 2×) from 5; sappers (2 hp,

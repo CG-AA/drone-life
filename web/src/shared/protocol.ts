@@ -37,8 +37,16 @@ export interface DroneState {
   pilot: Record<string, unknown>;
 }
 
-/** siege's DroneState.pilot */
-export interface SiegePilotState { wallet: number }
+/** siege's DroneState.pilot: coins to spend, bought tiers (0 = stock), and
+ * two cosmetics as "#rrggbb" (null until bought) */
+export interface SiegePilotState {
+  wallet: number;
+  zap: number;
+  speed: number;
+  tower: number;
+  colour: string | null;
+  outline: string | null;
+}
 
 /** Every kind the missions emit today; the viewer renders unknown kinds with a
  * neutral fallback marker, so this list is documentation, not a gate. */
@@ -71,7 +79,8 @@ export interface GhostTileData { material: string; need: number; have: number; s
 /** kind: grunt | runner | brute | sapper | champion (missions/siege.py KINDS) */
 export interface TroopData { dir: number; chewing: boolean; kind: string; hp: number; max: number }
 export interface KeepData { hp: number; max: number }
-export interface TowerData { range: number }
+/** range grows with the builder's tower tier (0 = stock) */
+export interface TowerData { range: number; tier: number }
 /** an archway creeps pour from; active while its wave is still spawning */
 export interface GateData { label: string; active: boolean }
 export interface BeamData { tn: number; te: number; talt: number }

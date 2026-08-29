@@ -19,6 +19,10 @@ class StubBackend(DroneBackend):
     def send_text(self, drone_id: str, text: str, severity: int) -> None:
         pass
 
+    def set_speed(self, drone_id: str, scale: float) -> None:
+        self.speeds = getattr(self, "speeds", {})
+        self.speeds[drone_id] = scale
+
 
 class BrokenMission(Mission):
     name = "broken"
@@ -122,6 +126,19 @@ def test_healthy_mission_scores_through_the_api():
     assert engine.score == 10
     assert [ev["kind"] for ev in engine.bus.feed] == ["score"]
     assert [ent.id for ent in engine.entities()] == ["x"]
+
+
+def test_set_speed_reaches_the_backend():
+    class Buyer(Mission):
+        name = "buyer"
+
+        def tick(self, world, dt):
+            world.set_speed("d7", 1.25)
+
+    engine = make_engine(Buyer())
+    engine.start(0.0)
+    engine.tick(0.1, 0.1, [])
+    assert engine.backend.speeds == {"d7": 1.25}
 
 
 def test_reset_lets_the_mission_read_the_final_score_first():

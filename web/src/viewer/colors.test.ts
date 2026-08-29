@@ -2,7 +2,7 @@
  * on the arena floor from the back of the room. */
 
 import { expect, it } from "vitest";
-import { contrastRatio, relativeLuminance, slotColor } from "./colors";
+import { contrastRatio, parseHex, relativeLuminance, slotColor } from "./colors";
 
 const FLOOR = 0x151b28; // COLORS.floor in shared/theme.ts
 
@@ -37,4 +37,14 @@ it("clears AA against the arena floor for every slot", () => {
     const ratio = contrastRatio(slotColor(sysid), FLOOR);
     expect(ratio, `sysid ${sysid} on the floor`).toBeGreaterThanOrEqual(4.5);
   }
+});
+
+it("parses a bought #rrggbb and refuses everything else", () => {
+  expect(parseHex("#ff8800")).toBe(0xff8800);
+  expect(parseHex(" #FF8800 ")).toBe(0xff8800);
+  expect(parseHex("#fff")).toBeNull();
+  expect(parseHex("ff8800")).toBeNull();
+  expect(parseHex("#gg8800")).toBeNull();
+  expect(parseHex(null)).toBeNull();
+  expect(parseHex(0xff8800)).toBeNull();
 });

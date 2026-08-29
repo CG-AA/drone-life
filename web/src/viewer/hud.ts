@@ -27,6 +27,7 @@ export const EVENT_CLASS: Record<string, string> = {
   tower_up: "triumph",
   boss_down: "triumph",
   round_end: "triumph",
+  upgrade: "score",
   crashed: "danger",
   crate_lost: "danger",
   tile_lost: "danger",

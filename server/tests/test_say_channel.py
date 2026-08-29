@@ -25,7 +25,7 @@ async def test_a_script_can_talk_to_the_siege(tmp_path):
         finally:
             pilot.close()
         row = next(d for d in world_message(service)["drones"] if d["student_id"] == student.id)
-        assert row["pilot"] == {"wallet": 0}, "the wallet rides the drone row"
+        assert row["pilot"]["wallet"] == 0, "the wallet rides the drone row"
     finally:
         await service.stop()
 

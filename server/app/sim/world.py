@@ -60,3 +60,4 @@ class World:
         self.epoch += 1
         for drone in self.drones.values():
             drone.reset_to_pad()
+            drone.speed_scale = 1.0  # bought tiers are round state

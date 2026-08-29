@@ -177,6 +177,11 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `+8 coins, wallet 23` | every kill pays the team pot one coin per pilot; each wave clear splits the pot evenly into wallets — `drone.say("wallet")` to ask your balance |
 | `quarry restocked, 27 steel` | the quarry is a stock per wave (more pilots, more steel), refilled — not topped up — when a wave starts |
 | `quarry empty, restock next wave` | the pile is spent → zap until the next wave |
+| `shop: zap 20/40/80, speed 30/60` … | `drone.say("shop")` — the price list, three lines |
+| `bought zap II (3 left)` | `drone.say("buy zap")` — tiers are yours for the round: zap reaches 1 m further and re-arms 0.25 s faster per tier; speed +25 % per tier; tower +4 m range and −0.5 s reload for every tower *you* built |
+| `need 40 coins, have 17` / `zap maxed at III` | not yet / no further |
+| `bought colour #ff8800 (7 left)` | `drone.say("buy colour #ff8800")` (or `outline`) — your drone on the wall wears it; 10 coins, buy again to change |
+| `bad colour, use #RRGGBB` / `no such item, say shop` | the shop is picky about spelling |
 | `keep hit! hp 7, -1` / `keep fell! -25, rebuilt` | leaks cost points; it never game-overs |
 | `round over! wave 7, 63 kills` | the instructor reset — that's the score to beat |
 
@@ -196,7 +201,7 @@ helper sends:
 | `land()` / `rtl()` | `COMMAND_LONG: NAV_LAND` / `NAV_RETURN_TO_LAUNCH` |
 | `position()` | reads the `LOCAL_POSITION_NED` telemetry stream |
 | `events()` | reads `STATUSTEXT` messages starting with `GAME:` |
-| `say("wallet")` | sends a `STATUSTEXT` *upstream* — the same message type, the other direction |
+| `say("wallet")` / `say("buy zap")` | sends a `STATUSTEXT` *upstream* — the same message type, the other direction |
 
 Everything you learn here transfers: point the same code at a real drone's
 connection string and the messages are identical.
