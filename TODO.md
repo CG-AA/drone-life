@@ -46,9 +46,11 @@ in `server/app/game/missions/siege.py` unless noted.
   ferry (quarry → site, `tile_carried`), builder (walls/towers at ghosts),
   zapper (lane assignment), repair (rebuild chewed cells — the ghost for a
   chewed wall already exists), scout/spotter (an event-driven pilot that
-  relays creep kinds to the room). A role with no bot has no demo on the
-  projector and no "beat the house" benchmark — `examples/bot_*.py` grows
-  with the role list (SESSION_PLAN §7).
+  relays creep kinds to the room). House bots are the *demo* of every role,
+  task and building — the room should watch one ferry, one build, one
+  repair happen — and they must stay beatable: a deliberately naive bot per
+  role (`examples/bot_*.py`, SESSION_PLAN §7), not an optimal one; "beat
+  the house bot" is the ladder, so the house bot has to be catchable.
 - **Buildings.** The 4-high stack is legal and currently means nothing:
   4 steel = long-range tower (or a different weapon); clay in siege as cheap
   chew-fodder vs steel that only sappers eat fast; a repairable gate at a
@@ -69,9 +71,12 @@ in `server/app/game/missions/siege.py` unless noted.
   an event-driven interceptor that must beat the house zapper's lead model;
   a sapper alarm that only a listener catches. Each ships with a worked
   answer hidden until the wrap (SESSION_PLAN §6 pattern).
-- **Anti-blob targeting.** Per-pilot lane/gate assignment in the
-  `creep at …` callouts (`TARGET_EVERY` hint) instead of everyone's nearest,
-  and diminishing bounty when N drones hover the same creep. *(proposed)*
+- **The blob is a feature.** Forty zappers on one creep is the unedited
+  starter doing exactly what it says; the fix (pick a lane, lead further,
+  ignore a creep with three drones on it already) is a ten-line edit and the
+  easiest coding win of the day. Do not engineer it away server-side — keep
+  starter flaws that a student can see on the projector and fix themselves,
+  and list them as "easy practices" on the cheat sheet. *(decided)*
 - **Instrumentation before balance.** `SiegeStats` per round → append a
   JSONL line at reset (pilots, waves, kills by verb, leaks, towers, steel
   ferried, time-to-first-tower); `make balance` runs N headless bot-only
