@@ -69,6 +69,10 @@ ADMIN_TOKEN=$(openssl rand -base64 24)
 # the day starts on freefly (SESSION_PLAN.md §3); switch missions later by
 # editing this line and restarting — see "Restarts and mission switches"
 MISSION=freefly
+# what the projector's "join the sky at" card shows. The projector page is
+# usually opened on localhost or the LAN, and its own address would send
+# students to the wrong place — give them the one they can reach.
+PUBLIC_URL=http://203.0.113.5:8000
 # the OCI VM's address as the lab server sees it — without this every student
 # shares one rate-limit bucket; see "OCI VM reverse proxy" below. Through the
 # SSH tunnel in docs/deploy/gateway-tunnel/ it is 127.0.0.1.
@@ -96,6 +100,7 @@ target and the systemd unit).
 | `ADMIN_TOKEN` | `change-me` | instructor console + admin API token — override likewise |
 | `MISSION` | `delivery` | which mission plugin runs (`canyon`, `delivery`, `forge`, `freefly`, `rampart`, `siege`) |
 | `MAX_STUDENTS` | `20` | roster cap = drone slots = MAVLink ports |
+| `PUBLIC_URL` | *(empty)* | what the projector's "join the sky at" card shows, e.g. `http://203.0.113.5:8000` — the address **students** can reach, which is rarely where the projector page itself was opened (localhost, the LAN). Empty = the page's own origin |
 | `SIM_SEED` | `42` | mission RNG seed (crate spawns, wave gates) |
 | `SIM_UNTHROTTLED` | `false` | tests only: run the driver without sleeping |
 | `MAVLINK_HOST` | `127.0.0.1` | MAVLink listeners bind here — keep on loopback |

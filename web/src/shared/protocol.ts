@@ -129,6 +129,8 @@ export interface HelloData {
   arena: { half: number; alt_max: number; hex_size: number };
   mission: string;
   epoch: number;
+  /** where students should be sent (PUBLIC_URL); "" or absent = the viewer's own origin */
+  public_url?: string;
 }
 
 /** One hex cell's stack, bottom-up. Mirrors TileMap.to_wire(). */

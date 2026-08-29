@@ -16,9 +16,13 @@ export interface AttractView {
   joinUrl: string;
 }
 
-/** `host` is an origin (location.origin); /submit is a real server route. */
+/** `host` is an origin (location.origin); /submit is a real server route.
+ * `publicUrl` is the server's PUBLIC_URL — it wins when set, because the
+ * projector is usually opened on localhost or the LAN while students arrive
+ * through a gateway, and its own origin would send them to the wrong place. */
 export function attractView(connected: boolean, droneCount: number,
-                            code: string | null, host: string): AttractView {
+                            code: string | null, host: string,
+                            publicUrl = ""): AttractView {
   // deliberately keyed on the drone count rather than on hello, because a
   // fresh socket usually delivers a world frame before hello arrives
   let mode: AttractMode = "hidden";
@@ -27,6 +31,6 @@ export function attractView(connected: boolean, droneCount: number,
     mode,
     show: mode === "full",
     code: code ?? "",
-    joinUrl: `${host.replace(/\/+$/, "")}/submit`,
+    joinUrl: `${(publicUrl.trim() || host).replace(/\/+$/, "")}/submit`,
   };
 }

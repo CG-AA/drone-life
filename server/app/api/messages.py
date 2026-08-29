@@ -63,6 +63,8 @@ def hello_message(service: DroneLifeService) -> dict:
                   "hex_size": service.hex_size()},
         "mission": service.engine.mission.name,
         "epoch": service.world.epoch,
+        # "" when unset; the viewer then advertises its own origin
+        "public_url": service.settings.public_url.strip(),
     }
 
 

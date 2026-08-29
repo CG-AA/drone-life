@@ -28,6 +28,10 @@ class Settings(BaseSettings):
 
     max_students: int = 20
     mission: str = "delivery"
+    # what the projector's "join the sky at" card shows: the address students
+    # can actually reach (the public gateway), which is rarely the address the
+    # projector page itself was opened on. Empty = the page's own origin.
+    public_url: str = ""
     sim_seed: int = 42
     sim_unthrottled: bool = False  # tests: run the driver without sleeping
 

@@ -91,8 +91,9 @@ async function boot(): Promise<void> {
   const attract = document.getElementById("attract")!;
   let connected = false;
   let droneCount = 0;
+  let publicUrl = ""; // the server's PUBLIC_URL, once hello arrives
   const showAttract = (): void => {
-    const v = attractView(connected, droneCount, code, location.origin);
+    const v = attractView(connected, droneCount, code, location.origin, publicUrl);
     document.getElementById("attract-url")!.textContent = v.joinUrl;
     document.getElementById("attract-code")!.textContent = v.code;
     attract.classList.toggle("hidden", v.mode === "hidden");
@@ -114,6 +115,8 @@ async function boot(): Promise<void> {
     scene.setArena(d.arena.half, d.arena.alt_max);
     scene.setHexGeometry(d.arena.hex_size);
     hud.setMission(`mission: ${d.mission}`);
+    publicUrl = d.public_url ?? "";
+    showAttract();
   });
   ws.on<WorldData>("world", (d) => {
     if (d.epoch !== epoch) {

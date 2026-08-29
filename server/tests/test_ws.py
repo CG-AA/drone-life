@@ -73,6 +73,25 @@ async def test_viewer_with_the_room_code_gets_the_world(tmp_path):
     assert {"hello", "world"} <= kinds
 
 
+async def test_hello_carries_the_public_url_for_the_projector_card(tmp_path):
+    # the projector is opened on localhost; the card must show the gateway
+    settings = make_settings(tmp_path, public_url=" http://203.0.113.5:8000 ")
+    async with running_app(settings) as app:
+        sent = await ws_session(app, "/ws/viewer", f"code={settings.room_code}", want=6)
+
+    hello = next(f for f in frames(sent) if f["type"] == "hello")
+    assert hello["data"]["public_url"] == "http://203.0.113.5:8000"
+
+
+async def test_hello_public_url_is_empty_when_unset(tmp_path):
+    settings = make_settings(tmp_path)
+    async with running_app(settings) as app:
+        sent = await ws_session(app, "/ws/viewer", f"code={settings.room_code}", want=6)
+
+    hello = next(f for f in frames(sent) if f["type"] == "hello")
+    assert hello["data"]["public_url"] == ""
+
+
 async def test_student_with_a_live_token_gets_attached(tmp_path):
     settings = make_settings(tmp_path)
     async with running_app(settings) as app:
