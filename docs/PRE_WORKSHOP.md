@@ -49,11 +49,19 @@ edits `/etc/drone-life.env` and never prints secrets. **For a new class add
 - [ ] `/etc/drone-life.env`, by hand — preflight only warns when a value is
       *unset*, a wrong one passes: `MISSION=freefly` (the box is on `siege`
       from the playtest; siege comes back at the break via SESSION_PLAN §5's
-      SWITCH box), real `ROOM_CODE` and `ADMIN_TOKEN`,
-      `FORWARDED_ALLOW_IPS=127.0.0.1` (it was wrong on 2026-08-29),
-      `PUBLIC_URL=` the address on the projector card, `ROOMS=r1,…` for the
-      small missions and empty for the big siege, and **no**
-      `EXTRA_BOT_SCRIPTS` (the worked answers must stay hidden until the wrap).
+      SWITCH box), real `ROOM_CODE` and `ADMIN_TOKEN`, `PUBLIC_URL=` the
+      address on the projector card, `ROOMS=r1,…` for the small missions and
+      empty for the big siege, and **no** `EXTRA_BOT_SCRIPTS` (the worked
+      answers must stay hidden until the wrap).
+- [ ] The join limiter matches how students reach the box. Joins are limited
+      per client IP (`JOIN_RATE_LIMIT_PER_MINUTE`, default 30). **Direct
+      `:8000` through the SSH tunnel (this box, 2026-08-29):** every student
+      arrives as `127.0.0.1` and there is no header with their real address,
+      so the whole room shares one budget — set
+      `JOIN_RATE_LIMIT_PER_MINUTE=300` (or more than the class size) and leave
+      `FORWARDED_ALLOW_IPS` alone. **Behind nginx:** keep the default and set
+      `FORWARDED_ALLOW_IPS=127.0.0.1` so the `X-Forwarded-For` header is
+      trusted from the tunnel.
 - [ ] `/etc/drone-life.d/*.env` for every room (docs/ROOMS.md;
       `sh docs/deploy/rooms/mkrooms.sh N | sudo sh`), plus the proxy's
       `location /rN/` blocks and `TUNNEL_ROOM_FORWARDS` on the gateway

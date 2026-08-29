@@ -110,11 +110,14 @@ if step checklist; then
   say "7/7 what only you can do — check each before the doors open"
   cat <<'LIST'
    [ ] $ENV_FILE: MISSION=freefly for the warm-up (siege comes at the break via
-       the SWITCH box); ROOM_CODE / ADMIN_TOKEN not the placeholders;
-       FORWARDED_ALLOW_IPS=127.0.0.1 (the tunnel — preflight only warns when it
-       is UNSET, a wrong value passes); PUBLIC_URL = the address on the projector
-       card; ROOMS=r1,… for the small missions and EMPTY for the big siege;
-       NO EXTRA_BOT_SCRIPTS (the worked answers stay hidden until the wrap).
+       the SWITCH box); ROOM_CODE / ADMIN_TOKEN not the placeholders; PUBLIC_URL
+       = the address on the projector card; ROOMS=r1,… for the small missions
+       and EMPTY for the big siege; NO EXTRA_BOT_SCRIPTS (the worked answers
+       stay hidden until the wrap). Preflight only warns when a value is UNSET.
+   [ ] The join limiter (JOIN_RATE_LIMIT_PER_MINUTE, per client IP, default 30):
+       :8000 straight through the SSH tunnel = the whole room is one IP, so set
+       it above the class size (300); behind nginx keep the default and set
+       FORWARDED_ALLOW_IPS=127.0.0.1 instead.
    [ ] /etc/drone-life.d/<room>.env for every room in ROOMS (docs/ROOMS.md;
        `sh docs/deploy/rooms/mkrooms.sh N | sudo sh`), and the proxy's /rN/
        locations + TUNNEL_ROOM_FORWARDS on the gateway (ROOMS.md) if rooms are used.
