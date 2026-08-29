@@ -7,18 +7,18 @@ somebody's head. Tick them top to bottom.
 ## 1. Land the code (GitHub, ~10 minutes)
 
 The stack is eight branches, each on the previous, on GitHub as stacked
-PRs (`siege/1-say-economy` … `siege/8-balance`). Merge them **in order**,
+PRs #16–#23 (`siege/1-say-economy` … `siege/8-balance`). Merge them **in order**,
 each into the one before it (or squash the whole stack into `main` at once
 — it is one linear history), then confirm CI is green on `main`.
 
-- [ ] `siege/1-say-economy` → `main` (say() channel, pot → wallets, finite quarry)
-- [ ] `siege/2-upgrades` (the shop) — after 1
-- [ ] `siege/3-quests` (route / predict / compute, room quests, answers) — after 2
-- [ ] `siege/4-buildings` (clay pit, ring tower, beacon, bell) — after 3
-- [ ] `siege/5-roles` (repair + scout, the tally, bot_repair / bot_scout) — after 4
-- [ ] `siege/6-puzzles` (gate S, bot_chokepoint) — after 5
-- [ ] `siege/7-instrumentation` (rounds.jsonl, make balance, feed fold) — after 6
-- [ ] `siege/8-balance` (wave cap, pre-workshop script) — after 7
+- [ ] #16 `siege/1-say-economy` → `main` (say() channel, pot → wallets, finite quarry)
+- [ ] #17 `siege/2-upgrades` (the shop) — after 1
+- [ ] #18 `siege/3-quests` (route / predict / compute, room quests, answers) — after 2
+- [ ] #19 `siege/4-buildings` (clay pit, ring tower, beacon, bell) — after 3
+- [ ] #20 `siege/5-roles` (repair + scout, the tally, bot_repair / bot_scout) — after 4
+- [ ] #21 `siege/6-puzzles` (gate S, bot_chokepoint) — after 5
+- [ ] #22 `siege/7-instrumentation` (rounds.jsonl, make balance, feed fold) — after 6
+- [ ] #23 `siege/8-balance` (wave cap, pre-workshop script) — after 7
 - [ ] `git -C /space/drone-life checkout main && git pull` on the lab box
 
 ## 2. Deploy and check the lab box (one command, ~5 minutes)
