@@ -9,8 +9,10 @@ what the game announced), and every instance is drawn per pilot from the
 live world, so two neighbours never share numbers — only code generalises.
 
 Personal quests are opt-in (`say quest`): the unedited template's log pane
-stays readable. One ROOM quest per wave is broadcast to everyone; if nobody
-solves it, the next wave comes buffed (the room-wide penalty).
+stays readable. A ROOM quest is broadcast to everyone at a wave start
+whenever none is open (from wave 3); it runs its own 60 s clock, and if
+nobody solves it in time the next wave comes buffed (the room-wide
+penalty).
 
 The board owns issue/check/expire and the quest-side texts; the mission
 owns rewards (pool, points, events) — they arrive as `Resolved` records.
@@ -338,8 +340,10 @@ class QuestBoard:
         self._buff_flip = False
 
     def clear(self, rng: random.Random) -> None:
+        """A new round: quests, clocks and ids start over. Enrolment stays —
+        a pilot who said `quest` should not have to say it after every
+        instructor reset (and the answer bots say it once)."""
         self.rng = rng
-        self.enrolled.clear()
         self.personal.clear()
         self.next_at.clear()
         self.seq.clear()
@@ -414,8 +418,9 @@ class QuestBoard:
         tier = tier_for(ctx.wave)
         fam: Family = self.rng.choice(ROOM_FAMILIES)
         keep = hex.axial_to_world(ctx.keep_cell)
-        q = (make_route(self.rng, ctx, ctx.wave, tier, True, keep) if fam == "route"
-             else make_compute(self.rng, ctx, ctx.wave, tier, True, None, None))
+        qid = min(QUEST_ID_MAX, ctx.wave)
+        q = (make_route(self.rng, ctx, qid, tier, True, keep) if fam == "route"
+             else make_compute(self.rng, ctx, qid, tier, True, None, None))
         if q is None:
             return None
         q.left_s = min(q.left_s, ROOM_QUEST_S) if fam == "route" else ROOM_QUEST_S
@@ -427,14 +432,15 @@ class QuestBoard:
         return q
 
     def wave_started(self, world: WorldAPI, ctx: QuestCtx) -> Buff | None:
-        """Called from the mission's wave start, after the gate lines: settle
-        the previous room quest (unsolved = missed), hand back the buff that
-        applies to THIS wave, and issue the new room quest."""
-        if self.room is not None and self.room.solved_by is None:
-            self._miss(world, self.room)
-        self.room = None
+        """Called from the mission's wave start, after the gate lines: hand
+        back the buff that applies to THIS wave, and issue a room quest if
+        none is open. An unsolved room quest keeps its own clock — a room
+        that clears waves fast is not punished with a cut-off quest; only
+        the 60 s expiry is a miss (tick() handles it)."""
         buff, self.pending_buff = self.pending_buff, None
-        if ctx.wave >= ROOM_QUEST_FROM_WAVE:
+        if self.room is not None and self.room.solved_by is not None:
+            self.room = None  # solved: the wall has seen it; make room for the next
+        if self.room is None and ctx.wave >= ROOM_QUEST_FROM_WAVE:
             self.issue_room(world, ctx)
         return buff
 

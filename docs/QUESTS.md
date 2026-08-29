@@ -12,10 +12,11 @@ drone.say("quest")       # "quests on, first one soon"; drone.say("quest off") t
 
 Personal quests start at wave 2 and come one at a time, ~20 s apart, while a
 wave is on. Solving one pays **+5** to you on the board and coins into the
-team pot (one per seat). A **room quest** is broadcast to everyone from wave
-3 — id = the wave number — and the first pilot to solve it pays the pot
-three coins per seat; if *nobody* solves it before it expires (60 s, or the
-next wave), the next wave comes **buffed** (`+1 hp` or `faster`, alternating)
+team pot (one per seat). A **room quest** is broadcast to everyone at a wave
+start whenever none is open, from wave 3 — id = that wave's number — and the
+first pilot to solve it pays the pot three coins per seat; it keeps its own
+60 s clock through wave clears, and if *nobody* solves it in time the next
+wave comes **buffed** (`+1 hp` or `faster`, alternating)
 — the room's penalty, announced as `room quest 6 missed, next wave +1 hp`
 and `wave 7 buffed: +1 hp`.
 

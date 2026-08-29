@@ -195,8 +195,10 @@ quests, at most `ISSUE_PER_TICK` 4 issued per tick; tiers follow the gate
 bands (waves ≤ 4 / ≤ 7 / 8+). Route: `ROUTE_STOPS` 3/4/5, touch 2.5 m,
 limit `ceil(length / 6) + 4 × stops` in 30–90 s. Predict: `PREDICT_T`
 8/12/15 s, within 6 m, still 2 s. Compute: 45 s, ±1 m for 2 s, answers in
-3–55 m. Room quest from `ROOM_QUEST_FROM_WAVE` 3, `ROOM_QUEST_S` 60; a miss
-buffs the next wave `BUFF_HP` +1 / `BUFF_SPEED` ×1.2, alternating. Payouts:
+3–55 m. Room quest from `ROOM_QUEST_FROM_WAVE` 3 (issued at a wave start
+when none is open; it keeps its own clock across wave clears),
+`ROOM_QUEST_S` 60; a miss buffs the next wave `BUFF_HP` +1 / `BUFF_SPEED`
+×1.2, alternating. Payouts:
 `QUEST_POINTS` 5 personal, pot += `QUEST_POOL_EACH` 1 (room: 3) × seats.
 
 The roster (`KINDS` / `SHARES`): grunts 1 hp from wave 1; runners (1.5×

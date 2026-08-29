@@ -218,10 +218,17 @@ def test_a_room_quest_opens_with_the_wave_and_a_miss_buffs_the_next():
                                          "left_s": math.ceil(room.left_s), "solved": False}
     m.creeps.clear(), m.roster.clear()
     m.pending = 0
-    m._start_wave(world, 4)  # nobody solved it
+    m._start_wave(world, 4)  # a fast clear: the open quest keeps its clock
+    assert m.quests.room is room and not any("missed" in t for t in texts(world))
+    hold_creep(m)
+    world.run(m, ROOM_QUEST_S + 0.3)  # …and nobody solved it
     assert "GAME: room quest 3 missed, next wave +1 hp" in texts(world)
-    assert "GAME: wave 4 buffed: +1 hp" in texts(world)
-    assert m.buff is not None and m.stats.quests_missed == 0, "counted on expiry, not at the switch"
+    assert m.quests.room is None and m.stats.quests_missed == 1
+    m.creeps.clear(), m.roster.clear()
+    m.pending = 0
+    m._start_wave(world, 5)
+    assert "GAME: wave 5 buffed: +1 hp" in texts(world)
+    assert m.buff is not None
     m._spawn_creep()
     spawned = m.creeps[m._uid]
     assert spawned.hp == KINDS[spawned.kind].hp + 1 and spawned.max_hp == spawned.hp
@@ -315,11 +322,21 @@ def test_reset_clears_the_board_and_renumbers():
     m.quests.issue(world, m, drone(world), family="route", tier=1)
     m.stats.quests_solved = 3
     m.reset(world)
-    assert m.quests.personal == {} and m.quests.enrolled == set() and m.quests.room is None
+    assert m.quests.personal == {} and m.quests.room is None
+    assert m.quests.enrolled == {"s-d0"}, "enrolment survives an instructor reset"
     assert m.hud()["quests"] == {"solved": 0, "missed": 0, "room": None}
     m.state, m.wave = "active", 2
     q = m.quests.issue(world, m, drone(world), family="route", tier=1)
     assert q is not None and q.qid == 1
+
+
+def test_a_late_joiner_is_not_asked_to_count_a_wave_it_did_not_hear():
+    world, m = make(seats=("d0",), active=True)
+    m._start_wave(world, 3)
+    late = view("d1", n=-90.0, e=-70.0, alt=6.0)
+    world.views.append(late)
+    world.drone_event(m, late, "connected")
+    assert "d1" not in m.heard_wave and "d0" in m.heard_wave
 
 
 def test_quest_dice_do_not_move_the_gate_dice():

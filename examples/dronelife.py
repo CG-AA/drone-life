@@ -43,6 +43,7 @@ class Drone:
         self._say(f"connected to drone (sysid {self.conn.target_system})")
 
         self._pos = (0.0, 0.0, 0.0)  # (north, east, altitude)
+        self._have_pos = False  # the first LOCAL_POSITION_NED has arrived
         self._armed = False
         self._mode = 0
         self._game_events: queue.Queue[str] = queue.Queue()
@@ -51,6 +52,11 @@ class Drone:
         # Sends happen on the caller's thread; that combination is fine.
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
+        # position() right after connect() must be YOUR pad, not (0, 0, 0):
+        # the stream is 10 Hz, so this is a blink
+        deadline = time.time() + 3.0
+        while not self._have_pos and time.time() < deadline:
+            time.sleep(0.02)
 
     # ------------------------------------------------------------ flying
 
@@ -132,7 +138,8 @@ class Drone:
     # ------------------------------------------------------------ sensing
 
     def position(self) -> tuple[float, float, float]:
-        """(north, east, altitude) in meters, updated 10x per second."""
+        """(north, east, altitude) in meters, updated 10x per second. Valid
+        from connect() on — before takeoff it is your pad."""
         return self._pos
 
     @property
@@ -197,6 +204,7 @@ class Drone:
             t = msg.get_type()
             if t == "LOCAL_POSITION_NED":
                 self._pos = (msg.x, msg.y, -msg.z)
+                self._have_pos = True
             elif t == "HEARTBEAT":
                 self._armed = bool(
                     msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)

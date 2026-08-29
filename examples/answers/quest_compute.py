@@ -50,6 +50,8 @@ def hex_distance(a, b):
 
 
 drone = connect()
+while drone.position() == (0.0, 0.0, 0.0):  # connect() waits for the first fix; be sure
+    time.sleep(0.05)
 pad = drone.position()[:2]  # where I sit before takeoff: my pad
 drone.say("quest")
 drone.takeoff(6)

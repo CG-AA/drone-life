@@ -105,10 +105,14 @@ def march(n, e, speed, seconds, dt=0.1):
 drone = connect()
 drone.say("quest")
 drone.takeoff(PARK_ALT)
+# park over the Keep between quests: every creep walks toward it, so every
+# answer is close — from the pad the far gates are out of reach in 8 s
+drone.goto(0, 0, PARK_ALT, wait=False)
 wave, buffed = 1, False
 while True:
     if not drone.armed:
         drone.takeoff(PARK_ALT)
+        drone.goto(0, 0, PARK_ALT, wait=False)
     for ev in drone.events():
         m = WAVE.match(ev)
         if m:
@@ -125,7 +129,9 @@ while True:
         speed = base * SPEED_MULT.get(kind, 1.0)
         tn, te = march(float(n), float(e), speed, float(seconds))
         print(f"{kind} at ({n}, {e}) -> ({tn:.1f}, {te:.1f}) in {seconds} s", flush=True)
-        # get there and hold: the check wants 2 s of stillness before T
-        drone.goto(tn, te, PARK_ALT, tolerance=1.0, timeout=float(seconds))
+        # get there and hold: the check wants 2 s of stillness before T. No
+        # blocking goto — a target out of reach must not end the script
+        drone.goto(tn, te, PARK_ALT, wait=False)
         drone.wait(float(seconds) + 0.5)  # hover through the check
+        drone.goto(0, 0, PARK_ALT, wait=False)
     time.sleep(0.2)

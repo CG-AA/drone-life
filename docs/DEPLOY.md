@@ -118,6 +118,7 @@ target); the systemd unit passes `PORT` from the room's env file
 | `DRONE_HOST` | `10.0.2.2` | host loopback as seen from inside a container |
 | `RUN_MAX_SECONDS` | `900` | wall-clock cap per script run |
 | `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`); the unit sets `state/<ROOM_ID>` |
+| `EXTRA_BOT_SCRIPTS` | (empty) | dev only: more scripts `/admin` may spawn as bots, by path under `examples/` without `.py`, comma-separated (`answers/quest_route,…`) — the worked answers stay out of the default allowlist so a class never meets them before the wrap |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
 | `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |
 | `JOIN_STRIKES` | `3` | wrong room codes from one IP before it is locked out of `/join`, `/world` and the viewer (right code or not); `0` disables |

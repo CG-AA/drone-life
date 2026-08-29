@@ -503,9 +503,10 @@ class SiegeMission(Mission):
             world.send_text(
                 drone.id,
                 f"GAME: wave {self.wave} at {fmt_world(*self.gate)}, {left} creeps{boss}")
-            for gate in self.gates[1:]:  # the other lanes, so a compute quest is fair
+            for gate in self.gates[1:]:  # the other lanes: where to expect creeps
                 world.send_text(drone.id, f"GAME: wave {self.wave} also at {fmt_world(*gate)}")
-            self.heard_wave.add(drone.id)
+            # not added to heard_wave: the brief says what is LEFT, not the
+            # wave's size, so the count quests would be unfair to a late joiner
 
     def reset(self, world: WorldAPI) -> None:
         self._round_end(world)
