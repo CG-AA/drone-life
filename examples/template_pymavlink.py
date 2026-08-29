@@ -5,10 +5,13 @@ would talk to a real ArduPilot drone.
 """
 
 import os
+import random
 
 from pymavlink import mavutil
 
 GUIDED = 4  # ArduCopter mode number, same as the real firmware
+NORTH = random.randint(10, 40)   # a spot of your own: 20 pilots landing on
+EAST = random.randint(-30, 30)   # the same hex would be a pile-up
 
 conn = mavutil.mavlink_connection(os.environ["DRONE_URL"])
 conn.wait_heartbeat(timeout=15)
@@ -43,15 +46,15 @@ command(mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, p7=10)
 while abs(position()[2] - 10) > 0.7:
     pump()
 
-# 3. fly to (north=20, east=20) at 10 m — type_mask 3576 = use position only
+# 3. fly to (NORTH, EAST) at 10 m — type_mask 3576 = use position only
 conn.mav.set_position_target_local_ned_send(
     0, conn.target_system, conn.target_component,
     mavutil.mavlink.MAV_FRAME_LOCAL_NED, 3576,
-    20, 20, -10, 0, 0, 0, 0, 0, 0, 0, 0)
+    NORTH, EAST, -10, 0, 0, 0, 0, 0, 0, 0, 0)
 while True:
     n, e, alt = position()
     pump()
-    if abs(n - 20) < 1 and abs(e - 20) < 1:
+    if abs(n - NORTH) < 1 and abs(e - EAST) < 1:
         break
 
 print("made it — landing")
