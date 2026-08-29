@@ -134,6 +134,7 @@ BELL_BP = Blueprint("bell", (Requirement(0, 0, "clay", 3), *ring_blueprint("bell
 BELL_RADIUS = 2.5
 BELL_ALT_ABOVE = 3.0  # hover within this of the stack top (6 m): "hover 8 m"
 BELL_DWELL_S = 3.0
+BELL_ARM_S = 6.0  # after "bell up": the last tile's hover sits exactly at ring height
 BELL_RING_S = 1.2  # the visible ring
 FREEZE_S = 15.0
 
@@ -336,6 +337,7 @@ class Bell:
     builder: str | None
     cells: tuple[Axial, ...]
     dwell: DwellTracker
+    armed_at: float = 0.0  # the builder's placement hover must not ring it
 
 
 @dataclass
@@ -494,6 +496,8 @@ class SiegeMission(Mission):
         self.wave = 0
         self.gates: tuple[tuple[float, float], ...] = (GATES[0],)  # this wave's lanes
         self.gate = GATES[0]  # the primary lane (first announced)
+        self.next_gates: tuple[tuple[float, float], ...] | None = None  # drawn at the clear
+        self.next_wave_no = 0  # …for this wave number
         self._lane = 0
         self.pending = 0  # creeps of the current wave not yet spawned
         self.roster: list[str] = []  # …and their kinds, in spawn order
@@ -534,11 +538,12 @@ class SiegeMission(Mission):
         self.tm.set_keep_out([KEEP, QUARRY, PIT, BONUS_GATE, *GATES])  # pads: engine-protected
         self.round_started = world.now
         self.rng = random.Random(world.rng.getrandbits(32))
+        self._draw_gates(1)  # the build hint during grace points at wave 1's lane
         # the quest dice come AFTER siege's own draw: gate sequences per seed
         # stay what they were before quests existed (a test pins them)
         self.quests.clear(random.Random(world.rng.getrandbits(32)))
         self.quarry.remaining = _quarry_stock(self._seated(world), 0)
-        self._announce(world)
+        self._announce(world, landmarks=True)
 
     @staticmethod
     def _seated(world: WorldAPI) -> int:
@@ -552,6 +557,10 @@ class SiegeMission(Mission):
         return self.tm
 
     def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:
+        if kind == "joined" and self.wave == 0 and self.quarry.remaining is not None:
+            # the grace stock counts seats; a seat taken during grace counts too
+            self.quarry.remaining = max(self.quarry.remaining,
+                                        _quarry_stock(self._seated(world), 0))
         if kind == "connected":
             self._brief(world, drone)
             # a fresh link means a fresh (or respawned) drone: stock caps
@@ -714,6 +723,7 @@ class SiegeMission(Mission):
         self.keep_hp = KEEP_HP
         self.state, self.timer, self.wave = "grace", GRACE_S, 0
         self.gates, self.gate, self._lane = (GATES[0],), GATES[0], 0
+        self.next_gates, self.next_wave_no = None, 0
         self.pending, self.spawn_timer = 0, 0.0
         self.roster.clear()
         self.leaks, self.wave_kills, self.wave_tower_kills = 0, 0, 0
@@ -860,8 +870,8 @@ class SiegeMission(Mission):
             beacon = self.beacons[anchor]
             lured = step_units(units, self.tm, beacon.flow, dt, CHEW_S, chew_factor=CHEW_FACTOR)
             beacon.lured = len(units)
-            for u in lured.arrived:  # standing on the beacon: eating it
-                beacon.chew_acc += dt * u.chew_rate
+            if lured.arrived:  # standing on the beacon: eating it — the fastest jaw
+                beacon.chew_acc += dt * max(u.chew_rate for u in lured.arrived)  # sets the clock
             chews += [cell for _u, cell in lured.chews]
             if beacon.chew_acc >= CHEW_S - _EPS:
                 beacon.chew_acc = 0.0
@@ -925,7 +935,7 @@ class SiegeMission(Mission):
         if bell is not None:
             top = self.tm.top_alt(bell.anchor)
             dwell = DwellTracker(BELL_RADIUS, top + BELL_ALT_ABOVE, BELL_DWELL_S)
-            self.bells[bell.anchor] = Bell(sid, bell.cells, dwell)
+            self.bells[bell.anchor] = Bell(sid, bell.cells, dwell, armed_at=world.now + BELL_ARM_S)
             world.emit_event("bell_up", f"{name} built a bell at {fmt_cell(bell.anchor)}",
                              student_id=sid)
             # widest: "GAME: bell up at N -97 E -97, hover 8 m to ring" = 47
@@ -938,8 +948,11 @@ class SiegeMission(Mission):
         """The sealed gate: three drones in a triangle over it for FORM_HOLD_S
         open it; raiders pour while the triangle holds (one opening a wave);
         the formation breaking seals it and drops the rest of the lane."""
-        trio = (triangle(drones, *BONUS_GATE, FORM_RADIUS, FORM_MIN, FORM_MAX, FORM_MIN_ANGLE)
-                if self.state == "active" else None)
+        if self.state != "active":  # between waves the gate rests, quietly
+            self.bonus_open, self.bonus_pending, self.form_acc = False, 0, 0.0
+            self.form_told.clear()
+            return
+        trio = triangle(drones, *BONUS_GATE, FORM_RADIUS, FORM_MIN, FORM_MAX, FORM_MIN_ANGLE)
         if trio is None:
             if self.bonus_open:
                 self.bonus_open, self.bonus_pending = False, 0
@@ -1022,8 +1035,9 @@ class SiegeMission(Mission):
             if best is None or best[0] > REPAIR_CALL_RADIUS:
                 continue
             cell = best[1]  # widest: "GAME: repair at N -97 E -97 hover 10" = 37
-            world.send_text(d.id, f"GAME: repair at {fmt_cell(cell)} hover "
-                            f"{hover_alt_hint(self.tm, cell)}")
+            if self.hints.throttle.ready(f"repair:{d.id}", world.now):  # a nag, not a stream
+                world.send_text(d.id, f"GAME: repair at {fmt_cell(cell)} hover "
+                                f"{hover_alt_hint(self.tm, cell)}")
 
     def _watch_gates(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
         """A drone that hovers a gate for SPOT_DWELL becomes its spotter, and
@@ -1127,6 +1141,9 @@ class SiegeMission(Mission):
 
     def _ring_bells(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
         for anchor, bell in list(self.bells.items()):
+            if world.now < bell.armed_at or self.state != "active":
+                bell.dwell.clear()  # not yet, or nothing to freeze: a wasted ring is no ring
+                continue
             n, e = hex.axial_to_world(anchor)
             top = self.tm.top_alt(anchor)
             def above(d: DroneView, t: float = top) -> bool:
@@ -1332,6 +1349,7 @@ class SiegeMission(Mission):
                       "pool": self.pool})
             self.state, self.timer = "build", BUILD_S
             self.buff = None  # a penalty lasts one wave
+            self._draw_gates(self.wave + 1)
             world.broadcast_text(f"GAME: wave {self.wave + 1} in {round(BUILD_S)}s, build!")
             self.last_build_hint = world.now
             self._call_build_site(world)
@@ -1350,13 +1368,24 @@ class SiegeMission(Mission):
             world.send_text(d.id, f"GAME: +{share} coins, wallet {self.wallets[d.student_id]}")
         return share
 
+    def _draw_gates(self, wave: int) -> None:
+        """Pick a wave's lanes when the room gets its build time, so the
+        "build a tower at" hint points beside the lane that is COMING, not
+        the one that just emptied."""
+        self.next_gates = tuple(self.rng.sample(GATES, _gates_for(wave)))
+        self.next_wave_no = wave
+        self.gate = self.next_gates[0]  # build_site() walks this lane
+
     def _start_wave(self, world: WorldAPI, wave: int) -> None:
         self.state, self.wave = "active", wave
         self.stats.best_wave = max(self.stats.best_wave, wave)
         self.quarry.remaining = _quarry_stock(self._seated(world), wave)
         world.broadcast_text(f"GAME: quarry restocked, {self.quarry.remaining} steel")
-        k = _gates_for(wave)
-        self.gates = tuple(self.rng.sample(GATES, k))
+        if self.next_gates is None or self.next_wave_no != wave:
+            self._draw_gates(wave)  # a wave started by hand (tests, admin): draw now
+        assert self.next_gates is not None
+        k = len(self.next_gates)
+        self.gates, self.next_gates = self.next_gates, None
         self.gate, self._lane = self.gates[0], 0
         pilots = sum(1 for d in world.drones() if d.connected)
         size = _wave_size(wave, pilots)
@@ -1485,10 +1514,14 @@ class SiegeMission(Mission):
 
     # ---------------------------------------------------------- announcements
 
-    def _announce(self, world: WorldAPI) -> None:
-        world.broadcast_text(f"GAME: keep at {fmt_world(*KEEP)}, protect it!")
-        world.broadcast_text(f"GAME: quarry at {fmt_world(*QUARRY)}")
-        world.broadcast_text(f"GAME: clay pit at {fmt_world(*PIT)}")
+    def _announce(self, world: WorldAPI, landmarks: bool = False) -> None:
+        """The rotating hint; the landmarks only at setup — every newcomer
+        gets them in the brief, and three lines every 30 s to sixty pilots
+        was a quarter of a student's log."""
+        if landmarks:
+            world.broadcast_text(f"GAME: keep at {fmt_world(*KEEP)}, protect it!")
+            world.broadcast_text(f"GAME: quarry at {fmt_world(*QUARRY)}")
+            world.broadcast_text(f"GAME: clay pit at {fmt_world(*PIT)}")
         world.broadcast_text(_HINTS[self._hint])
         self._hint = (self._hint + 1) % len(_HINTS)
 

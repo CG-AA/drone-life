@@ -6,6 +6,7 @@ from app.game.building import PICKUP_DWELL, PLACE_DWELL
 from app.game.missions.siege import (
     BEACON_MAX,
     BEACON_RADIUS,
+    BELL_ARM_S,
     BELL_DWELL_S,
     CHEW_S,
     FREEZE_S,
@@ -209,6 +210,10 @@ def test_a_hover_on_the_bell_freezes_every_creep_and_spends_the_bell():
     creep = add_creep(m, (0, 6), uid=1, speed=2.0)
     n0 = creep.n
     cn, ce = hex.axial_to_world(centre)
+    world.views = [view("d0", n=cn, e=ce, alt=8.0)]  # the builder still hovering: no
+    world.run(m, BELL_ARM_S + BELL_DWELL_S)
+    assert centre in m.bells, "not until it is armed and a wave is on"
+    m.state = "active"  # a wave is on (the creep keeps it open)
     world.views = [view("d0", n=cn, e=ce, alt=4.0)]  # inside the stack: no
     world.run(m, BELL_DWELL_S + 0.3)
     assert centre in m.bells

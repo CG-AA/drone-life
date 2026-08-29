@@ -767,8 +767,11 @@ def test_a_brief_is_not_followed_by_the_same_lines_again():
     keeps = [t for target, t in world.texts if target in ("d1", "*") and "keep at" in t]
     assert len(keeps) == 1, "the brief already said it"
     world.run(m, 3.0)
+    from app.game.missions.siege import _HINTS
+    hints = [t for target, t in world.texts if target == "*" and t in _HINTS]
+    assert len(hints) == 1, "…and the room's periodic hint still comes, a moment later"
     keeps = [t for target, t in world.texts if target in ("d1", "*") and "keep at" in t]
-    assert len(keeps) == 2, "…and the room's announce still comes, a moment later"
+    assert len(keeps) == 1, "the landmarks are the brief's job, not the periodic announce's"
 
 
 def test_the_suggested_site_is_a_ghost_on_the_wall_until_built():

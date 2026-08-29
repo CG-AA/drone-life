@@ -52,12 +52,14 @@ while True:
     if not drone.armed:  # crashed and respawned on the pad: back up we go
         drone.takeoff(8)
     if not carrying and quarry:
-        drone.goto(quarry[0], quarry[1], 2)  # hover low: the pickup dwell
+        drone.goto(quarry[0], quarry[1], 9)  # cross the map above the walls (8 m)…
+        drone.goto(quarry[0], quarry[1], 2)  # …then hover low: the pickup dwell
         deadline = time.time() + 8
         while not carrying and time.time() < deadline:
             scan()
             time.sleep(0.2)
     elif carrying and target:
+        drone.goto(target[0], target[1], max(hover_alt, 9))  # over the walls first
         drone.goto(target[0], target[1], hover_alt)  # the place dwell at the named height
         deadline = time.time() + 8
         while carrying and time.time() < deadline:

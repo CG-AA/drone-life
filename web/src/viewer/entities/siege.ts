@@ -269,7 +269,7 @@ export const questMark: KindRenderer = {
 export const beacon: KindRenderer = {
   animated: true,
   init(vis) {
-    vis.addLabel("BEACON", 0xffb86b, 10, 10);
+    vis.addLabel("BEACON", 0xffb86b, 10, -34); // above the lamp: its own tiles hide the ground
   },
   draw(vis, ent, pose, _drawAlt, s, timeMs) {
     const chewRaw = Number(ent.data.chew ?? 0);

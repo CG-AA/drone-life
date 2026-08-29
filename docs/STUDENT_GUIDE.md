@@ -173,7 +173,7 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `stack 3 steel = watchtower` / `build a tower at N 20 E -8` | 3 tiles on one cell → auto-firing tower (+15); the game suggests a spot between waves |
 | `tower up at N 20 E -8! +15` / `tower down at …` | a tower rose (everyone hears where) / was chewed from under |
 | `formation! hold 5 s to open gate S` / `south gate open! raiders pay the pool` / `formation broken, gate S sealed` | the sealed gate at N −63 E 5: three drones in a triangle (6–12 m apart, not in a line) over it for 5 s open it for 6 raiders (2 hp, fast, +6 each) — their bounty goes to the team and the pot, never to a name; once per wave; leave and it seals |
-| `steel chewed at N 9 E -62` / `clay chewed at …` | a blocked creep is eating through → rebuild, zap it; clay goes 3× faster than steel; the hole stays a ghost on the wall |
+| `steel chewed at N 9 E -62` / `clay chewed at …` | a creep is eating through — walls *reroute* creeps (a detour up to ~12 cells is cheaper than chewing), so this only happens to a closed ring or a beacon → rebuild, zap it; clay goes 3× faster than steel; the hole stays a ghost on the wall |
 | `repair at N 9 E -62 hover 6` | you carry the right material and a chewed cell is within 40 m: hover it at that altitude → `repaired! N 9 E -62 whole again +1` |
 | `you spot gate E` / `gate E: 3 grunt 1 sapper` / `gate E unwatched` | hover within 10 m of a gate for 2 s and you are its scout: every creep through it is reported to you (kinds and counts), and the room hears you on the wall; leave and the post is free |
 | `clay pit at N 50 E -44` / `got clay, cheap walls, chewed 3x faster` | the second pile — infinite, unlike the quarry — for walls, beacons and the bell |

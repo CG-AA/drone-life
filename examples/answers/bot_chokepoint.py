@@ -98,6 +98,7 @@ while True:
         placed_here = 0
         print(f"plan: tower at {site}, {len(plan) - 3} wall tiles after it", flush=True)
     if not carrying and quarry:
+        drone.goto(quarry[0], quarry[1], 9)  # above the walls, then down
         drone.goto(quarry[0], quarry[1], 2)
         deadline = time.time() + 8
         while not carrying and time.time() < deadline:
@@ -106,6 +107,7 @@ while True:
     elif carrying and plan:
         target = plan[min(placed_here, len(plan) - 1)]
         stacked = sum(1 for p in plan[:placed_here] if p == target)
+        drone.goto(target[0], target[1], 9)  # above the walls, then down
         drone.goto(target[0], target[1], hover_alt or 4 + 2 * stacked)
         deadline = time.time() + 8
         while carrying and time.time() < deadline:

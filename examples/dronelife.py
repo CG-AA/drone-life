@@ -63,9 +63,16 @@ class Drone:
     def takeoff(self, alt: float) -> None:
         """Set GUIDED mode, arm, and climb to `alt` meters."""
         self.set_mode(GUIDED)
-        # MAV_CMD_COMPONENT_ARM_DISARM, param1=1 -> arm
-        self._cmd(mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1)
-        self._wait(lambda: self._armed, 5, "arming (is the drone crashed or mid-air?)")
+        # MAV_CMD_COMPONENT_ARM_DISARM, param1=1 -> arm. A crashed drone
+        # respawns on its pad after 5 s and refuses to arm until then, so
+        # keep asking for a while rather than giving up at exactly that moment
+        deadline = time.time() + 12.0
+        while not self._armed and time.time() < deadline:
+            self._cmd(mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1)
+            self._wait_quiet(lambda: self._armed, 1.0)
+        if not self._armed:
+            raise TimeoutError("gave up waiting for: arming (is the drone mid-air? "
+                               "press reset drone, then Run again)")
         self._say("armed")
         # MAV_CMD_NAV_TAKEOFF, param7 = target altitude
         self._cmd(mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, p7=alt)
@@ -179,6 +186,15 @@ class Drone:
         self.conn.mav.command_long_send(
             self.conn.target_system, self.conn.target_component,
             command, 0, p1, p2, 0, 0, 0, 0, p7)
+
+    def _wait_quiet(self, pred, timeout: float) -> bool:
+        """Poll `pred` for up to `timeout` seconds; True if it came true."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if pred():
+                return True
+            time.sleep(0.05)
+        return False
 
     def _wait(self, pred, timeout: float, what: str, hint=None) -> None:
         """Poll `pred` until true or `timeout` seconds pass. `hint` (a string

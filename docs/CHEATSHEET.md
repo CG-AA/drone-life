@@ -46,7 +46,7 @@ gives you `"crate 3 at N 12 E -40"` (prefix stripped). Every position is
 | `zap! brute hp 2` / `drop under 3 m to zap` | keep hovering / get lower |
 | `wave 5 at N 0 E 83, 12 creeps + boss` | a champion (8 hp, +20) comes last — gang up |
 | `build a tower at N 20 E -8` | between waves: ferry 3 steel there → auto-turret (+15) |
-| `steel chewed at …` / `clay chewed at …` / `repair at N 9 E -62 hover 6` | a creep is eating a wall (clay 3× faster); carrying the right tile nearby? hover the hole at that height → `repaired! +1` |
+| `steel chewed at …` / `clay chewed at …` / `repair at N 9 E -62 hover 6` | walls reroute creeps; a closed ring (or a beacon) gets eaten, clay 3× faster; carrying the right tile nearby? hover the hole at that height → `repaired! +1` |
 | `you spot gate E` → `gate E: 3 grunt 1 sapper` · `formation! hold 5 s to open gate S` | scout: hover 10 m from a gate 2 s, the room hears your reports · gate S (N −63 E 5): 3 drones in a triangle 5 s → 6 raiders that pay everyone |
 | `clay pit at N 50 E -44` · `ring tower at …! +25` · `beacon up at …` · `bell up at …, hover 8 m to ring` | clay: cheap walls, beacon ends, the bell · 6 steel around a tower = 28 m reach · clay-steel-clay singles lure creeps within 25 m · 6-clay ring + 3 clay: hover on top 3 s, every creep freezes 15 s |
 | `wave 3 clear! +10` (or `2 leaked +5`) | leaks = -1 each and half the bonus |

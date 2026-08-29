@@ -200,7 +200,8 @@ team pot; each wave clear splits the pot evenly into per-pilot wallets
 whatever the room size. The quarry is finite: `QUARRY_STOCK_BASE` 6 +
 `QUARRY_STOCK_PER_PILOT` 1 × seats + `QUARRY_STOCK_PER_WAVE` 1 × wave, set
 (not added) at every wave start and at reset — 20 pilots at wave 1 see 27
-steel, nine towers' worth; a lone rehearsal drone 8 (7 during grace). Wallets are what the
+steel, nine towers' worth; a lone rehearsal drone 8 (7 during grace — a
+seat taken during grace tops the stock up). Wallets are what the
 upgrade shop spends: `SHOP` prices zap 20/40/80 (+1 m reach, −0.25 s dwell
 per tier), speed 30/60 (+25 % caps per tier), tower 40/80 (+4 m range,
 −0.5 s reload per tier on the builder's towers, floored at

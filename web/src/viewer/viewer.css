@@ -58,6 +58,8 @@ canvas { touch-action: none; }
 /* mission status strip under the score: the numbers a room asks about */
 #mstrip {
   display: flex;
+  flex-wrap: wrap; /* the strip grew (pot, room quest): wrap before it reaches the PILOTS board */
+  max-width: min(56vw, 900px);
   align-items: center;
   justify-content: center;
   gap: clamp(10px, 1.6vmin, 22px);
