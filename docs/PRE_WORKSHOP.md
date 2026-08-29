@@ -30,9 +30,24 @@ needs `BRANCH=siege/8-balance` (it deploys `origin/main` by default).
 
 ## 2. Deploy and check the lab box (one command, ~5 minutes)
 
+Before the PRs are merged (the script lives on the stack, so the checkout
+must be on it):
+
 ```bash
-cd /space/drone-life && sudo -v && bash docs/deploy/pre-workshop.sh
+cd /space/drone-life && git fetch origin && git checkout siege/8-balance && git pull \
+  && sudo -v && FRESH=1 BRANCH=siege/8-balance bash docs/deploy/pre-workshop.sh
 ```
+
+After the merge:
+
+```bash
+cd /space/drone-life && git checkout main && git pull \
+  && sudo -v && FRESH=1 bash docs/deploy/pre-workshop.sh
+```
+
+`FRESH=1` forgets the roster and score from the last class (the box still
+holds the 2026-08-29 playtest's); leave it off between sessions of the same
+class.
 
 It deploys `main` into `/opt/drone-life`, builds server + web, builds the
 runner image as the service user, restarts `drone-life@main` and every
@@ -40,9 +55,7 @@ runner image as the service user, restarts `drone-life@main` and every
 and prints the checklist below. It stops at the first failure and says why;
 fix and re-run (`ONLY=preflight bash docs/deploy/pre-workshop.sh` reruns one
 step; by hand it is `PREFLIGHT_ARGS=--all-rooms make preflight`). It never
-edits `/etc/drone-life.env` and never prints secrets. **For a new class add
-`FRESH=1`**: the box still holds the 2026-08-29 playtest roster and score in
-`server/state/main/`, and the smoke would otherwise pass on ghost seats.
+edits `/etc/drone-life.env` and never prints secrets.
 
 ## 3. Hand checks the script prints (do them at the box, then from outside)
 
