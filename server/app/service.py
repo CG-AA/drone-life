@@ -9,15 +9,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import mission_choice
 from .api import messages
 from .config import Settings
 from .core import snapshot
+from .core.bans import BanList, _norm
 from .core.bus import EventBus
 from .core.registry import Registry, RoomFullError, Student
 from .game import hex
@@ -87,6 +91,7 @@ class DroneLifeService:
         self.backend = KinematicBackend(self.world, self.gateway)
         self.bus = EventBus()
         self.registry = Registry(settings.max_students, settings.mavlink_base_port)
+        self.bans = BanList()
         self._bind_mission(settings)
         self.runner = RunnerManager(settings, EXAMPLES_DIR, self._on_run_event)
         self.hub: Hub | None = None  # set by api.ws when the app wires up
@@ -102,14 +107,24 @@ class DroneLifeService:
         self._last_driver_error = float("-inf")
         self._driver_errors_quiet = 0  # since the last full traceback
         self._driver_error_seen: set[str] = set()  # distinct bugs in this window
+        self.restarting = False
+        # how the process leaves when the console asks for a restart; a seam
+        # so tests can watch the request without losing their own process
+        self._exit = lambda: os.kill(os.getpid(), signal.SIGTERM)
 
     def _bind_mission(self, settings: Settings) -> None:
         """Instantiate the mission and wire it to the sim and broadcast state.
         One place, so a future runtime mission-switch is a route, not a
-        rewiring project."""
-        mission_cls = MISSIONS.get(settings.mission)
+        rewiring project. Which mission: the console's override file in the
+        state dir wins over MISSION= (mission_choice.py)."""
+        name, self.mission_source = mission_choice.effective_mission(settings)
+        mission_cls = MISSIONS.get(name)
         if mission_cls is None:
-            raise ValueError(f"unknown MISSION={settings.mission!r}; have {sorted(MISSIONS)}")
+            raise ValueError(f"unknown MISSION={name!r}; have {sorted(MISSIONS)}")
+        if self.mission_source == "override":
+            log.info("mission %s from %s (MISSION=%s in the environment ignored — delete the "
+                     "file, or 'clear override' in the console, to fall back)",
+                     name, mission_choice.override_path(settings), settings.mission)
         config = MissionConfig(
             arena_half=P.ARENA_HALF,
             alt_max=P.ALT_MAX,
@@ -133,8 +148,10 @@ class DroneLifeService:
             self.engine.score = int(data.get("score", 0))
             self.engine.scores = {str(k): int(v) for k, v in data.get("scores", {}).items()
                                   if k in self.registry.students}
-            log.info("restored %d students, score %d",
-                     len(self.registry.students), self.engine.score)
+            self.bans.restore(data.get("bans"))
+            log.info("restored %d students, score %d, %d bans",
+                     len(self.registry.students), self.engine.score,
+                     len(self.bans.names) + len(self.bans.ips))
         for student in self.registry.students.values():
             await self._spawn_drone(student)
         self.engine.start(self.world.t)
@@ -243,6 +260,7 @@ class DroneLifeService:
             "students": self.registry.to_dict(),
             "score": self.engine.score,
             "scores": self.engine.scores,
+            "bans": self.bans.to_dict(),
         })
 
     # ---------------------------------------------------------------- joins
@@ -274,18 +292,77 @@ class DroneLifeService:
         await self.backend.remove(self.drone_id_for(student))
         self.engine.scores.pop(student_id, None)
         self.bus.emit("kicked", f"{student.name} left", student_id=student_id, t=self.world.t)
+        if self.hub is not None:  # their page drops to the join form now, not at reload
+            await self.hub.drop_student(student_id)
         self._save_snapshot()
         return True
 
     async def ban(self, student_id: str) -> Student | None:
-        """Kick, and keep the name out until restart or an admin unlock. The
-        caller locks the address (that guard lives with the join limiter)."""
+        """Kick, and keep the name and the address it joined from out — until
+        the console unbans them; bans ride the snapshot across restarts."""
         student = self.registry.students.get(student_id)
         if student is None:
             return None
-        self.registry.ban_name(student.name)
+        self.bans.ban_name(student.name)
+        self.bans.ban_ip(student.ip)
         await self.kick(student_id)
         return student
+
+    async def ban_key(self, name: str = "", ip: str = "") -> list[str]:
+        """A ban typed into the console: a name, an address, or both. Anyone
+        currently seated under that name or from that address is kicked;
+        returns their names. Bots have no address, so an ip never matches
+        one (BanList refuses empty keys for the same reason)."""
+        self.bans.ban_name(name)
+        self.bans.ban_ip(ip)
+        kicked = []
+        for student in list(self.registry.students.values()):
+            if (name and _norm(student.name) == _norm(name)) \
+                    or (ip and student.ip == ip.strip()):
+                kicked.append(student.name)
+                await self.kick(student.id)
+        self._save_snapshot()
+        return kicked
+
+    # -------------------------------------------------------------- restarts
+
+    @property
+    def supervised(self) -> bool:
+        """Will the box bring the process back after it exits? systemd sets
+        INVOCATION_ID for every service it runs; under `make run` or a dev
+        server nobody will, and the console says so."""
+        return "INVOCATION_ID" in os.environ
+
+    async def prepare_restart(self, mission: str | None, keep_score: bool) -> None:
+        """The clean-up the runbook's post-switch `make reset` used to do,
+        before the process goes: scripts stopped quietly, bots dropped, and —
+        unless the score is meant to carry (SESSION_PLAN Box B) — a fresh
+        score for the next round. The override file is what the next boot
+        reads; None leaves the current choice alone."""
+        self._resetting = True
+        try:
+            await self.runner.stop_all()
+        finally:
+            self._resetting = False
+        for student in list(self.registry.students.values()):
+            if student.name.startswith("Bot-"):
+                self.registry.remove(student.id)
+                await self.backend.remove(self.drone_id_for(student))
+        if not keep_score:
+            self.engine.score = 0
+            self.engine.scores.clear()
+        if mission is not None:
+            mission_choice.write_override(self.settings, mission)
+        self._save_snapshot()
+
+    def request_restart(self, reason: str) -> None:
+        """Say so on the feed, then leave — after the response has gone out.
+        uvicorn's SIGTERM handling runs the normal shutdown (containers swept,
+        gateway closed, snapshot written); systemd's Restart=always brings
+        the room back in a few seconds (docs/deploy/drone-life@.service)."""
+        self.restarting = True
+        self.bus.emit("restarting", f"{reason} — back in a few seconds", t=self.world.t)
+        asyncio.get_running_loop().call_later(0.3, self._exit)
 
     # ---------------------------------------------------------------- resets
 

@@ -16,14 +16,15 @@ single-room setup it builds on.
 
 ## The convention
 
-| instance (`%i`) | URL      | HTTP `PORT` | `MAVLINK_BASE_PORT` | `MAX_STUDENTS` | `STATE_DIR`  |
-|-----------------|----------|-------------|---------------------|----------------|--------------|
-| `main`          | `/`      | 8000        | 5760 (5760–5823)    | 64             | `state/main` |
-| `r1` … `r5`     | `/rN/`   | 8000+N      | 5760+100·N          | 20             | `state/rN`   |
+| instance (`%i`) | URL      | HTTP `PORT` | `ADMIN_PORT` (loopback) | `MAVLINK_BASE_PORT` | `MAX_STUDENTS` | `STATE_DIR`  |
+|-----------------|----------|-------------|-------------------------|---------------------|----------------|--------------|
+| `main`          | `/`      | 8000        | 8121                    | 5760 (5760–5823)    | 64             | `state/main` |
+| `r1` … `r5`     | `/rN/`   | 8000+N      | 8121+N                  | 5760+100·N          | 20             | `state/rN`   |
 
-Room *i* is HTTP `800i` and MAVLink `5760+100i` — one rule, and no two
-ranges can overlap under 100 seats. `make preflight` refuses a layout that
-breaks it.
+Room *i* is HTTP `800i`, console `8121+i` and MAVLink `5760+100i` — one
+rule, and no two ranges can overlap under 100 seats. `make preflight` refuses
+a layout that breaks it (a room file that forgets `ADMIN_PORT` gets 8121,
+main's, and the second one to boot fails).
 
 Two kinds of file on the lab box, both read by the template unit
 [`docs/deploy/drone-life@.service`](deploy/drone-life@.service):
@@ -31,7 +32,7 @@ Two kinds of file on the lab box, both read by the template unit
 - **`/etc/drone-life.env`** — what every room shares: `ROOM_CODE`,
   `ADMIN_TOKEN`, `MISSION`, `PUBLIC_URL`, `FORWARDED_ALLOW_IPS`, and
   `ROOMS=r1,r2,r3,r4,r5` (the rooms the student page lists).
-- **`/etc/drone-life.d/<id>.env`** — one per instance: `PORT`,
+- **`/etc/drone-life.d/<id>.env`** — one per instance: `PORT`, `ADMIN_PORT`,
   `MAVLINK_BASE_PORT`, `MAX_STUDENTS`, `STATE_DIR`, and optionally
   `ROOM_LABEL` ("Room 1 — north tables"), or any shared value overridden
   for that room (`PUBLIC_URL=https://…/r1` puts the room's own address on its
@@ -77,7 +78,8 @@ and `proxy_buffering off` from the original.
 # strips the prefix: the server never sees /rN, the page adds it back to
 # every request it makes (web/src/shared/prefix.ts).
 location = /r1 { return 301 /r1/; }
-location ~ ^/(r[0-9]+)/(submit|admin)/$ { return 301 /$1/$2; }   # a hand-typed slash would fall off the room
+location ~ ^/(r[0-9]+)/submit/$ { return 301 /$1/submit; }   # a hand-typed slash would fall off the room
+# (no /admin here: the console answers only on each room's loopback ADMIN_PORT)
 location /r1/ {
     proxy_pass http://LAB:8001/;
     proxy_set_header Host $host;
@@ -110,23 +112,26 @@ sudo systemctl start drone-life@{main,r1,r2,r3,r4,r5}
 cd /opt/drone-life && make preflight ROOM=r1 PREFLIGHT_ARGS=--all-rooms
 # projectors: https://host/r1/ … /r5/ (each asks for the code once)
 # students:   https://host/submit → pick a room
-# console:    https://host/r1/admin … (the admin token is shared)
+# consoles:   not on the proxy. From your laptop, one tunnel per room —
+#   ssh -L 8121:127.0.0.1:8121 -L 8122:127.0.0.1:8122 … -L 8126:127.0.0.1:8126 lab
+#   then http://localhost:8122/admin is room 1, :8123 room 2 … (the token is shared)
 
 # between blocks, per room: source that room's env, then the usual targets
 set -a && . /etc/drone-life.env && . /etc/drone-life.d/r2.env && set +a
-make reset            # talks to :8002 — HOST follows PORT
+make reset                 # talks to room 2's console port — ADMIN_HOST follows ADMIN_PORT
+make switch MISSION=delivery   # or the console's "switch & restart": room 2 restarts into delivery
 make bots N=3
-make kill-prod ROOM=r2   # only room 2's containers
+make kill-prod ROOM=r2     # only room 2's containers
 
 # siege: stop everything (a stop flushes each room's snapshot), merge, restart the big room
 sudo systemctl stop drone-life@{r1,r2,r3,r4,r5} drone-life@main
 sudo -iu dronelife
 cd /opt/drone-life/server
 set -a && . /etc/drone-life.env && . /etc/drone-life.d/main.env && set +a
-uv run python -m app.roster merge --dry-run state/r1 state/r2 state/r3 state/r4 state/r5
-uv run python -m app.roster merge state/r1 state/r2 state/r3 state/r4 state/r5
+uv run python -m app.roster merge --dry-run --mission siege state/r1 state/r2 state/r3 state/r4 state/r5
+uv run python -m app.roster merge --mission siege state/r1 state/r2 state/r3 state/r4 state/r5
 exit
-sudo sed -i 's/^MISSION=.*/MISSION=siege/; s/^ROOMS=.*/ROOMS=/' /etc/drone-life.env
+sudo sed -i 's/^ROOMS=.*/ROOMS=/' /etc/drone-life.env
 sudo systemctl start drone-life@main
 # → every student opens https://host/submit; the stored token reconnects, nobody re-joins
 ```
@@ -139,9 +144,12 @@ between rooms) keeps both seats, the later one as `Sam 2`; more pilots than
 `MAX_STUDENTS` is an error that names the unseated, and nothing is written.
 `--dry-run` shows the seating, `--fresh` drops the big room's existing
 roster, `--force` writes even if a server answers on `PORT` (it would
-overwrite the file within 30 s, so the tool refuses by default). Score is
-zeroed: it belongs to the round, not the pilot. Bans are in memory only and
-do not carry — re-ban in the big room's console if it comes to that.
+overwrite the file within 30 s, so the tool refuses by default), and
+`--mission siege` writes the big room's `state/main/mission` so the merge is
+the switch (no edit to the shared env file, whose `MISSION=` the override
+beats — DEPLOY.md, "Restarts and mission switches"). Score is zeroed: it
+belongs to the round, not the pilot. Bans carry: the big room keeps out every
+name and address any small room banned.
 
 `ROOMS=` is emptied for the siege so a latecomer sees the join form, not
 five closed rooms; put it back the next morning.
@@ -159,7 +167,12 @@ five closed rooms; put it back the next morning.
 - **`make clean` deletes `server/state/`** — every room's roster and tokens.
 - **The join limiter and strike guard are per process.** A student who
   guesses wrong on three rooms burns strikes on each; `POST
-  /api/v1/admin/unlock` is per room too.
+  /api/v1/admin/unlock` is per room too — and so is a ban made mid-block
+  (it carries into the big room at the merge, not sideways into another small
+  room).
+- **One console port per room.** `make reset` / `make switch` reach the room
+  whose env file you sourced (`ADMIN_PORT`); a tunnel to `8121` is the big
+  room, not room 1.
 - **Same code, same admin token everywhere.** Rotate both between classes,
   in the shared file only; a room file that sets its own `ROOM_CODE` fails
   preflight (one code on every projector is the promise).

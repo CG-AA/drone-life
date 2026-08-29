@@ -19,6 +19,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import mission_choice
 from .config import DEFAULT_ADMIN_TOKEN, DEFAULT_ROOM_CODE, Settings, check_secrets
 from .game.missions import MISSIONS
 
@@ -37,7 +38,7 @@ UNIT_PATH = UNIT_PATHS[1]
 ENV_FILE = Path("/etc/drone-life.env")
 ROOMS_DIR = Path("/etc/drone-life.d")
 # what a room file leaves unsaid: the Settings defaults, and the unit's STATE_DIR=state/%i
-ROOM_DEFAULTS = {"MAVLINK_BASE_PORT": "5760", "MAX_STUDENTS": "20"}
+ROOM_DEFAULTS = {"MAVLINK_BASE_PORT": "5760", "MAX_STUDENTS": "20", "ADMIN_PORT": "8121"}
 
 
 def health_url(port: int | None = None) -> str:
@@ -138,6 +139,30 @@ def check_ports(s: Settings, health: str | None = None, name: str = "mavlink por
     return Check(name, PASS, f"{s.mavlink_base_port}-{last} free")
 
 
+def check_admin_port(s: Settings, health: str | None = None) -> Check:
+    """The console's loopback listener (ADMIN_PORT). A squatter here fails the
+    boot outright — the listener exits the process rather than serve a room
+    with no console."""
+    if not s.admin_port:
+        return Check("admin port", WARN, "ADMIN_PORT=0 — the console is on the public port")
+    health = health or health_url()
+    if server_running(health):
+        return Check("admin port", WARN, f"server already up on {health} — it owns "
+                                         f"{s.admin_host}:{s.admin_port}, skipped")
+    sock = socket.socket()
+    try:
+        sock.bind((s.admin_host, s.admin_port))
+    except OSError:
+        return Check("admin port", FAIL,
+                     f"{s.admin_host}:{s.admin_port} in use — the server would exit at boot; "
+                     f"`ss -ltnp 'sport = :{s.admin_port}'` to find it, or pick another "
+                     "ADMIN_PORT (rooms are 8121+N)")
+    finally:
+        sock.close()
+    return Check("admin port", PASS, f"{s.admin_host}:{s.admin_port} free (ssh -L "
+                                     f"{s.admin_port}:{s.admin_host}:{s.admin_port} to reach it)")
+
+
 # ------------------------------------------------------------------ rooms
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -175,6 +200,7 @@ def room_plan(rooms: dict[str, dict[str, str]], shared: dict[str, str]) -> list[
     code (one code on every projector is the promise docs/ROOMS.md makes)."""
     problems: list[str] = []
     by_port: dict[str, list[str]] = {}
+    by_admin: dict[str, list[str]] = {}
     by_state: dict[str, list[str]] = {}
     ranges: list[tuple[str, int, int]] = []
     for room, env in rooms.items():
@@ -184,6 +210,9 @@ def room_plan(rooms: dict[str, dict[str, str]], shared: dict[str, str]) -> list[
                             "would not start")
         else:
             by_port.setdefault(port, []).append(room)
+        admin = env.get("ADMIN_PORT", ROOM_DEFAULTS["ADMIN_PORT"]).strip()
+        if admin and admin != "0":
+            by_admin.setdefault(admin, []).append(room)
         by_state.setdefault(env.get("STATE_DIR", f"state/{room}"), []).append(room)
         try:
             base = int(env.get("MAVLINK_BASE_PORT", ROOM_DEFAULTS["MAVLINK_BASE_PORT"]))
@@ -200,6 +229,14 @@ def room_plan(rooms: dict[str, dict[str, str]], shared: dict[str, str]) -> list[
     for port, names in by_port.items():
         if len(names) > 1:
             problems.append(f"PORT {port} is used by {', '.join(names)}")
+    for port, names in by_admin.items():
+        if len(names) > 1:
+            problems.append(f"ADMIN_PORT {port} is used by {', '.join(names)} — every room "
+                            "needs its own console port, 8121+N by convention (a room file "
+                            "without one gets 8121)")
+        if port in by_port:
+            problems.append(f"ADMIN_PORT {port} of {', '.join(names)} is also the PORT of "
+                            f"{', '.join(by_port[port])}")
     for state, names in by_state.items():
         if len(names) > 1:
             problems.append(f"STATE_DIR {state} is shared by {', '.join(names)} — their "
@@ -306,13 +343,25 @@ def check_defaults(s: Settings) -> Check:
 
 
 def check_mission(s: Settings) -> Check:
-    """MISSION is read at boot and a typo aborts create_app — and the runbook
-    has the operator hand-edit it right before a restart."""
+    """MISSION is read at boot and a typo aborts create_app. The console's
+    override file (mission_choice.py) wins over it, so say which one the boot
+    will follow — and fail on a typo in either, before the journal does."""
+    have = ", ".join(sorted(MISSIONS))
     if s.mission not in MISSIONS:
         return Check("mission", FAIL,
                      f"MISSION={s.mission!r} is not a mission — the server would refuse to "
-                     f"start; one of: {', '.join(sorted(MISSIONS))}")
-    return Check("mission", PASS, s.mission)
+                     f"start; one of: {have}")
+    override = mission_choice.read_override(s)
+    path = mission_choice.override_path(s)
+    if override is not None and override not in MISSIONS:
+        return Check("mission", FAIL,
+                     f"{path} names {override!r}, which is not a mission (one of: {have}) — "
+                     f"the server would ignore it and boot MISSION={s.mission}; fix or "
+                     "delete the file")
+    if override is not None:
+        return Check("mission", PASS, f"{override} — from {path} (MISSION={s.mission} in the "
+                                      "environment is ignored while that file exists)")
+    return Check("mission", PASS, f"{s.mission} (MISSION=)")
 
 
 def check_runtime_dir(s: Settings, unit: Path | None = None,
@@ -393,7 +442,8 @@ def smoke_run(s: Settings) -> Check:
 
 def collect(s: Settings, *, smoke: bool = True, all_rooms: bool = False) -> list[Check]:
     checks = [check_podman(s), check_image(s), check_subids(s), check_slirp4netns(s),
-              check_ports(s), check_web_dist(s), check_state_dir(s), check_disk(s),
+              check_ports(s), check_admin_port(s), check_web_dist(s), check_state_dir(s),
+              check_disk(s),
               check_defaults(s), check_mission(s), check_runtime_dir(s), check_proxy(s),
               check_room_plan(s)]
     if all_rooms:

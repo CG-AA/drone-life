@@ -31,7 +31,11 @@ EnvironmentFile=/etc/drone-life.d/%i.env
 # FORWARDED_ALLOW_IPS (set it in the shared EnvironmentFile) — without that the
 # per-IP join limit collapses into one bucket for the whole class.
 ExecStart=/home/dronelife/.local/bin/uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers
-Restart=on-failure
+# `always`, not `on-failure`: the console's "restart server" / "switch mission"
+# makes the process leave on SIGTERM, which systemd counts as a clean exit —
+# on-failure would leave the room down. `systemctl stop` is still a stop, and
+# the start limit above still catches a boot loop.
+Restart=always
 RestartSec=3
 # Rootless podman needs XDG_RUNTIME_DIR pointing at the service user's own
 # /run/user/<uid> (created by `loginctl enable-linger dronelife`).

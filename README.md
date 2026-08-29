@@ -61,7 +61,8 @@ five demo drones patrol on the viewer.
 
 - `http://localhost:8000/` — the projector view; room code `classroom`
 - `http://localhost:8000/submit` — what students see: editor, Run, live log
-- `http://localhost:8000/admin` — instructor console; token `change-me`
+- `http://127.0.0.1:8121/admin` — instructor console; token `change-me`. The
+  console lives on its own loopback port (`ADMIN_PORT`) and is 404 on :8000
 
 Those placeholder secrets only boot because `make dev-server` passes
 `ALLOW_DEFAULT_SECRETS=1`; any other launch refuses to start until you set
@@ -112,7 +113,9 @@ every terminal where you run `make preflight` / `bots` / `reset`). Then:
   (`hostname -I | awk '{print $1}'` prints the box IP). Projector:
   `http://<box-ip>:8000/`, room code entered once.
 - Firewall: open **only** TCP 8000 (`sudo ufw allow 8000/tcp` if ufw is on);
-  MAVLink stays on loopback by construction.
+  MAVLink stays on loopback by construction, and so does the instructor
+  console: `http://127.0.0.1:8121/admin` on the box, or from your laptop
+  `ssh -L 8121:127.0.0.1:8121 <box>` then `http://localhost:8121/admin`.
 - To survive a logout or reboot, run it under systemd instead of a terminal:
   [DEPLOY.md → systemd](docs/DEPLOY.md#systemd) (that doc's `/opt/drone-life`
   + `dronelife` user layout).
@@ -128,7 +131,7 @@ optional SSH reverse tunnel in
 - `make image` then `make e2e`: one real container delivers a crate (without
   the image the suite *skips*, it does not fail).
 - `make load LOAD_BOTS=20` on the actual hardware; overruns < 1% on `/healthz`.
-- Rehearse one mission switch (edit `MISSION`, restart, `make reset`); time it.
+- Rehearse one mission switch from the console (**switch & restart**); time it.
 - Printed `docs/CHEATSHEET.md` per seat; projector readable from 5 m; one phone joins over the room wifi.
 
 Full list: [SESSION_PLAN.md → Day −1 checklist](docs/SESSION_PLAN.md#day-1-checklist-cannot-be-verified-off-the-lab-server).
@@ -147,8 +150,9 @@ make reset                                    # clean slate: kills the bots, zer
 Several rooms of ~20 for the small missions, merged into one 64-seat siege
 for the main event: [docs/ROOMS.md](docs/ROOMS.md).
 
-Projector on `/` with the room code typed in; `/admin` open on the instructor
-laptop. Minute-by-minute from here:
+Projector on `/` with the room code typed in; the console open on the
+instructor laptop (`ssh -L 8121:127.0.0.1:8121 <box>`, then
+`http://localhost:8121/admin`). Minute-by-minute from here:
 [SESSION_PLAN.md](docs/SESSION_PLAN.md#3-before-doors-open-t20).
 
 ### What to give students
@@ -169,11 +173,14 @@ They need only a browser — no installs. The longer handout is
 
 ### Switching missions
 
-`MISSION` is read at boot: edit it in `/etc/drone-life.env`
-(`sudo sed -i 's/^MISSION=.*/MISSION=siege/' /etc/drone-life.env` — `sudo`
-even on deploy A: `/etc` is root's, so a plain `sed -i` cannot write there),
-restart the server (`sudo systemctl restart drone-life@main`, or Ctrl-C and
-`make run` again), then `make reset` for a fresh score. The two rehearsed procedures (with and
+From the console: pick the mission, **switch & restart** (type `switch`). The
+server writes `server/state/<room>/mission`, stops every script, drops the
+bots, zeroes the score (untick *keep score* to carry it) and restarts itself;
+under systemd it is back in ~5 s and every page reconnects on its own. Under
+`make run` / `make dev-server` the process just exits — start it again. The
+same from a shell: `make switch MISSION=siege` (`make restart` keeps the
+mission). The override file wins over `MISSION=` in the env file until
+**clear override** (or you delete it). The two rehearsed procedures (with and
 without carrying the score over) are
 [SESSION_PLAN.md → Transition procedures](docs/SESSION_PLAN.md#5-transition-procedures).
 
@@ -186,7 +193,7 @@ The three you will actually need:
 - Every submit says "runner image … is not built": `make image` as the user
   the server runs as, no restart needed — under systemd, also check the unit's
   `XDG_RUNTIME_DIR` uid (the runbook explains).
-- A script won't die: **kill** in `/admin`, or `podman ps --filter label=drone-life=1`
+- A script won't die: **kill** in the console, or `podman ps --filter label=drone-life=1`
   then `podman rm -f -t 0 <id>`. Port 8000 busy after a crash: `make kill-prod`.
 
 ## Missions
@@ -233,7 +240,7 @@ make test        # server (pytest, incl. real-mavutil flights) + web (vitest)
 make lint        # ruff (server) + eslint (web); make lint-fix autofixes ruff only
 make typecheck   # tsc --noEmit (web) + mypy (server)
 make build       # tsc + vite build → web/dist
-make dev-web     # hot-reload frontend on :5173, proxying /api and /ws to :8000 (DL_SERVER=http://host:8000 to point elsewhere)
+make dev-web     # hot-reload frontend on :5173, proxying /api and /ws to :8000 and /api/v1/admin to :8121 (DL_SERVER= / DL_ADMIN= to point elsewhere)
 make e2e         # a real podman container delivers a crate — needs `make image`, else it silently SKIPS
 make load        # 10 bots, 60 s: tick overruns <1%, world feed ≥9 Hz (LOAD_BOTS=20 for class size)
 make kill-dev    # stop stray uvicorn --reload / vite instances; kill-prod: `make run` instances + leftover containers
@@ -255,7 +262,7 @@ PR with Node 22; the podman e2e runs weekly (`e2e.yml`).
 | `server/app/preflight.py` | `make preflight` — the workshop-morning box check |
 | `web/src/viewer/` | PixiJS isometric sky view |
 | `web/src/submit/` | CodeMirror editor, run controls, live logs |
-| `web/src/admin/` | instructor console: roster, kill/kick, reset, bots |
+| `web/src/admin/` | instructor console (loopback `ADMIN_PORT`): roster, kill/kick/ban, ban list, reset, bots, switch mission, restart |
 | `examples/` | `dronelife.py` helper, student templates, demo bots |
 | `runner/` | Containerfile for the student-script sandbox image |
 | `docs/` | the documentation map above; `docs/deploy/` holds the systemd unit and tunnel units |

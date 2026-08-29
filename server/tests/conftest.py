@@ -44,6 +44,9 @@ def make_settings(tmp_path, **overrides) -> Settings:
         admin_token="test-admin",
         max_students=6,
         sim_seed=7,
+        # the console on the public side: the suite must not bind real admin
+        # ports in every test — test_admin_port.py is where that happens
+        admin_port=0,
     )
     base.update(overrides)
     return Settings(**base)
@@ -51,17 +54,12 @@ def make_settings(tmp_path, **overrides) -> Settings:
 
 @asynccontextmanager
 async def running_app(settings: Settings):
-    """create_app with the canonical bring-up/teardown order. Shared by the
-    API tests and the (marker-gated) e2e tests so they can't drift apart."""
+    """create_app under its own lifespan — the real bring-up/teardown order
+    (service, hub, admin listener), not a copy of it. Shared by the API tests
+    and the (marker-gated) e2e tests so they can't drift apart."""
     app = create_app(settings)
-    service = app.state.service
-    await service.start()
-    app.state.hub.start()
-    try:
+    async with app.router.lifespan_context(app):
         yield app
-    finally:
-        await app.state.hub.stop()
-        await service.stop()
 
 
 @pytest.fixture

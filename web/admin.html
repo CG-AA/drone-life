@@ -17,6 +17,7 @@
     </header>
 
     <div id="health-line" role="status"></div>
+    <div id="room-line" role="status"></div>
 
     <div id="banner" role="alert"></div>
 
@@ -25,7 +26,7 @@
         <label for="bots-count">bots</label>
         <input id="bots-count" type="number" min="1" max="20" value="3" />
         <label class="visually-hidden" for="bots-script">bot script</label>
-        <input id="bots-script" type="text" value="bot_patrol" />
+        <select id="bots-script"><option value="bot_patrol" selected>bot_patrol</option></select>
         <label class="visually-hidden" for="bots-mode">bot mode</label>
         <select id="bots-mode">
           <option value="local" selected>local</option>
@@ -34,6 +35,24 @@
         <button type="submit">spawn</button>
       </form>
       <button id="reset-world-btn" class="danger">reset world</button>
+    </section>
+
+    <!-- the process: switch the mission (an override file + a restart), or
+         just restart — both throw the round away, both are typed confirms -->
+    <section id="server-controls">
+      <form id="mission-form">
+        <label for="mission-select">mission</label>
+        <select id="mission-select"></select>
+        <label class="check" for="keep-score" title="Carry the score across the switch (SESSION_PLAN Box B); off = fresh score for the new mission">
+          <input id="keep-score" type="checkbox" /> keep score
+        </label>
+        <button id="switch-btn" type="button" class="danger"
+                title="Write the mission override and restart the server into it">switch &amp; restart</button>
+      </form>
+      <button id="clear-override-btn" type="button" class="hidden"
+              title="Forget the override: the next boot follows MISSION= again (no restart now)">clear override</button>
+      <button id="restart-btn" class="danger"
+              title="Restart the server process — same mission, scripts stopped, roster kept">restart server</button>
     </section>
 
     <section id="roster-wrap">
@@ -45,6 +64,30 @@
           <tr><td colspan="5" class="empty">no students yet</td></tr>
         </tbody>
       </table>
+    </section>
+
+    <section id="bans-wrap">
+      <h2>kept out</h2>
+      <table id="bans">
+        <thead>
+          <tr><th>kind</th><th>who</th><th class="actions">actions</th></tr>
+        </thead>
+        <tbody id="bans-body">
+          <tr><td colspan="3" class="empty">nobody</td></tr>
+        </tbody>
+      </table>
+      <form id="ban-form">
+        <label class="visually-hidden" for="ban-input">name or address to ban</label>
+        <input id="ban-input" type="text" placeholder="name or address" autocomplete="off" />
+        <button id="ban-name-btn" type="button" class="danger"
+                title="Keep this name out (and kick whoever holds it now)">ban name</button>
+        <button id="ban-ip-btn" type="button" class="danger"
+                title="Keep this address out (and kick everyone joined from it) — on a shared wifi that is everyone behind it">ban address</button>
+        <span class="spacer"></span>
+        <button id="unlock-all-btn" type="button"
+                title="Lift every three-wrong-codes lockout; bans stay">unlock all</button>
+        <button id="unban-all-btn" type="button" title="Empty the ban list">unban all</button>
+      </form>
     </section>
   </div>
 

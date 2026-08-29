@@ -56,7 +56,7 @@ async def join(body: JoinBody, request: Request,
         raise err(400, "name", "pick a name between 1 and 24 characters")
     if name.lower().startswith("bot-"):
         raise err(400, "name", "names starting with 'Bot-' are reserved")
-    if service.registry.is_banned(name):
+    if service.bans.name_banned(name):
         raise err(403, "banned", "this name is banned — ask your instructor")
     try:
         student, is_new = await service.join(name, ip)

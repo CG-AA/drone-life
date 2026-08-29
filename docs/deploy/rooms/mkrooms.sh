@@ -1,7 +1,8 @@
 #!/bin/sh
 # Print the per-room env files for N small rooms plus the big one, by the
-# convention in docs/ROOMS.md: room i is HTTP 800i, MAVLink 5760+100i, 20
-# seats; `main` is :8000, MAVLink 5760-5823, 64 seats. Writes nothing — pipe
+# convention in docs/ROOMS.md: room i is HTTP 800i, MAVLink 5760+100i, console
+# 8121+i, 20 seats; `main` is :8000, MAVLink 5760-5823, console :8121, 64
+# seats. Writes nothing — pipe
 # each block where the runbook says (/etc/drone-life.d/<id>.env), or run
 #     sh docs/deploy/rooms/mkrooms.sh 5 | sudo sh   (it emits the tee commands)
 set -eu
@@ -15,15 +16,17 @@ echo "sudo tee /etc/drone-life.d/main.env >/dev/null <<EOF"
 echo "# the big room: / on the proxy, the 64-seat siege (docs/ROOMS.md)"
 echo "PORT=8000"
 echo "MAVLINK_BASE_PORT=5760"
+echo "ADMIN_PORT=8121"
 echo "MAX_STUDENTS=$big"
 echo "STATE_DIR=state/main"
 echo "EOF"
 i=1
 while [ "$i" -le "$n" ]; do
   echo "sudo tee /etc/drone-life.d/r$i.env >/dev/null <<EOF"
-  echo "# room $i: /r$i/ on the proxy — HTTP 800$i, MAVLink $((5760 + 100 * i))-$((5760 + 100 * i + seats - 1))"
+  echo "# room $i: /r$i/ on the proxy — HTTP 800$i, MAVLink $((5760 + 100 * i))-$((5760 + 100 * i + seats - 1)), console 127.0.0.1:$((8121 + i))"
   echo "PORT=800$i"
   echo "MAVLINK_BASE_PORT=$((5760 + 100 * i))"
+  echo "ADMIN_PORT=$((8121 + i))"
   echo "MAX_STUDENTS=$seats"
   echo "STATE_DIR=state/r$i"
   echo "ROOM_LABEL=Room $i"

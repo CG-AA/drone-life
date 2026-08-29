@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hmac
+import json
+import re
 import time
 from collections import deque
 from collections.abc import Callable
@@ -113,15 +115,8 @@ class StrikeGuard:
         self.clock = clock
         self.misses: dict[str, list[float]] = {}
         self.locked_at: dict[str, float] = {}
-        self.banned: set[str] = set()  # an admin's doing: no expiry
-
-    def ban(self, key: str) -> None:
-        if key:
-            self.banned.add(key)
 
     def blocked(self, key: str) -> bool:
-        if key in self.banned:
-            return True
         since = self.locked_at.get(key)
         if since is None:
             return False
@@ -142,11 +137,22 @@ class StrikeGuard:
         self.misses.pop(key, None)
         self.locked_at.pop(key, None)
 
+    def locked(self) -> list[dict]:
+        """Every address currently locked out, with how long is left (None =
+        until restart). For the console's ban panel; expired ones are dropped
+        on the way."""
+        rows = []
+        for key in list(self.locked_at):
+            if self.blocked(key):  # expires stale ones as a side effect
+                left = None if not self.lockout_s else \
+                    max(0.0, round(self.lockout_s - (self.clock() - self.locked_at[key]), 1))
+                rows.append({"ip": key, "remaining_s": left})
+        return rows
+
     def unlock_all(self) -> int:
-        n = len(self.locked_at) + len(self.banned)
+        n = len(self.locked_at)
         self.misses.clear()
         self.locked_at.clear()
-        self.banned.clear()
         return n
 
 
@@ -154,13 +160,13 @@ def gate_room_code(app_state, ip: str, code: str) -> str:
     """Every endpoint that accepts a room code passes through here.
 
     Returns "ok", "wrong", "rate" or "locked" and does the bookkeeping. A
-    locked or rate-limited address gets the same refusal for right and wrong
-    codes (no oracle); a wrong code costs one strike and one unit of join
-    budget; a right code clears the address's strikes.
+    banned, locked or rate-limited address gets the same refusal for right
+    and wrong codes (no oracle); a wrong code costs one strike and one unit
+    of join budget; a right code clears the address's strikes.
     """
     strikes: StrikeGuard = app_state.join_strikes
     limiter: RateLimiter = app_state.join_limiter
-    if strikes.blocked(ip):
+    if app_state.service.bans.ip_banned(ip) or strikes.blocked(ip):
         return "locked"
     if limiter.blocked(ip):
         return "rate"
@@ -176,10 +182,45 @@ REFUSALS = {
     "wrong": (403, "room_code", "wrong room code — ask your instructor"),
     "rate": (429, "rate", "too many attempts; wait a minute"),
     "locked": (429, "locked",
-               "too many wrong room codes — this address is locked out; ask your instructor"),
+               "this address is locked out (too many wrong room codes, or banned) — "
+               "ask your instructor"),
 }
 
 
 def refuse(verdict: str) -> HTTPException:
     status, code, msg = REFUSALS[verdict]
     return err(status, code, msg)
+
+
+ADMIN_PATH = re.compile(r"^/(admin|api/v1/admin)(/|$)")
+
+
+class AdminPortGate:
+    """The console answers only on the admin listener (api/admin_listener.py).
+
+    Pure ASGI, so it sees websocket scopes too. A console path arriving on any
+    other listener gets a bare 404 — the public side should not acknowledge
+    that a console exists. `scope["server"]` is the local (host, port) uvicorn
+    records for each accepted connection; --proxy-headers rewrites `client`,
+    never `server`, so a forwarded header cannot forge it. ADMIN_PORT=0 turns
+    the gate off (console on the public port: tests, the hotspot day).
+    """
+
+    def __init__(self, app, admin_port: int) -> None:
+        self.app = app
+        self.admin_port = admin_port
+
+    async def __call__(self, scope, receive, send) -> None:
+        if self.admin_port and scope["type"] in ("http", "websocket") \
+                and ADMIN_PATH.match(scope.get("path", "")) \
+                and (scope.get("server") or (None, None))[1] != self.admin_port:
+            if scope["type"] == "websocket":
+                await send({"type": "websocket.close", "code": 4404})
+                return
+            body = json.dumps({"error": {"code": "not_found", "msg": "not found"}}).encode()
+            await send({"type": "http.response.start", "status": 404,
+                        "headers": [(b"content-type", b"application/json"),
+                                    (b"content-length", str(len(body)).encode())]})
+            await send({"type": "http.response.body", "body": body})
+            return
+        await self.app(scope, receive, send)
