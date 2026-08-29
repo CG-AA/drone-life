@@ -93,6 +93,8 @@ class DroneLifeService:
         self.bus = EventBus()
         self.registry = Registry(settings.max_students, settings.mavlink_base_port)
         self._bind_mission(settings)
+        self.bot_scripts = BOT_SCRIPTS | {
+            s.strip() for s in settings.extra_bot_scripts.split(",") if s.strip()}
         self.runner = RunnerManager(settings, EXAMPLES_DIR, self._on_run_event)
         self.hub: Hub | None = None  # set by api.ws when the app wires up
 
@@ -328,8 +330,8 @@ class DroneLifeService:
     async def spawn_bots(self, count: int, script: str, mode: str) -> dict:
         """Returns {"started": [ids], "room_full": bool} — partial success is
         reported, never discarded, so the operator can see what's flying."""
-        if script not in BOT_SCRIPTS:
-            raise ValueError(f"unknown bot script {script!r}; have {sorted(BOT_SCRIPTS)}")
+        if script not in self.bot_scripts:
+            raise ValueError(f"unknown bot script {script!r}; have {sorted(self.bot_scripts)}")
         script_path = EXAMPLES_DIR / f"{script}.py"
         code = script_path.read_text() if mode == "container" else None
         started: list[str] = []

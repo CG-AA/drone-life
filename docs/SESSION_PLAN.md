@@ -1,7 +1,8 @@
 # Workshop session plan — freefly → delivery → siege
 
 The minute-by-minute run of a ~4 hour session for a mixed room (students +
-working engineers), up to 20 pilots. Freefly proves everyone can fly, delivery
+working engineers), up to 64 pilots (rehearsed at 64; the siege scales, the
+small missions are better split into rooms — `ROOMS.md`). Freefly proves everyone can fly, delivery
 teaches the GAME-message loop, and **siege is the main event**, played in
 rounds. Companion docs: operational commands in `DEPLOY.md` (runbook),
 student-facing rules in `STUDENT_GUIDE.md`, the printed one-pager in
@@ -105,6 +106,14 @@ worked answer in the repo — don't reveal that until the wrap.
 4. **Event-driven flying.** Replace blocking `goto` with
    `goto(..., wait=False)` + a `position()` / `events()` polling loop — a
    drone that re-targets mid-flight when a fresher callout arrives.
+5. **Quests** (`docs/QUESTS.md`, `drone.say("quest")`) — three families,
+   three kinds of code, every instance different per pilot: **route** (parse
+   a multi-line spec, sequence gotos, brute-force the best order), **predict**
+   (port the hex grid + the flood field's tie-break and model a creep's
+   march), **compute** (geometry over what the game announced, answered as
+   an altitude). Worked answers: `examples/answers/quest_*.py` — after the wrap.
+   The per-wave **room quest** is for the whole room: nobody solving it buffs
+   the next wave, so a solver is doing everyone a favour.
 
 ## 7. Pace-setter bots
 
@@ -179,6 +188,16 @@ per tier), speed 30/60 (+25 % caps per tier), tower 40/80 (+4 m range,
 `TOWER_COOLDOWN_MIN` 1 s), colour/outline 10 (cosmetic, repeatable). Tiers
 are personal and last the round; at ~15 coins a wave a pilot buys one tier
 by wave 2 and reaches the top rungs only in a long round.
+
+Quests (`server/app/game/quests.py`): personal from `QUEST_FROM_WAVE` 2,
+opt-in, `QUEST_FIRST_S` 5 after enrolling then `QUEST_GAP_S` 20 between
+quests, at most `ISSUE_PER_TICK` 4 issued per tick; tiers follow the gate
+bands (waves ≤ 4 / ≤ 7 / 8+). Route: `ROUTE_STOPS` 3/4/5, touch 2.5 m,
+limit `ceil(length / 6) + 4 × stops` in 30–90 s. Predict: `PREDICT_T`
+8/12/15 s, within 6 m, still 2 s. Compute: 45 s, ±1 m for 2 s, answers in
+3–55 m. Room quest from `ROOM_QUEST_FROM_WAVE` 3, `ROOM_QUEST_S` 60; a miss
+buffs the next wave `BUFF_HP` +1 / `BUFF_SPEED` ×1.2, alternating. Payouts:
+`QUEST_POINTS` 5 personal, pot += `QUEST_POOL_EACH` 1 (room: 3) × seats.
 
 The roster (`KINDS` / `SHARES`): grunts 1 hp from wave 1; runners (1.5×
 speed) from 3; brutes (3 hp, 0.65× speed, chew 2×) from 5; sappers (2 hp,

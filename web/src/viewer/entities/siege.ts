@@ -226,3 +226,22 @@ export const zapArc: KindRenderer = {
     vis.g.circle(dx, dy, Math.max(2.5, s * 0.7)).fill({ color: 0xfff2b0, alpha: 0.9 * (1 - k) });
   },
 };
+
+/** A room route quest's stop: a numbered flag on the ground, dimmed once any
+ * drone has touched it. */
+export const questMark: KindRenderer = {
+  animated: true,
+  init(vis, ent) {
+    vis.addLabel(String(ent.data.label ?? "?"), 0xffb86b, 12, -4);
+  },
+  draw(vis, ent, _pose, _drawAlt, s, timeMs) {
+    const done = Boolean(ent.data.done);
+    const r = Math.max(4, s * 1.4);
+    const alpha = done ? 0.35 : pulse(timeMs, 400, 0.6, 0.4);
+    vis.g.circle(0, 0, r * 1.6).stroke({ width: 2, color: 0xffb86b, alpha });
+    vis.g.moveTo(0, 0).lineTo(0, -r * 2.2).stroke({ width: 2, color: 0xffb86b, alpha });
+    vis.g.poly([0, -r * 2.2, r * 1.2, -r * 1.8, 0, -r * 1.4])
+      .fill({ color: 0xffb86b, alpha: done ? 0.3 : 0.9 });
+    if (vis.label) vis.label.text = String(ent.data.label ?? "?");
+  },
+};

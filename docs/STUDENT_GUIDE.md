@@ -182,6 +182,13 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `need 40 coins, have 17` / `zap maxed at III` | not yet / no further |
 | `bought colour #ff8800 (7 left)` | `drone.say("buy colour #ff8800")` (or `outline`) — your drone on the wall wears it; 10 coins, buy again to change |
 | `bad colour, use #RRGGBB` / `no such item, say shop` | the shop is picky about spelling |
+| `quests on, first one soon` | `drone.say("quest")` — you opted in to quests, the coding challenges (`QUESTS.md`); `say("quest off")` to stop |
+| `quest 7: route 3 stops, 42 s` + `quest 7 stop 1 at N 20 E -30` … | fly the stops in order (`back` = reverse, `at 18 m,` = at that height, `any order` = pick the best order) within the time |
+| `quest 7: runner at N 40 E -12, in 15 s?` | model its march: be within 6 m of where it will be, still for the last 2 s |
+| `quest 7: alt = dist to N 40 E -12 / 4` (`hexes`, `dist pad`, `gates x 10 + wave`, `creeps this wave`) | compute the number, hover the Keep at that altitude ±1 m for 2 s |
+| `quest 7 stop 1 ok, 2 to go` / `quest 7 solved! +5, pool +64` / `quest 7 expired` | progress, the payout, the clock ran out |
+| `room quest 6: …` / `room quest 6 solved!` / `room quest 6 missed, next wave +1 hp` | one per wave for everyone; the first solver pays the pot; nobody solving it buffs the next wave |
+| `wave 7 buffed: +1 hp` (or `faster`) | the penalty for a missed room quest — one wave |
 | `keep hit! hp 7, -1` / `keep fell! -25, rebuilt` | leaks cost points; it never game-overs |
 | `round over! wave 7, 63 kills` | the instructor reset — that's the score to beat |
 

@@ -56,6 +56,11 @@ in `server/app/game/missions/siege.py` unless noted.
   `drone.say("buy zap|speed|tower|colour|outline")` buys tiers that last
   the round. No team-bought upgrades; Keep armour / wave-skip / one-time
   repair are dropped.
+- **Quests.** *(shipped 2026-08-29)* The advanced-play programming
+  challenge: opt-in per pilot (`say quest`), three families (route /
+  predict / compute) drawn per pilot from the live world, one room quest a
+  wave whose miss buffs the next wave. `docs/QUESTS.md`; worked answers in
+  `examples/answers/`. Balance the knobs with the rest in the balance session.
 - **Puzzles for the "this is boring" crowd.** In-game, co-op, rewarding
   without carrying: a sealed gate that opens only when 3 drones hold a
   formation over it (rewards the *lane*, not the trio); a chokepoint

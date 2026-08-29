@@ -126,6 +126,7 @@ frame **[enforced]**. Kinds in play today, and who renders them
 | `gate` | `label`, `active` | siege.ts |
 | `troop` | `dir` (deg), `chewing`, `kind`, `hp`, `max` | siege.ts |
 | `tower` | `range`, `tier` | siege.ts |
+| `quest_mark` | `label`, `quest`, `done` | siege.ts |
 | `beam` | `tn`, `te`, `talt` | siege.ts (tower shot, 0.35 s) |
 | `zap_arc` | `tn`, `te`, `talt` | siege.ts (a drone's zap, 0.3 s) |
 | `poof` | `verb` (zap/squish/tower/leak) | siege.ts (a creep died, 0.6 s) |
@@ -143,7 +144,8 @@ come from a monotonic counter so a burst never collides.
 JSON-safe, integers and short strings, rebuilt from live state (it is called
 on WS connect, possibly before the first tick, and after `reset()`). Siege
 returns `wave`, `state`, `timer_s`, `keep_hp`, `keep_max`, `creeps_alive`,
-`pending`, `towers`, `pool`, `stats`; delivery returns `crates`, `delivered`.
+`pending`, `towers`, `pool`, `quests` (`solved`, `missed`, and the live `room`
+quest or null), `stats`; delivery returns `crates`, `delivered`.
 The strip's wording lives in `web/src/viewer/hud.ts` (`stripModel`, pure and
 tested); add a branch there when your mission publishes something new.
 

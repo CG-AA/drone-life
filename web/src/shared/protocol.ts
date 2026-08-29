@@ -56,6 +56,7 @@ export const KNOWN_KINDS = [
   "furnace",                                           // forge
   "keep", "troop", "tower", "beam", "gate",            // siege
   "zap_arc", "poof",                                   // siege cosmetics (short-lived)
+  "quest_mark",                                        // siege room-quest route stops
 ] as const;
 
 export interface EntityState {
@@ -88,6 +89,8 @@ export interface BeamData { tn: number; te: number; talt: number }
 export interface ZapArcData { tn: number; te: number; talt: number }
 /** where a creep died; verb is zap | squish | tower | leak */
 export interface PoofData { verb: string }
+/** a room route quest's stop: its number, the quest (= wave), touched yet */
+export interface QuestMarkData { label: string; quest: number; done: boolean }
 
 export interface ScoreRow {
   student_id: string;
@@ -127,6 +130,9 @@ export interface SiegeHudState {
   pending: number; // creeps of this wave still to spawn
   towers: number;
   pool: number; // team coins not yet split into wallets
+  /** quests: solved this round, room quests missed, and the live room quest */
+  quests: { solved: number; missed: number;
+            room: { id: number; family: string; left_s: number; solved: boolean } | null };
 }
 
 /** delivery's mission_state */

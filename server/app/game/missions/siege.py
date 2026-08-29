@@ -9,7 +9,9 @@ Tick order is load-bearing and fixed: 1 carry losses, 2 quarry pickups,
 3 placements (squish, then blueprint -> towers), 4 tower liveness and
 5 repath (both on TileMap.version change), 6 spawns, 7 unit steps (arrivals
 hit the Keep, chews remove tiles), 8 towers fire, 9 zap dwells, 10 wave
-machine, 11 announcements. Squish resolves before zap, so a tile landing on
+machine, 10b quests (issue, check, expire — after the kills, so a predict
+sees live creeps; after the wave machine, so a new wave's gate lines land
+before its room quest), 11 announcements. Squish resolves before zap, so a tile landing on
 a creep is the kill that counts. Everything from 6 on pauses while the room
 is empty — an idle server can't bleed score.
 """
@@ -43,6 +45,17 @@ from ..building import (
 )
 from ..hex import Axial
 from ..mission import SEV_WARNING, Entity, Mission, WorldAPI, fmt_world
+from ..quests import (
+    BUFF_HP,
+    BUFF_SPEED,
+    QUEST_POINTS,
+    QUEST_POOL_EACH,
+    ROOM_QUEST_POOL_EACH,
+    Buff,
+    QuestBoard,
+    Resolved,
+    room_marks,
+)
 from ..tiles import TileMap
 from ..units import GroundUnit, step_units
 
@@ -161,6 +174,7 @@ _NO_UPGRADES = Upgrades()  # the read-only default for a pilot who bought nothin
 
 _HINTS = ("GAME: stack 3 steel = watchtower",
           "GAME: say shop to spend your coins",
+          "GAME: bored? say quest for a challenge",
           "GAME: hover low on a creep to zap it",
           "GAME: 2-high walls turn creeps aside",
           "GAME: drop a tile on a creep to squish it",
@@ -180,6 +194,8 @@ class SiegeStats:
     keep_hits: int = 0
     keep_falls: int = 0
     best_wave: int = 0
+    quests_solved: int = 0
+    quests_missed: int = 0  # room quests nobody solved
 
     @property
     def kills(self) -> int:
@@ -189,7 +205,8 @@ class SiegeStats:
         return {"zapped": self.zapped, "squished": self.squished, "shot": self.shot,
                 "kills": self.kills, "leaks": self.leaks, "towers": self.towers,
                 "keep_hits": self.keep_hits, "keep_falls": self.keep_falls,
-                "best_wave": self.best_wave}
+                "best_wave": self.best_wave, "quests_solved": self.quests_solved,
+                "quests_missed": self.quests_missed}
 
 
 @dataclass
@@ -302,6 +319,14 @@ class SiegeMission(Mission):
         self.stats = SiegeStats()
         self.flow = path.flood(self.tm, KEEP_CELL, climb=CLIMB)
         self._flow_version = self.tm.version
+        # the empty-map field: what a pilot can model without seeing the tiles
+        self.flow0 = path.flood(TileMap(), KEEP_CELL, climb=CLIMB)
+        self.keep_cell = KEEP_CELL
+        self.chew_s = CHEW_S
+        self.quests = QuestBoard()
+        self.buff: Buff | None = None  # this wave's penalty for a missed room quest
+        self.wave_size = 0  # creeps announced for the wave (the boss aside)
+        self.heard_wave: set[str] = set()  # drones that heard this wave's gate lines
         self.keep_hp = KEEP_HP
         self.state = "grace"  # grace | build | active
         self.timer = GRACE_S
@@ -346,6 +371,9 @@ class SiegeMission(Mission):
     def setup(self, world: WorldAPI) -> None:
         self.tm.set_keep_out([KEEP, QUARRY, *GATES])  # pads are engine-protected already
         self.rng = random.Random(world.rng.getrandbits(32))
+        # the quest dice come AFTER siege's own draw: gate sequences per seed
+        # stay what they were before quests existed (a test pins them)
+        self.quests.clear(random.Random(world.rng.getrandbits(32)))
         self.quarry.remaining = _quarry_stock(self._seated(world), 0)
         self._announce(world)
 
@@ -365,6 +393,10 @@ class SiegeMission(Mission):
             self._brief(world, drone)
             # a fresh link means a fresh (or respawned) drone: stock caps
             world.set_speed(drone.id, self._speed_scale(drone.student_id))
+        elif kind in ("crashed", "disconnected"):
+            q = self.quests.drop(drone.id)
+            if q is not None and kind == "crashed":
+                world.send_text(drone.id, f"GAME: {q.tag} off: crashed")
 
     def on_text(self, world: WorldAPI, drone: DroneView, text: str) -> None:
         """The command surface: what `drone.say(...)` understands."""
@@ -378,6 +410,14 @@ class SiegeMission(Mission):
             world.send_text(drone.id, "GAME: buy colour #RRGGBB, buy outline #RRGGBB")
         elif cmd.startswith("buy "):
             self._buy(world, drone, cmd[4:].split())
+        elif cmd == "quest":
+            if self.quests.enrol(drone):
+                world.send_text(drone.id, "GAME: quests on, first one soon")
+            else:
+                world.send_text(drone.id, "GAME: quests already on")
+        elif cmd == "quest off":
+            self.quests.unenrol(drone)
+            world.send_text(drone.id, "GAME: quests off")
         else:
             world.send_text(drone.id, SAY_MENU)
 
@@ -463,6 +503,9 @@ class SiegeMission(Mission):
             world.send_text(
                 drone.id,
                 f"GAME: wave {self.wave} at {fmt_world(*self.gate)}, {left} creeps{boss}")
+            for gate in self.gates[1:]:  # the other lanes, so a compute quest is fair
+                world.send_text(drone.id, f"GAME: wave {self.wave} also at {fmt_world(*gate)}")
+            self.heard_wave.add(drone.id)
 
     def reset(self, world: WorldAPI) -> None:
         self._round_end(world)
@@ -498,6 +541,9 @@ class SiegeMission(Mission):
         self.upgrades.clear()
         for d in world.drones():  # the sim's World.reset does this too; missions
             world.set_speed(d.id, 1.0)  # must not depend on the order of the two
+        self.buff = None
+        self.wave_size = 0
+        self.heard_wave.clear()
         self.setup(world)
 
     def hud(self) -> dict:
@@ -514,6 +560,7 @@ class SiegeMission(Mission):
             "pending": self.pending,
             "towers": len(self.towers),
             "pool": self.pool,
+            "quests": self.quests.hud(self.stats.quests_solved, self.stats.quests_missed),
         }
 
     # ------------------------------------------------------------------ tick
@@ -576,6 +623,8 @@ class SiegeMission(Mission):
         self._fire_towers(world)
         self._zap(world, drones, dt)
         self._wave_machine(world, dt)
+        for done in self.quests.tick(world, self, drones, dt):
+            self._quest_resolved(world, done)
 
         if (world.now - self.last_announce > ANNOUNCE_EVERY
                 and world.now - self.last_brief > 2.0):  # a newcomer just heard it
@@ -756,6 +805,7 @@ class SiegeMission(Mission):
                       "tower_kills": self.wave_tower_kills, "share": share,
                       "pool": self.pool})
             self.state, self.timer = "build", BUILD_S
+            self.buff = None  # a penalty lasts one wave
             world.broadcast_text(f"GAME: wave {self.wave + 1} in {round(BUILD_S)}s, build!")
             self.last_build_hint = world.now
             self._call_build_site(world)
@@ -806,6 +856,12 @@ class SiegeMission(Mission):
             world.broadcast_text(
                 f"GAME: wave {wave} {where} {fmt_world(*gate)}, {share} creeps"
                 + (" + boss" if boss and i == 0 else ""))
+        self.wave_size = size
+        self.heard_wave = {d.id for d in world.drones() if d.connected}
+        self.buff = self.quests.wave_started(world, self)
+        if self.buff is not None:  # widest: "GAME: wave 100 buffed: faster" = 29
+            world.broadcast_text(f"GAME: wave {wave} buffed: {self.buff.text}",
+                                 severity=SEV_WARNING)
 
     def _spawn_creep(self) -> None:
         self._uid += 1
@@ -813,10 +869,42 @@ class SiegeMission(Mission):
         kind = KINDS[self.roster.pop(0) if self.roster else "grunt"]
         n, e = self.gates[self._lane % len(self.gates)]
         self._lane += 1
+        hp, speed = kind.hp, _wave_speed(self.wave) * kind.speed_mult
+        if self.buff is not None:  # the room's penalty for an unsolved room quest
+            hp += BUFF_HP if self.buff.kind == "hp" else 0
+            speed *= BUFF_SPEED if self.buff.kind == "speed" else 1.0
         self.creeps[self._uid] = GroundUnit(
-            uid=self._uid, n=n, e=e, speed=_wave_speed(self.wave) * kind.speed_mult,
-            kind=kind.name, hp=kind.hp, max_hp=kind.hp, bounty=kind.bounty,
+            uid=self._uid, n=n, e=e, speed=speed,
+            kind=kind.name, hp=hp, max_hp=hp, bounty=kind.bounty,
             keep_cost=kind.keep_cost, chew_rate=kind.chew_rate)
+
+    def _quest_resolved(self, world: WorldAPI, done: Resolved) -> None:
+        """The mission's side of a quest ending: pay, post, count."""
+        q = done.quest
+        if done.kind != "solved":
+            if q.room:
+                self.stats.quests_missed += 1
+            return
+        assert done.drone is not None
+        d = done.drone
+        self.stats.quests_solved += 1
+        each = ROOM_QUEST_POOL_EACH if q.room else QUEST_POOL_EACH
+        coins = each * self._seated(world)
+        self.pool += coins
+        reason = f"{d.name} solved {q.tag} ({q.family})"
+        if q.room:
+            world.add_score(QUEST_POINTS, reason, student_id=d.student_id, feed=False)
+            world.emit_event("quest_solved", f"{reason}! pool +{coins}",
+                             student_id=d.student_id,
+                             data={"points": QUEST_POINTS, "quest": q.qid,
+                                   "family": q.family, "pool": coins})
+            for other in world.drones():
+                if other.id != d.id:
+                    world.send_text(other.id, f"GAME: {q.tag} solved!")
+        else:
+            world.add_score(QUEST_POINTS, reason, student_id=d.student_id, feed=True)
+        # widest: "GAME: room quest 99 solved! +5, pool +192" = 41
+        world.send_text(d.id, f"GAME: {q.tag} solved! +{QUEST_POINTS}, pool +{coins}")
 
     def _check_towers(self, world: WorldAPI) -> None:
         for cell in [c for c in self.towers if self.tm.height(c) < TOWER_HEIGHT]:
@@ -919,6 +1007,9 @@ class SiegeMission(Mission):
             out.append(Entity(id=f"tower_{cell[0]}_{cell[1]}", kind="tower",
                               n=n, e=e, alt=self.tm.top_alt(cell),
                               data={"range": reach, "tier": tier}))
+        for mark_id, cell, data in room_marks(self.quests.room):
+            n, e = hex.axial_to_world(cell)
+            out.append(Entity(id=mark_id, kind="quest_mark", n=n, e=e, alt=0.0, data=data))
         for beam_id, _expiry, (n, e, alt), (tn, te, talt) in self.beams:
             out.append(Entity(id=beam_id, kind="beam", n=n, e=e, alt=alt,
                               data={"tn": tn, "te": te, "talt": talt}))

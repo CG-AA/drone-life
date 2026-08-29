@@ -95,7 +95,7 @@ def test_hud_state_tracks_the_wave_machine():
     hud = {k: v for k, v in m.hud().items() if k not in ("stats", "last_round")}
     assert hud == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
                    "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0,
-                   "pool": 0}
+                   "pool": 0, "quests": {"solved": 0, "missed": 0, "room": None}}
     world.views = [view("d0", n=-90.0, e=-76.0)]
     world.run(m, 10.0)
     assert m.hud()["timer_s"] == 35 and m.hud()["state"] == "grace"
@@ -104,7 +104,7 @@ def test_hud_state_tracks_the_wave_machine():
     assert h["wave"] == 1 and h["state"] == "active" and h["timer_s"] == 0
     assert h["creeps_alive"] + h["pending"] == 4
     assert all(isinstance(v, int) for k, v in h.items()
-               if k not in ("state", "stats", "last_round")), "integers only"
+               if k not in ("state", "stats", "last_round", "quests")), "integers only"
     assert h["stats"]["best_wave"] == 1
 
 

@@ -12,7 +12,7 @@ import type { Scene } from "../scene";
 import { EntityVis, type KindRenderer, type Pose } from "./base";
 import { tileCarried, tileSource, furnace, ghostTile } from "./building";
 import { crate, dropoff } from "./delivery";
-import { beam, gate, keep, poof, tower, troop, zapArc } from "./siege";
+import { beam, gate, keep, poof, questMark, tower, troop, zapArc } from "./siege";
 
 export { EntityVis, type KindRenderer, type Pose } from "./base";
 
@@ -38,6 +38,7 @@ const RENDERERS: Record<string, KindRenderer> = {
   zap_arc: zapArc,
   poof,
   gate,
+  quest_mark: questMark,
 };
 
 export class EntityRenderer {

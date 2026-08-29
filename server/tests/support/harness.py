@@ -19,11 +19,12 @@ from app.game.mission import Mission, MissionConfig
 from app.sim.backend import DroneView
 
 
-def view(drone_id="d0", n=0.0, e=0.0, alt=1.0, armed=True, crashed=False) -> DroneView:
+def view(drone_id="d0", n=0.0, e=0.0, alt=1.0, armed=True, crashed=False,
+         vn=0.0, ve=0.0, connected=True) -> DroneView:
     return DroneView(
         id=drone_id, student_id=f"s-{drone_id}", name=drone_id.upper(), sysid=1,
-        n=n, e=e, alt=alt, vn=0, ve=0, valt=0, yaw=0, mode="GUIDED",
-        armed=armed, on_ground=False, crashed=crashed, connected=True,
+        n=n, e=e, alt=alt, vn=vn, ve=ve, valt=0, yaw=0, mode="GUIDED",
+        armed=armed, on_ground=False, crashed=crashed, connected=connected,
     )
 
 

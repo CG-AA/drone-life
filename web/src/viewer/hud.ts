@@ -28,6 +28,9 @@ export const EVENT_CLASS: Record<string, string> = {
   boss_down: "triumph",
   round_end: "triumph",
   upgrade: "score",
+  quest_solved: "triumph",
+  quest_room: "warn",
+  quest_missed: "danger",
   crashed: "danger",
   crate_lost: "danger",
   tile_lost: "danger",
@@ -63,6 +66,8 @@ export interface StripModel {
   pot: string;
   /** the record to beat, shown until the next wave 1 ("" when none) */
   record: string;
+  /** the live room quest ("" when none): the one line the wall needs */
+  quest: string;
 }
 
 export function stripModel(ms: Record<string, unknown>): StripModel | null {
@@ -86,6 +91,7 @@ export function stripModel(ms: Record<string, unknown>): StripModel | null {
   return {
     record,
     pot,
+    quest: roomQuestText(ms.quests),
     wave: wave === 0 ? "GET READY" : `WAVE ${wave}`,
     phase,
     keepPct: Math.max(0, Math.min(100, (hp / max) * 100)),
@@ -95,10 +101,21 @@ export function stripModel(ms: Record<string, unknown>): StripModel | null {
   };
 }
 
+/** "ROOM QUEST 6 · ROUTE · 32s" while a room quest is open, "… · SOLVED"
+ * once someone got it, "" otherwise. Pure so the wording is testable. */
+export function roomQuestText(quests: unknown): string {
+  const q = quests as { room?: Record<string, unknown> | null } | null | undefined;
+  const room = q?.room;
+  if (!room || typeof room.id !== "number") return "";
+  const head = `ROOM QUEST ${room.id} · ${String(room.family ?? "").toUpperCase()}`;
+  if (room.solved) return `${head} · SOLVED`;
+  return `${head} · ${Math.max(0, Math.round(Number(room.left_s ?? 0)))}s`;
+}
+
 /** Which events get a big moment on the wall, and where. */
 export interface Splash { slot: "banner" | "overlay"; text: string; cls: string; kind: string }
 
-const BANNER_KINDS: Record<string, string> = { wave_start: "warn" };
+const BANNER_KINDS: Record<string, string> = { wave_start: "warn", quest_room: "warn" };
 const OVERLAY_KINDS: Record<string, string> = {
   milestone: "triumph",
   keep_fell: "danger",
@@ -199,6 +216,9 @@ export class Hud {
     const pot = document.getElementById("ms-pool")!;
     pot.textContent = m.pot;
     pot.hidden = m.pot === "";
+    const quest = document.getElementById("ms-quest")!;
+    quest.textContent = m.quest;
+    quest.hidden = m.quest === "";
     const rec = document.getElementById("ms-record")!;
     rec.textContent = m.record;
     rec.hidden = m.record === "";

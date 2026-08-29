@@ -42,5 +42,8 @@ EVENT_KINDS: frozenset[str] = frozenset({
     "boss_down",
     "round_end",
     "upgrade",
+    "quest_room",
+    "quest_solved",
+    "quest_missed",
 })
 # END-EVENT-KINDS
