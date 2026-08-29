@@ -1,11 +1,16 @@
-/** What the projector shows before the class arrives.
+/** What the projector shows so people can join.
  *
- * An empty arena tells a room of students nothing. While nobody is flying,
- * put the room code and the address on the wall so joining is self-serve as
- * they trickle in — and get out of the way the moment the first drone
- * appears. Pure so the rule is testable; main.ts owns the DOM. */
+ * An empty arena tells a room of students nothing, so while nobody is flying
+ * the room code and the address fill the wall. Once the first drone appears
+ * the same two facts shrink to a corner card and stay there — a class trickles
+ * in over the whole warmup, and every latecomer would otherwise have to ask.
+ * Pure so the rule is testable; main.ts owns the DOM. */
+
+export type AttractMode = "full" | "corner" | "hidden";
 
 export interface AttractView {
+  mode: AttractMode;
+  /** the full-screen invitation is up (kept for readers of the old shape) */
   show: boolean;
   code: string;
   joinUrl: string;
@@ -14,10 +19,13 @@ export interface AttractView {
 /** `host` is an origin (location.origin); /submit is a real server route. */
 export function attractView(connected: boolean, droneCount: number,
                             code: string | null, host: string): AttractView {
+  // deliberately keyed on the drone count rather than on hello, because a
+  // fresh socket usually delivers a world frame before hello arrives
+  let mode: AttractMode = "hidden";
+  if (connected && code) mode = droneCount === 0 ? "full" : "corner";
   return {
-    // deliberately keyed on the drone count rather than on hello, because a
-    // fresh socket usually delivers a world frame before hello arrives
-    show: connected && droneCount === 0 && Boolean(code),
+    mode,
+    show: mode === "full",
     code: code ?? "",
     joinUrl: `${host.replace(/\/+$/, "")}/submit`,
   };

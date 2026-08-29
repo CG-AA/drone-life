@@ -71,10 +71,22 @@ class WorldAPI(Protocol):
     config: MissionConfig
     now: float  # sim seconds
 
+    @property
+    def score(self) -> int:
+        """The team total — read it for summaries; add_score is how it moves."""
+        ...
+
     def drones(self) -> Sequence[DroneView]: ...
     def emit_event(self, kind: str, msg: str, student_id: str | None = None,
                    data: dict | None = None) -> None: ...
-    def add_score(self, points: int, reason: str, student_id: str | None = None) -> int: ...
+    def add_score(self, points: int, reason: str, student_id: str | None = None,
+                  *, feed: bool = True) -> int:
+        """Add to the team total and return it. `feed=True` posts a '+N: reason'
+        row on the projector; pass feed=False when the mission emits its own,
+        richer event for the same action (one row per thing that happened),
+        or for high-frequency scoring (tower shots) that would drown the feed.
+        Milestones fire either way."""
+        ...
     def send_text(self, drone_id: str, text: str, severity: int = SEV_INFO) -> None: ...
     def broadcast_text(self, text: str, severity: int = SEV_INFO) -> None: ...
 
@@ -95,6 +107,14 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
         """Called at 10 Hz after tick() — and on WS connect, possibly before
         the first tick — so read live state from `world`, don't stash it."""
         return []
+
+    def hud(self) -> dict:
+        """What the projector's status strip shows for this mission — a small
+        JSON-serializable dict (integers, short strings) rebuilt from live
+        state on every frame and on WS connect, possibly before the first
+        tick. Empty by default: missions with nothing to count show nothing.
+        Siege: wave, state, countdown, keep hp; delivery: crates, delivered."""
+        return {}
 
     def tile_map(self) -> TileMap | None:
         """Missions with terrain return their TileMap; the service wires it

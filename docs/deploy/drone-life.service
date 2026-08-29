@@ -2,6 +2,14 @@
 Description=drone-life workshop game server
 After=network-online.target
 Wants=network-online.target
+# A bad /etc/drone-life.env (placeholder secrets, unknown MISSION) makes the
+# server exit non-zero on purpose. Without a start limit systemd would restart
+# it every 3 s forever and `systemctl status` would flicker green; with one it
+# gives up after 5 tries in 60 s and stays visibly failed — check
+# `journalctl -u drone-life -n 50`, fix the env file, `systemctl reset-failed
+# drone-life`, start again.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -15,7 +23,17 @@ EnvironmentFile=/etc/drone-life.env
 ExecStart=/home/dronelife/.local/bin/uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 Restart=on-failure
 RestartSec=3
-# rootless podman needs XDG_RUNTIME_DIR; systemd user lingering provides /run/user/<uid>
+# Rootless podman needs XDG_RUNTIME_DIR pointing at the service user's own
+# /run/user/<uid> (created by `loginctl enable-linger dronelife`).
+#
+# !!! 1001 = `id -u dronelife` on the box this was written on. Replace it with
+# !!! yours (`id -u dronelife`) before installing the unit.
+#
+# Do NOT write /run/user/%U here: in a *system* unit %U is the UID of the
+# service manager (root, 0), not of User=. With %U podman runs against
+# /run/user/0, cannot see the dronelife image store, and every submit fails
+# with "runner image ... is not built" — while `make preflight` in a
+# `sudo -iu dronelife` shell passes, because a login shell gets the right dir.
 Environment=XDG_RUNTIME_DIR=/run/user/1001
 
 [Install]

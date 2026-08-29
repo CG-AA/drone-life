@@ -55,6 +55,83 @@ canvas { touch-action: none; }
   letter-spacing: 0.25em;
 }
 
+/* mission status strip under the score: the numbers a room asks about */
+#mstrip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 1.6vmin, 22px);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  font-size: clamp(0.85rem, 1.9vmin, 1.6rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+#mstrip[hidden] { display: none; }
+#ms-wave { color: var(--gold); }
+#ms-phase { color: var(--text, #fff); }
+#ms-keep { display: inline-flex; align-items: center; gap: 6px; }
+#ms-keep .ms-label { color: var(--text-muted); font-size: 0.8em; }
+#keep-bar {
+  display: inline-block;
+  width: clamp(70px, 10vmin, 140px);
+  height: 0.7em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+#keep-fill {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition: width 300ms ease-out;
+}
+#keep-fill.low { background: var(--danger); }
+#ms-keep-hp { color: var(--text-muted); font-size: 0.85em; }
+#ms-towers { color: #9fd8ff; }
+#ms-record { color: var(--gold); font-size: 0.85em; letter-spacing: 0.12em; }
+#ms-record[hidden] { display: none; }
+
+/* a wave banner across the wall, and a full-screen moment (milestone, keep
+   fell, boss down, round over): big, brief, one at a time */
+#banner, #overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25em 1.2em;
+  border-radius: 14px;
+  background: var(--hud-panel);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-align: center;
+  /* long lines ("wave 5: 13 creeps from 2 gates + a champion") wrap to a
+     second line rather than being cut off mid-word on the wall */
+  white-space: normal;
+  text-wrap: balance;
+  max-width: 88vw;
+  border-left: 10px solid var(--text-muted);
+}
+#banner[hidden], #overlay[hidden] { display: none; }
+#banner {
+  top: 22vh;
+  font-size: clamp(1.5rem, 4.2vmin, 3.8rem);
+}
+#overlay {
+  top: 40vh;
+  font-size: clamp(1.8rem, 5.5vmin, 5.5rem);
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+}
+#banner.warn, #overlay.warn { border-left-color: var(--warn); }
+#banner.triumph, #overlay.triumph { border-left-color: var(--ok); }
+#banner.danger, #overlay.danger { border-left-color: var(--danger); }
+@keyframes splash-in {
+  from { opacity: 0; transform: translateX(-50%) scale(0.85); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+#banner.in, #overlay.in { animation: splash-in 260ms ease-out; }
+
 #feed {
   position: absolute;
   left: clamp(12px, 2vmin, 28px);
@@ -110,8 +187,8 @@ canvas { touch-action: none; }
 }
 #nav-hint.gone { opacity: 0; }
 
-/* pre-class attract screen: readable from every seat, gone the moment a
-   drone shows up */
+/* the invitation: full-screen before class (readable from every seat), a
+   corner card once a drone is up — see attract.ts */
 #attract {
   position: absolute;
   inset: 0;
@@ -143,6 +220,28 @@ canvas { touch-action: none; }
   line-height: 1.05;
   max-width: 92vw;
   overflow-wrap: anywhere;
+}
+#attract.corner {
+  inset: auto;
+  top: 12px;
+  left: 12px;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: 0.6em;
+  row-gap: 0.1em;
+  padding: 8px 14px;
+  border-radius: 8px;
+  text-align: left;
+  justify-items: start;
+  background: var(--hud-panel);
+}
+#attract.corner .attract-label { font-size: clamp(0.7rem, 1.4vmin, 1rem); letter-spacing: 0.15em; }
+#attract.corner #attract-url { font-size: clamp(0.9rem, 1.9vmin, 1.4rem); margin: 0; }
+#attract.corner #attract-code {
+  font-size: clamp(1.2rem, 3.2vmin, 2.4rem);
+  letter-spacing: 0.08em;
+  max-width: 40vw;
 }
 
 /* a projector that has lost the server should look wrong from the back row */

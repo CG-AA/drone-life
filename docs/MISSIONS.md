@@ -24,6 +24,7 @@ each driver step (10 Hz):
     on_drone_event(world, drone, kind)   # all queued events, BEFORE tick
     tick(world, dt)                      # dt = 0.1 s
     entities(world)                      # serialized to every viewer
+    hud()                                # mission_state on every frame → the status strip
 admin reset:
     reset(world)               # rebuild to post-setup state
 ```
@@ -54,11 +55,18 @@ world.rng          # seeded Random — use this, never the random module
 world.config      # MissionConfig: arena_half, alt_max, pads (cells)
 world.now          # sim seconds
 world.drones()     # Sequence[DroneView] — read-only snapshots
+world.score        # the team total, read-only (round summaries)
 world.emit_event(kind, msg, student_id=None, data=None)   # projector feed
-world.add_score(points, reason, student_id=None) -> total # team score
+world.add_score(points, reason, student_id=None, feed=True) -> total
 world.send_text(drone_id, text)       # STATUSTEXT to one drone
 world.broadcast_text(text)            # STATUSTEXT to everyone
 ```
+
+`add_score(..., feed=False)` moves the total (and milestones) without the
+generic `+N: reason` feed row — use it whenever you also `emit_event` a
+richer line for the same action (one thing that happened, one row), and for
+high-frequency scoring (siege's tower shots) that would scroll the 8-row
+feed blank. Put the points in your event's message instead.
 
 `send_text` wants a **drone id** (`DroneView.id`); `emit_event`/`add_score`
 want a **student id**. Adjacent lines often need both — don't swap them.
@@ -102,9 +110,29 @@ frame **[enforced]**. Kinds in play today, and who renders them
 | `ghost_tile` | `material`, `need`, `have`, `size` | building.ts |
 | `furnace` | — | building.ts |
 | `keep` | `hp`, `max` | siege.ts |
-| `troop` | `dir` (deg), `chewing` | siege.ts |
+| `gate` | `label`, `active` | siege.ts |
+| `troop` | `dir` (deg), `chewing`, `kind`, `hp`, `max` | siege.ts |
 | `tower` | `range` | siege.ts |
-| `beam` | `tn`, `te`, `talt` | siege.ts |
+| `beam` | `tn`, `te`, `talt` | siege.ts (tower shot, 0.35 s) |
+| `zap_arc` | `tn`, `te`, `talt` | siege.ts (a drone's zap, 0.3 s) |
+| `poof` | `verb` (zap/squish/tower/leak) | siege.ts (a creep died, 0.6 s) |
+
+Short-lived cosmetics (`beam`, `zap_arc`, `poof`) are entities like any
+other: the mission keeps them in a list with a wall-clock expiry and prunes
+them every tick *before* any "empty room" early return, so they vanish even
+when nobody is connected (`test_beams_expire_even_in_an_empty_room`). Ids
+come from a monotonic counter so a burst never collides.
+
+## HUD — `hud()`
+
+`Mission.hud() -> dict` (default `{}`) rides every world frame as
+`mission_state` and drives the projector's status strip under the score.
+JSON-safe, integers and short strings, rebuilt from live state (it is called
+on WS connect, possibly before the first tick, and after `reset()`). Siege
+returns `wave`, `state`, `timer_s`, `keep_hp`, `keep_max`, `creeps_alive`,
+`pending`, `towers`, `stats`; delivery returns `crates`, `delivered`. The
+strip's wording lives in `web/src/viewer/hud.ts` (`stripModel`, pure and
+tested); add a branch there when your mission publishes something new.
 
 - **`data.carried_by` is magic**: `api/messages.py` derives the drone's
   `carrying` field from it, which lights up the student page.

@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from ...sim.backend import DroneView
 from .. import hex
 from ..building import (
     PICKUP_ALT,
@@ -64,6 +65,7 @@ class DeliveryMission(Mission):
 
     def __init__(self) -> None:
         self.crates: dict[str, Crate] = {}
+        self.delivered = 0  # this round's tally, for the projector strip
         self.carry = CarrySlots()  # drone id -> crate id
         self.drop_dwell = DwellTracker(DROP_RADIUS, PICKUP_ALT, DROP_DWELL)
         self.next_id = 1
@@ -78,12 +80,25 @@ class DeliveryMission(Mission):
 
     # ------------------------------------------------------------- lifecycle
 
+    def hud(self) -> dict:
+        return {"crates": len(self.crates), "delivered": self.delivered}
+
+    def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:
+        # a fresh link starts with an empty outbox (gateway): tell the newcomer
+        # what is on the ground right now, not the history it missed
+        if kind == "connected":
+            for crate in self.crates.values():
+                if crate.carried_by is None:
+                    world.send_text(drone.id,
+                                    f"GAME: crate {crate.id} at {fmt_world(crate.n, crate.e)}")
+
     def setup(self, world: WorldAPI) -> None:
         while len(self.crates) < CRATE_COUNT:
             self._spawn_crate(world)
 
     def reset(self, world: WorldAPI) -> None:
         self.crates.clear()
+        self.delivered = 0
         self.carry.clear()
         self.drop_dwell.clear()
         self.next_id = 1
@@ -192,8 +207,9 @@ class DeliveryMission(Mission):
         if winner is not None:
             delivered = self.crates.pop(self.carry.take(winner.id) or "", None)
             if delivered is not None:
+                self.delivered += 1
                 total = world.add_score(POINTS, f"crate {delivered.id} delivered",
-                                        student_id=winner.student_id)
+                                        student_id=winner.student_id, feed=False)
                 world.emit_event("delivery",
                                  f"{winner.name} delivered crate {delivered.id}! +{POINTS}",
                                  student_id=winner.student_id, data={"points": POINTS})

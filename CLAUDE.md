@@ -8,17 +8,19 @@ drones with real pymavlink scripts; missions are server-side plugins.
 
 ```bash
 make test          # server pytest + web vitest — must stay green
-make lint          # ruff (server) + eslint (web); lint-fix autofixes ruff only
+make lint          # ruff (server) + eslint (web); make lint-fix autofixes ruff only
 make typecheck     # tsc --noEmit (web) + mypy (server)
 make build         # tsc + vite build
-make e2e           # needs podman + `make image` — SKIP in podman-less sandboxes
+make e2e           # needs podman + `make image` — silently SKIPS (not fails) without them
 make load          # timing-sensitive, local only
+make preflight     # workshop-morning box check (podman, image, secrets, XDG_RUNTIME_DIR…)
 make dev-server    # http://localhost:8000  (MISSION=<name> selects content)
-make preflight     # workshop-morning environment check (podman, image, secrets…)
+make dev-web       # hot-reload frontend on :5173, proxies /api and /ws to :8000
 ```
 
 Server deps: `cd server && uv sync` (Python 3.12, uv-managed).
-Web deps: `cd web && npm install` (Node ≥20).
+Web deps: `cd web && npm ci` (Node ≥20; `.nvmrc` says 22, CI uses 22).
+Setup from a fresh box, deploys, and the workshop-day flow: `README.md`.
 
 ## The contracts that matter
 

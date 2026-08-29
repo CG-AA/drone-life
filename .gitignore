@@ -15,3 +15,6 @@ server/state/
 # misc
 .env
 *.log
+
+# dev-server/dev-web logs written by local tooling
+.run/

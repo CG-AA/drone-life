@@ -1,6 +1,6 @@
 /** Submit page: join → edit → run → watch logs and your drone strip. */
 
-import type { DroneState, LogLine, RunState, WorldData } from "../shared/protocol";
+import type { DroneState, HelloData, LogLine, RunState, WorldData } from "../shared/protocol";
 import { $, armedConfirm, banner, guarded, runPill } from "../shared/ui";
 import { GameSocket } from "../shared/ws";
 import { ApiFailure, CODE_KEY, STUDENT_KEY, TOKEN_KEY, fetchStatus, fetchTemplate,
@@ -124,7 +124,13 @@ function connectWs(): void {
   ws?.close();
   const token = localStorage.getItem(TOKEN_KEY) ?? "";
   ws = new GameSocket(`/ws/student?token=${encodeURIComponent(token)}`);
+  // the game the room is playing and the number everyone is adding to — the
+  // student's page is otherwise the only screen in the room that can't tell
+  ws.on<HelloData>("hello", (d) => {
+    $("mission-pill").textContent = `mission: ${d.mission}`;
+  });
   ws.on<WorldData>("world", (d) => {
+    $("score-pill").textContent = `team ${d.score}`;
     const me = d.drones.find((drone) => drone.student_id === studentId);
     if (me) updateStrip(me);
   });
@@ -190,7 +196,9 @@ function setRunState(rs: RunState): void {
   runPill($("run-pill"), rs);
   // a missing sandbox image never reaches the API as an error — the container
   // starts, dies, and the reason is in the log pane. Say where to look.
-  if (rs.state === "exited" && rs.exit_code !== null && rs.exit_code !== 0) {
+  if (rs.state === "exited" && (rs.reason === "stopped" || rs.reason === "replaced")) {
+    $("run-hint").textContent = "stopped — press run to fly again";
+  } else if (rs.state === "exited" && rs.exit_code !== null && rs.exit_code !== 0) {
     $("run-hint").textContent =
       "your script ended with an error — the reason is in the log pane";
   }
@@ -242,6 +250,11 @@ function appendLogs(batch: LogLine[]): void {
   for (const line of lines) {
     const div = document.createElement("div");
     div.className = line.stream;
+    // the game talking to you is the one channel worth spotting in a wall of
+    // prints: "DRONE: GAME: …" lines get their own colour and a marker
+    if (line.stream === "stdout" && line.line.startsWith("DRONE: GAME:")) {
+      div.classList.add("game");
+    }
     div.textContent = line.line;
     logPane.appendChild(div);
   }

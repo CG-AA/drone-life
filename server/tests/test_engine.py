@@ -86,6 +86,39 @@ def test_healthy_mission_scores_through_the_api():
     assert [ent.id for ent in engine.entities()] == ["x"]
 
 
+def test_reset_lets_the_mission_read_the_final_score_first():
+    seen = []
+
+    class Summariser(Mission):
+        name = "summariser"
+
+        def reset(self, world):
+            seen.append(world.score)
+
+    engine = make_engine(Summariser())
+    engine.start(0.0)
+    engine.api.add_score(42, "x")
+    engine.reset(1.0)
+    assert seen == [42] and engine.score == 0
+
+
+def test_quiet_score_counts_and_celebrates_without_a_feed_row():
+    class Silent(Mission):
+        name = "silent"
+
+        def tick(self, world, dt):
+            world.add_score(60, "tower kill", student_id="s1", feed=False)
+
+    engine = make_engine(Silent())
+    engine.start(0.0)
+    engine.tick(0.1, 0.1, [])
+    engine.tick(0.2, 0.1, [])
+    assert engine.score == 120
+    kinds = [ev["kind"] for ev in engine.bus.feed]
+    assert "score" not in kinds, "quiet scoring posts no '+N' rows"
+    assert kinds.count("milestone") == 1, "…but the century crossing still celebrates"
+
+
 class QuietMission(Mission):
     name = "quiet"
 

@@ -19,9 +19,17 @@ from .auth import constant_time_eq, err, get_service, require_student
 router = APIRouter(prefix="/api/v1")
 
 MAX_CODE_BYTES = 64 * 1024
+# starters first, then the demo bots (the same scripts the instructor console
+# spawns) — a worked example is the fastest way past a blank page
 TEMPLATES = {
     "beginner": "template.py",
+    "siege": "template_siege.py",
     "pymavlink": "template_pymavlink.py",
+    "bot_courier": "bot_courier.py",
+    "bot_siege": "bot_siege.py",
+    "bot_tower": "bot_tower.py",
+    "bot_builder": "bot_builder.py",
+    "bot_patrol": "bot_patrol.py",
 }
 
 
@@ -59,9 +67,16 @@ async def join(body: JoinBody, request: Request,
     }
 
 
+def default_variant(mission: str) -> str:
+    """The starter a fresh editor loads: the main event gets its own, so a
+    student joining mid-siege is not handed a delivery script."""
+    return "siege" if mission == "siege" else "beginner"
+
+
 @router.get("/template")
-async def template(variant: str = "beginner") -> PlainTextResponse:
-    filename = TEMPLATES.get(variant)
+async def template(variant: str = "",
+                   service: DroneLifeService = Depends(get_service)) -> PlainTextResponse:
+    filename = TEMPLATES.get(variant or default_variant(service.engine.mission.name))
     if filename is None:
         raise err(404, "variant", f"unknown template variant {variant!r}")
     # off-loop: this route shares the event loop with the 20 Hz sim driver

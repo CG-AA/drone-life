@@ -12,7 +12,7 @@ import type { Scene } from "../scene";
 import { EntityVis, type KindRenderer, type Pose } from "./base";
 import { tileCarried, tileSource, furnace, ghostTile } from "./building";
 import { crate, dropoff } from "./delivery";
-import { beam, keep, tower, troop } from "./siege";
+import { beam, gate, keep, poof, tower, troop, zapArc } from "./siege";
 
 export { EntityVis, type KindRenderer, type Pose } from "./base";
 
@@ -35,6 +35,9 @@ const RENDERERS: Record<string, KindRenderer> = {
   keep,
   tower,
   beam,
+  zap_arc: zapArc,
+  poof,
+  gate,
 };
 
 export class EntityRenderer {
@@ -53,6 +56,7 @@ export class EntityRenderer {
       let vis = this.map.get(ent.id);
       if (!vis) {
         vis = new EntityVis(ent.kind, this.scene);
+        vis.bornMs = timeMs;
         this.map.set(ent.id, vis);
         renderer.init?.(vis, ent);
       }

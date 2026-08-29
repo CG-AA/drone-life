@@ -47,7 +47,7 @@ def world_message(service: DroneLifeService) -> dict:
     ]
     return {"epoch": service.world.epoch, "t": round(service.world.t, 2),
             "score": service.engine.score, "drones": drones, "entities": entities,
-            "pads": pads}
+            "pads": pads, "mission_state": service.engine.hud()}
 
 
 def hello_message(service: DroneLifeService) -> dict:

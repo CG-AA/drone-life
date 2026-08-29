@@ -27,6 +27,28 @@ def run(us, tm, flow, seconds, chew_s=1.0):
     return events
 
 
+def test_chew_rate_scales_the_clock():
+    tm = TileMap()
+    for wall in hex.ring(GOAL, 1):  # a 2-high ring: the only way in is through
+        tm.place(wall, "steel")
+        tm.place(wall, "steel")
+    flow = path.flood(tm, GOAL, climb=1)
+    slow, fast = unit_at((0, 2), uid=1), unit_at((0, 2), uid=2)
+    fast.chew_rate = 2.0
+    us = [slow, fast]
+    chewed_at = {}
+    t = 0.0
+    for _ in range(round(20 / DT)):
+        result = step_units(us, tm, flow, DT, chew_s=4.0)
+        t += DT
+        for u, _cell in result.chews:
+            chewed_at.setdefault(u.uid, round(t, 1))
+        if len(chewed_at) == 2:
+            break
+    assert chewed_at[2] < chewed_at[1], chewed_at
+    assert abs(chewed_at[2] * 2 - chewed_at[1]) < 0.3, "2x chew rate: half the time"
+
+
 def test_walks_to_goal_and_arrives_on_schedule():
     tm = TileMap()
     flow = path.flood(tm, GOAL, climb=1)

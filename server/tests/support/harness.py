@@ -75,12 +75,13 @@ class FakeWorld:
         self.events.append({"kind": kind, "msg": msg, "student_id": student_id,
                             "data": data or {}, "t": round(self.now, 2)})
 
-    def add_score(self, points, reason, student_id=None):
+    def add_score(self, points, reason, student_id=None, *, feed=True):
         prev = self.score
         self.score += points
         self.scores.append((points, reason, student_id))
-        self.emit_event("score", f"{points:+d}: {reason}", student_id=student_id,
-                        data={"points": points, "total": self.score})
+        if feed:
+            self.emit_event("score", f"{points:+d}: {reason}", student_id=student_id,
+                            data={"points": points, "total": self.score})
         mark = milestone_crossed(prev, points, self.score)
         if mark is not None:
             self.emit_event("milestone", f"team passes {mark} points!",

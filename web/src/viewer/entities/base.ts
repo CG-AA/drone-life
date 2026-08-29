@@ -20,6 +20,8 @@ export class EntityVis {
   decal = new Graphics();
   label: Text | null = null;
   drawKey = "";
+  /** timeMs when this vis first appeared — short-lived kinds animate from it */
+  bornMs = 0;
 
   constructor(public kind: string, private scene: Scene) {
     this.root.addChild(this.g);

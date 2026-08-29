@@ -39,7 +39,8 @@ export const KNOWN_KINDS = [
   "crate", "dropoff",                                  // delivery
   "tile_source", "tile_carried", "ghost_tile",         // building missions
   "furnace",                                           // forge
-  "keep", "troop", "tower", "beam",                    // siege
+  "keep", "troop", "tower", "beam", "gate",            // siege
+  "zap_arc", "poof",                                   // siege cosmetics (short-lived)
 ] as const;
 
 export interface EntityState {
@@ -60,10 +61,17 @@ export interface CrateData { carried_by?: string }
 export interface TileSourceData { material: string; remaining: number | null }
 export interface TileCarriedData { carried_by: string; material: string }
 export interface GhostTileData { material: string; need: number; have: number; size: number }
-export interface TroopData { dir: number; chewing: boolean }
+/** kind: grunt | runner | brute | sapper | champion (missions/siege.py KINDS) */
+export interface TroopData { dir: number; chewing: boolean; kind: string; hp: number; max: number }
 export interface KeepData { hp: number; max: number }
 export interface TowerData { range: number }
+/** an archway creeps pour from; active while its wave is still spawning */
+export interface GateData { label: string; active: boolean }
 export interface BeamData { tn: number; te: number; talt: number }
+/** a drone's zap: origin is the entity pose (the drone), target rides in data */
+export interface ZapArcData { tn: number; te: number; talt: number }
+/** where a creep died; verb is zap | squish | tower | leak */
+export interface PoofData { verb: string }
 
 export interface PadState {
   slot: number;
@@ -79,7 +87,25 @@ export interface WorldData {
   drones: DroneState[];
   entities: EntityState[];
   pads: PadState[];
+  /** Mission.hud() — per-mission, see the …HudState shapes; {} when a
+   * mission has nothing to count. Coerce field by field like entity data. */
+  mission_state: Record<string, unknown>;
 }
+
+/** siege's mission_state (missions/siege.py hud()) */
+export interface SiegeHudState {
+  wave: number;
+  state: "grace" | "build" | "active";
+  timer_s: number; // whole seconds to the next wave; 0 while active
+  keep_hp: number;
+  keep_max: number;
+  creeps_alive: number;
+  pending: number; // creeps of this wave still to spawn
+  towers: number;
+}
+
+/** delivery's mission_state */
+export interface DeliveryHudState { crates: number; delivered: number }
 
 export interface EventData {
   kind: string;

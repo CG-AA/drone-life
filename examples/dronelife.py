@@ -11,12 +11,16 @@ MAVLink messages each helper sends. The workshop guide walks through it.
 
 Coordinates are meters relative to the arena center: north, east, altitude.
 The arena spans -100..100 on both axes; max altitude is 60 m.
+
+GAME messages ("crate 3 at N 40 E -12", "creep at N 10 E 55") arrive through
+drone.events(); position_in(msg) pulls the (north, east) pair out of one.
 """
 
 from __future__ import annotations
 
 import os
 import queue
+import re
 import threading
 import time
 
@@ -74,7 +78,12 @@ class Drone:
                 n, e, a = self.position()
                 return abs(n - north) < tolerance and abs(e - east) < tolerance \
                     and abs(a - alt) < tolerance
-            self._wait(arrived, timeout, f"goto({north}, {east}, {alt})")
+            def hint() -> str:
+                n, e, a = self.position()
+                away = ((n - north) ** 2 + (e - east) ** 2) ** 0.5
+                return (f"still {away:.0f} m away at {a:.0f} m up — a wall in the way? "
+                        f"try a higher alt, or goto(..., timeout={int(timeout * 2)})")
+            self._wait(arrived, timeout, f"goto({north}, {east}, {alt})", hint)
 
     def move(self, vn: float, ve: float, vup: float, seconds: float) -> None:
         """Fly by velocity (m/s) for a duration. Re-sends the setpoint twice a
@@ -90,19 +99,24 @@ class Drone:
         self.goto(n, e, a, wait=False)  # crisp stop: hold where we ended up
 
     def land(self, wait: bool = True) -> None:
+        """Land right here and disarm. Blocks until on the ground by default."""
         self._cmd(mavutil.mavlink.MAV_CMD_NAV_LAND, 0)
         if wait:
-            self._wait(lambda: not self._armed, 90, "landing")
+            self._wait(lambda: not self._armed, 90, "landing",
+                       "is the drone sitting on a wall? goto somewhere flat first")
             self._say("landed")
 
     def rtl(self, wait: bool = True) -> None:
         """Return to your spawn pad and land."""
         self._cmd(mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH, 0)
         if wait:
-            self._wait(lambda: not self._armed, 180, "returning home")
+            self._wait(lambda: not self._armed, 180, "returning home",
+                       "a long way out, or blocked? goto(0, 0, 20) first, then rtl()")
             self._say("home")
 
     def set_mode(self, mode: int) -> None:
+        """Switch flight mode: GUIDED (fly by commands), LOITER (hold position),
+        RTL (fly home), LAND, STABILIZE — the module constants at the top."""
         self._cmd(mavutil.mavlink.MAV_CMD_DO_SET_MODE,
                   mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, p2=mode)
 
@@ -114,6 +128,7 @@ class Drone:
 
     @property
     def armed(self) -> bool:
+        """True while the motors are armed (False once landed or crashed)."""
         return self._armed
 
     def events(self) -> list[str]:
@@ -133,9 +148,12 @@ class Drone:
             return None
 
     def wait(self, seconds: float) -> None:
+        """Hover in place for `seconds` (the drone holds its last target)."""
         time.sleep(seconds)
 
     def close(self) -> None:
+        """Drop the link. The game treats a closed link as 'script gone' and
+        flies the drone home after 10 s — you rarely need to call this."""
         self._stop.set()
         self.conn.close()
 
@@ -146,13 +164,18 @@ class Drone:
             self.conn.target_system, self.conn.target_component,
             command, 0, p1, p2, 0, 0, 0, 0, p7)
 
-    def _wait(self, pred, timeout: float, what: str) -> None:
+    def _wait(self, pred, timeout: float, what: str, hint=None) -> None:
+        """Poll `pred` until true or `timeout` seconds pass. `hint` (a string
+        or a function returning one) is appended to the error so the log
+        pane says what to try next, not just what failed."""
         deadline = time.time() + timeout
         while time.time() < deadline:
             if pred():
                 return
             time.sleep(0.05)
-        raise TimeoutError(f"gave up waiting for: {what}")
+        remedy = hint() if callable(hint) else hint
+        raise TimeoutError(f"gave up waiting for: {what}"
+                           + (f" — {remedy}" if remedy else ""))
 
     def _read_loop(self) -> None:
         while not self._stop.is_set():
@@ -181,7 +204,23 @@ class Drone:
             print(text, flush=True)
 
 
-def _connect_with_retry(url: str, tries: int = 5):
+_POSITION = re.compile(r"\bN (-?\d+) E (-?\d+)")
+
+
+def position_in(text: str) -> tuple[int, int] | None:
+    """(north, east) from a GAME message, or None if it names no position.
+
+        position_in("creep at N 40 E -12")  ->  (40, -12)
+        position_in("wave 3 clear! +10")    ->  None
+
+    Every mission announces places the same way ("... at N <int> E <int>"),
+    so this one helper reads crates, creeps, quarries and build sites alike.
+    """
+    m = _POSITION.search(text)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def _connect_with_retry(url: str, tries: int = 5) -> mavutil.mavfile:
     for attempt in range(tries):
         try:
             return mavutil.mavlink_connection(url)
@@ -190,6 +229,7 @@ def _connect_with_retry(url: str, tries: int = 5):
                 raise
             print(f"drone not answering at {url}, retrying...", flush=True)
             time.sleep(2)
+    raise ConnectionRefusedError(url)  # unreachable: the last attempt re-raised
 
 
 def connect(url: str | None = None, verbose: bool = True) -> Drone:

@@ -37,8 +37,10 @@ export const submitCode = (code: string) =>
   authed<{ run_id: string }>("POST", "/api/v1/submit", { code });
 export const stopRun = () => authed<{ stopped: boolean }>("POST", "/api/v1/stop");
 export const resetMine = () => authed<{ ok: boolean }>("POST", "/api/v1/reset-mine");
-export const fetchTemplate = async (variant = "beginner"): Promise<string> => {
-  const res = await fetch(`/api/v1/template?variant=${encodeURIComponent(variant)}`);
+/** No variant: the server picks the starter for the mission that is live. */
+export const fetchTemplate = async (variant = ""): Promise<string> => {
+  const q = variant ? `?variant=${encodeURIComponent(variant)}` : "";
+  const res = await fetch(`/api/v1/template${q}`);
   if (!res.ok) throw new ApiFailure(
     { code: "template", msg: `no ${variant} template (${res.status})` }, res.status);
   return res.text();

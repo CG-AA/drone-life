@@ -85,7 +85,7 @@ class ForgeMission(Mission):
             if match is not None:
                 self.furnaces.append(match.anchor)
                 world.add_score(FURNACE_POINTS, "furnace lit",
-                                student_id=p.drone.student_id)
+                                student_id=p.drone.student_id, feed=False)
                 world.emit_event("furnace_lit", f"{p.drone.name} lit a furnace!",
                                  student_id=p.drone.student_id,
                                  data={"points": FURNACE_POINTS})

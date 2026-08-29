@@ -1,0 +1,38 @@
+[Unit]
+Description=AutoSSH Reverse Tunnel Service (lamb-server -> gateway)
+After=network-online.target ssh.service
+Wants=network-online.target
+
+[Service]
+User=lamb
+# Site-specific settings (remote gateway, key path, ports) live in an EnvironmentFile,
+# NOT in the repo. Install autossh-reverse-tunnel.env to
+# /etc/default/autossh-reverse-tunnel (root:root, 0600) and fill in TUNNEL_REMOTE
+# before enabling this unit.
+EnvironmentFile=/etc/default/autossh-reverse-tunnel
+Environment="AUTOSSH_GATETIME=0"
+ExecStart=/usr/bin/autossh -M 0 -N -q \
+    -o "ServerAliveInterval 30" -o "ServerAliveCountMax 3" \
+    -o ExitOnForwardFailure=yes -o IdentitiesOnly=yes \
+    -o BatchMode=yes -o StrictHostKeyChecking=yes \
+    -R ${TUNNEL_BIND}:${TUNNEL_FORWARD} -i ${TUNNEL_KEY} ${TUNNEL_REMOTE}
+Restart=always
+RestartSec=10
+
+# --- sandboxing (in-place; no behavioural change) ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

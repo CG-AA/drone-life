@@ -81,6 +81,7 @@ class Run:
     exit_code: int | None = None
     reason: str | None = None  # why it ended; None while it hasn't — see END_REASONS
     tasks: list[asyncio.Task] = field(default_factory=list)  # pumps + exit watcher
+    stopping: bool = False  # a deliberate stop is in flight: the exit watcher stays quiet
 
     def payload(self) -> dict:
         return {"run_id": self.run_id, "state": self.state, "exit_code": self.exit_code,
@@ -246,7 +247,7 @@ class RunnerManager:
             reason = "timeout"
             await self._kill(run)
             code = await run.proc.wait()
-        if self.runs.get(student.id) is run and run.state != "exited":
+        if self.runs.get(student.id) is run and run.state != "exited" and not run.stopping:
             ended = reason or end_reason(run.mode, code)
             run.end(ended, code)
             if ended == "runner_failed":
@@ -273,6 +274,9 @@ class RunnerManager:
         run = self.runs.get(student_id)
         if run is None or run.state == "exited":
             return False
+        # the kill lands as exit 137 before we get to say why; without this the
+        # student's log reads "exited with an error (exit 137)" above "stopped"
+        run.stopping = True
         await self._kill(run)
         if run.proc:
             try:

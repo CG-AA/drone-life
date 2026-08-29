@@ -31,6 +31,9 @@ under one minute; the rest is students pressing Run again.
 ## 3. Before doors open (T−20)
 
 - `systemctl status drone-life` green; `MISSION=freefly` in `/etc/drone-life.env`.
+  Pulled new code since the last class? `make image` too — cheap, and the
+  sandbox then matches the server (the live `dronelife.py` is mounted into
+  every run regardless, so a stale image cannot break imports).
 - Projector on `/` with the room code entered; admin console (`/admin`) open
   on the instructor laptop.
 - Smoke: `make bots N=3 HOST=localhost:8000 ADMIN_TOKEN=...` → three drones
@@ -108,11 +111,11 @@ worked answer in the repo — don't reveal that until the wrap.
 - Delivery lull: `make bots N=2 SCRIPT=bot_courier` — two bots quietly show
   the full loop on the projector. Kick them from `/admin` once real deliveries
   resume (they hold roster slots, and the cap is `MAX_STUDENTS`).
-- Siege lull: `make bots N=2 SCRIPT=bot_siege` — zappers only. **`bot_builder`
-  cannot demo building on siege**: it waits for rampart's `wall gap`
-  announcements, which siege never sends (verified in rehearsal — it grabs
-  steel and hovers forever). Building has to be demoed by a human: place
-  3 steel on one cell on the projector and let the tower speak for itself.
+- Siege lull: `make bots N=2 SCRIPT=bot_siege` for zappers, and
+  `make bots N=1 SCRIPT=bot_tower` to demo building — it ferries steel to
+  the game's own `build a tower at …` suggestion and stacks three, so the
+  room sees a tower rise and start shooting. (`bot_builder` is rampart's:
+  it waits for `wall gap` lines siege never sends and hovers forever.)
 - Never leave bots in during a "record" round — the record should be human.
 
 ## 8. Contingencies
@@ -156,16 +159,30 @@ if a slow one starves, lower `CRATE_MAX` won't help — lower
 Siege (all in `server/app/game/missions/siege.py`): `GRACE_S` (45 — raise to
 60 for a first-timer room, or when the intro runs long), `BUILD_S` (20,
 between waves), `SPAWN_GAP` (1.5 s/creep), wave size
-`min(16, 4 + 2·(wave−1))`, speed `min(2.5, 1.5 + 0.1·(wave−1))`,
-`KILL_POINTS` 2 / `WAVE_BONUS` 10 / `TOWER_POINTS` 15 / `KEEP_FALL_POINTS`
-−25.
+`min(20, 4 + 2·(wave−1) + pilots//4)` (roster-scaled: 20 pilots meet the
+cap at wave 6, one rehearsal drone still sees 4), base speed
+`min(2.5, 1.5 + 0.1·(wave−1))` × the kind's multiplier. Scoring: bounty per
+kind (grunt/runner 2, sapper 3, brute 5, champion 20), `WAVE_BONUS` 10 for
+a clean wave / `WAVE_BONUS_LEAKY` 5, `TOWER_POINTS` 15, `KEEP_HIT_POINTS`
+−1 per leak, `KEEP_FALL_POINTS` −25 (the falling hit charges only that).
 
-Measured (8 × `bot_siege` + 2 × `bot_builder`, ~3.5 min): grace and the wave
-machine run exactly on the documented clocks — waves 1–3 in ~50 s per cycle
-(spawn + fight + 20 s build), all cleared by zaps alone, keep never hit.
-Eight optimal zappers trivialize early waves; a human room will bleed more,
-so the defaults stand. The interesting pressure starts once sizes reach the
-cap of 16 (wave 7) — reach it in a round before judging difficulty.
+The roster (`KINDS` / `SHARES`): grunts 1 hp from wave 1; runners (1.5×
+speed) from 3; brutes (3 hp, 0.65× speed, chew 2×) from 5; sappers (2 hp,
+chew 3×) from 7; a champion (8 hp, 0.6×, three Keep hits) behind every 5th
+wave (`BOSS_EVERY`). Gates: one lane through wave 3, two from 4, all three
+from 8 (`_gates_for`). Between waves the game announces a tower site four
+cells before the Keep beside the last lane (`BUILD_SITE_STEPS`, 8 ≈ 40 m out —
+past where gate-camping zappers already emptied it); towers reach 16 m and
+fire every 2 s; a drone zaps one creep per 1.5 s (`ZAP_DWELL`), never a clump.
+
+Measured before the kinds landed (8 × `bot_siege` + 2 × `bot_builder`,
+~3.5 min): grace and the wave machine ran exactly on the documented clocks
+— waves 1–3 in ~50 s per cycle, all cleared by zaps alone, keep never hit;
+eight optimal zappers trivialized early waves. That is why the first
+waves stayed grunts-only teaching waves and the pressure (hp, speed, two
+gates, the boss) now arrives from wave 3–5 instead of at the old size cap.
+Re-measure with `make bots N=6 SCRIPT=bot_siege` + `N=2 SCRIPT=bot_tower`
+before the day and watch the round summary on reset.
 
 ## Scaling the plan to other lengths
 
@@ -176,12 +193,13 @@ cap of 16 (wave 7) — reach it in a round before judging difficulty.
 
 ## Day −1 checklist (cannot be verified off the lab server)
 
-- [ ] `make preflight` / podman path: `make image`, `make e2e`, one
-      container-mode submit end-to-end from a real browser.
+- [ ] `set -a && . /etc/drone-life.env && set +a && make preflight` (the env
+      file is not read by `make` on its own) / podman path: `make image`,
+      `make e2e`, one container-mode submit end-to-end from a real browser.
 - [ ] `make load LOAD_BOTS=20` on the lab hardware; overruns < 1% on
       `/healthz`.
 - [ ] Both transition boxes on the real box (`/etc/drone-life.env` edit +
       `systemctl restart` — time them; they're the 5′ SWITCH blocks).
 - [ ] Projector readability from 5 m; printed CHEATSHEET legible at desk.
 - [ ] Full dry run of §4 with 3 bots + one real phone/laptop as a fake
-      student (WORKPLAN day −1 freeze item).
+      student.
