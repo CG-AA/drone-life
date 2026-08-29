@@ -73,6 +73,12 @@ export interface ZapArcData { tn: number; te: number; talt: number }
 /** where a creep died; verb is zap | squish | tower | leak */
 export interface PoofData { verb: string }
 
+export interface ScoreRow {
+  student_id: string;
+  name: string;
+  points: number;
+}
+
 export interface PadState {
   slot: number;
   n: number;
@@ -84,6 +90,8 @@ export interface WorldData {
   epoch: number;
   t: number;
   score: number;
+  /** per-pilot points this round, best first; a team loss belongs to nobody */
+  scores: ScoreRow[];
   drones: DroneState[];
   entities: EntityState[];
   pads: PadState[];

@@ -131,6 +131,8 @@ class DroneLifeService:
         if data:
             self.registry.restore(data.get("students", []))
             self.engine.score = int(data.get("score", 0))
+            self.engine.scores = {str(k): int(v) for k, v in data.get("scores", {}).items()
+                                  if k in self.registry.students}
             log.info("restored %d students, score %d",
                      len(self.registry.students), self.engine.score)
         for student in self.registry.students.values():
@@ -240,6 +242,7 @@ class DroneLifeService:
         snapshot.save(self._snapshot_path, {
             "students": self.registry.to_dict(),
             "score": self.engine.score,
+            "scores": self.engine.scores,
         })
 
     # ---------------------------------------------------------------- joins
@@ -248,8 +251,8 @@ class DroneLifeService:
     def drone_id_for(student: Student) -> str:
         return f"d{student.slot}"
 
-    async def join(self, name: str) -> tuple[Student, bool]:
-        student, is_new = self.registry.join(name)
+    async def join(self, name: str, ip: str = "") -> tuple[Student, bool]:
+        student, is_new = self.registry.join(name, ip)
         if is_new:
             await self._spawn_drone(student)
             self.bus.emit("joined", f"{student.name} joined the sky",
@@ -269,9 +272,20 @@ class DroneLifeService:
             return False
         await self.runner.stop(student_id)
         await self.backend.remove(self.drone_id_for(student))
+        self.engine.scores.pop(student_id, None)
         self.bus.emit("kicked", f"{student.name} left", student_id=student_id, t=self.world.t)
         self._save_snapshot()
         return True
+
+    async def ban(self, student_id: str) -> Student | None:
+        """Kick, and keep the name out until restart or an admin unlock. The
+        caller locks the address (that guard lives with the join limiter)."""
+        student = self.registry.students.get(student_id)
+        if student is None:
+            return None
+        self.registry.ban_name(student.name)
+        await self.kick(student_id)
+        return student
 
     # ---------------------------------------------------------------- resets
 

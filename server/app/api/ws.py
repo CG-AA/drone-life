@@ -20,7 +20,7 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .auth import constant_time_eq
+from .auth import gate_room_code
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -193,18 +193,12 @@ async def _serve(ws: WebSocket, client: Client) -> None:
 
 @router.websocket("/ws/viewer")
 async def ws_viewer(ws: WebSocket) -> None:
-    service = ws.app.state.service
     # wrong codes spend the join budget, and once it is gone every connection
     # from that address is refused — including one bearing the right code, so
     # guessing here cannot outlive the ceiling (see routes_public.world)
     ip = ws.client.host if ws.client else "?"
-    limiter = ws.app.state.join_limiter
-    code = ws.query_params.get("code", "").strip()
-    if limiter.blocked(ip):
-        await ws.close(code=4403)
-        return
-    if not constant_time_eq(code, service.settings.room_code):
-        limiter.allow(ip)
+    code = ws.query_params.get("code", "")
+    if gate_room_code(ws.app.state, ip, code) != "ok":
         await ws.close(code=4403)
         return
     await ws.accept()

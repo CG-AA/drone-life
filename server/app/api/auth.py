@@ -93,3 +93,93 @@ class RateLimiter:
         stale = [key for key, window in self.hits.items() if not window or now - window[-1] > 60]
         for key in stale:
             del self.hits[key]
+
+
+class StrikeGuard:
+    """Three wrong room codes and the address is out.
+
+    The sliding-window limiter above caps guessing *speed*; this caps the
+    *count*: `strikes` wrong codes lock an address out for `lockout_s` seconds
+    (0 = until the server restarts), correct code or not — a locked address
+    must learn nothing. A correct code before the ceiling wipes the address's
+    slate, so a student who typos twice is not one more typo from a lockout.
+    `strikes == 0` disables the guard.
+    """
+
+    def __init__(self, strikes: int, lockout_s: float,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self.strikes = strikes
+        self.lockout_s = lockout_s
+        self.clock = clock
+        self.misses: dict[str, list[float]] = {}
+        self.locked_at: dict[str, float] = {}
+        self.banned: set[str] = set()  # an admin's doing: no expiry
+
+    def ban(self, key: str) -> None:
+        if key:
+            self.banned.add(key)
+
+    def blocked(self, key: str) -> bool:
+        if key in self.banned:
+            return True
+        since = self.locked_at.get(key)
+        if since is None:
+            return False
+        if self.lockout_s and self.clock() - since > self.lockout_s:
+            self.clear(key)
+            return False
+        return True
+
+    def strike(self, key: str) -> None:
+        if not self.strikes:
+            return
+        misses = self.misses.setdefault(key, [])
+        misses.append(self.clock())
+        if len(misses) >= self.strikes:
+            self.locked_at[key] = self.clock()
+
+    def clear(self, key: str) -> None:
+        self.misses.pop(key, None)
+        self.locked_at.pop(key, None)
+
+    def unlock_all(self) -> int:
+        n = len(self.locked_at) + len(self.banned)
+        self.misses.clear()
+        self.locked_at.clear()
+        self.banned.clear()
+        return n
+
+
+def gate_room_code(app_state, ip: str, code: str) -> str:
+    """Every endpoint that accepts a room code passes through here.
+
+    Returns "ok", "wrong", "rate" or "locked" and does the bookkeeping. A
+    locked or rate-limited address gets the same refusal for right and wrong
+    codes (no oracle); a wrong code costs one strike and one unit of join
+    budget; a right code clears the address's strikes.
+    """
+    strikes: StrikeGuard = app_state.join_strikes
+    limiter: RateLimiter = app_state.join_limiter
+    if strikes.blocked(ip):
+        return "locked"
+    if limiter.blocked(ip):
+        return "rate"
+    if not constant_time_eq(code.strip(), app_state.service.settings.room_code):
+        limiter.allow(ip)
+        strikes.strike(ip)
+        return "wrong"
+    strikes.clear(ip)
+    return "ok"
+
+
+REFUSALS = {
+    "wrong": (403, "room_code", "wrong room code — ask your instructor"),
+    "rate": (429, "rate", "too many attempts; wait a minute"),
+    "locked": (429, "locked",
+               "too many wrong room codes — this address is locked out; ask your instructor"),
+}
+
+
+def refuse(verdict: str) -> HTTPException:
+    status, code, msg = REFUSALS[verdict]
+    return err(status, code, msg)

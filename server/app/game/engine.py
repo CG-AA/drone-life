@@ -65,6 +65,9 @@ class _API:
         prev = self._engine.score
         self._engine.score += points
         total = self._engine.score
+        if student_id is not None:  # the projector's per-pilot board
+            scores = self._engine.scores
+            scores[student_id] = scores.get(student_id, 0) + points
         if feed:
             self._engine.bus.emit("score", f"{points:+d}: {reason}", student_id=student_id,
                                   data={"points": points, "total": total}, t=self.now)
@@ -91,6 +94,7 @@ class GameEngine:
         self.config = config
         self.rng = random.Random(seed)
         self.score = 0
+        self.scores: dict[str, int] = {}  # student_id -> points this round
         self.api = _API(self)
         self._last_error_emit = float("-inf")
 
@@ -152,4 +156,5 @@ class GameEngine:
         except Exception:
             self._mission_error("reset")
         self.score = 0
+        self.scores.clear()
         self.bus.emit("reset", "world reset — press Run again", t=now)

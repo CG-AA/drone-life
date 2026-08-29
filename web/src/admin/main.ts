@@ -4,8 +4,8 @@
 
 import type { BotsResult, RosterStudent } from "../shared/protocol";
 import { $, actionButton, banner, guarded, runPill, typedConfirm } from "../shared/ui";
-import { ApiFailure, clearToken, fetchHealth, fetchRoster, getToken, kickStudent, killScript,
-  resetWorld, setToken, spawnBots } from "./api";
+import { ApiFailure, banStudent, clearToken, fetchHealth, fetchRoster, getToken, kickStudent,
+  killScript, resetWorld, setToken, spawnBots, tokenProblem } from "./api";
 import { formatHealth, type HealthSample } from "./health";
 import { ageMs, attention, orderRoster, updateAges } from "./glance";
 
@@ -28,7 +28,13 @@ function showGate(error = ""): void {
 
 async function handleToken(ev: Event): Promise<void> {
   ev.preventDefault();
-  setToken(($("token-input") as HTMLInputElement).value.trim());
+  const raw = ($("token-input") as HTMLInputElement).value.trim();
+  const problem = tokenProblem(raw);
+  if (problem !== null) {
+    showGate(problem);
+    return;
+  }
+  setToken(raw);
   try {
     await poll();
     $("join-overlay").classList.add("hidden");
@@ -62,7 +68,10 @@ async function poll(): Promise<void> {
       showGate("bad admin token — enter it again");
       throw e;
     }
-    $("summary").textContent = "server unreachable — retrying…";
+    // say why: "Failed to fetch" with a 200 in curl is a browser extension
+    // (ad/privacy blockers match "/admin" paths), not the server
+    const why = e instanceof Error ? e.message : String(e);
+    $("summary").textContent = `server unreachable — retrying… (${why})`;
     $("health-line").textContent = "";
     lastHealth = null; // a gap in the samples would fake a tick rate
   } finally {
@@ -122,10 +131,20 @@ function renderRoster(roster: RosterStudent[]): void {
         `could not stop ${s.name}'s script`, () => void poll(), "really kill?"),
       actionButton("kick", () => kickStudent(s.student_id),
         `could not kick ${s.name}`, () => void poll(), "really kick?"),
+      banButton(s),
     );
 
     body.appendChild(tr);
   }
+}
+
+function banButton(s: RosterStudent): HTMLButtonElement {
+  const b = actionButton("ban", () => banStudent(s.student_id),
+    `could not ban ${s.name}`, () => void poll(), "really ban?");
+  b.title = "kick, and keep this name and the address it joined from out until " +
+    "restart or unlock — on a shared wifi that address is everyone behind it";
+  b.classList.add("danger");
+  return b;
 }
 
 // -------------------------------------------------------------------- controls
@@ -161,7 +180,11 @@ $("signout-btn").addEventListener("click", () => {
 
 $("token-form").addEventListener("submit", (ev) => void handleToken(ev));
 
-if (getToken()) {
+const storedProblem = getToken() ? tokenProblem(getToken()) : "";
+if (storedProblem) {
+  clearToken(); // a stored paste that fetch() would reject: back to the gate, not a retry loop
+  showGate(storedProblem);
+} else if (getToken()) {
   poll().catch(() => { /* gate shown by poll on 403; transient errors retry */ });
 } else {
   showGate();

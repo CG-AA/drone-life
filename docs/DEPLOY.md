@@ -107,6 +107,8 @@ target and the systemd unit).
 | `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`) |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
 | `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |
+| `JOIN_STRIKES` | `3` | wrong room codes from one IP before it is locked out of `/join`, `/world` and the viewer (right code or not); `0` disables |
+| `JOIN_LOCKOUT_S` | `900` | how long that lockout lasts; `0` = until restart. `POST /api/v1/admin/unlock` (admin token) lifts all lockouts and bans now |
 | `SUBMIT_RATE_LIMIT_PER_MINUTE` | `10` | per-student script submissions, guards container churn |
 | `ALLOW_DEFAULT_SECRETS` | `false` | dev only: boot on the placeholder `ROOM_CODE`/`ADMIN_TOKEN` |
 
@@ -254,6 +256,7 @@ line is the fastest read on whether the sim itself is alive.
 | server won't start, port 8000 busy | `ss -ltnp 'sport = :8000'` | `make kill-prod` (uvicorn + leftover containers), then start again |
 | joins return 500 | `ss -ltnp` over 5760–5779 | something squats a MAVLink port — kill it, restart |
 | students can reach the page but not join | the room code they were given vs `ROOM_CODE` in `/etc/drone-life.env` | tell them the right one — a wrong code is a clear message on their page, not a hang |
+| console says **server unreachable** while `curl localhost:8000/healthz` is 200 | the reason in parentheses on that line; F12 shows no `/api/v1/admin/students` request at all | the browser refused the request before sending it: `…value 9679…` / "masked dots" = the token was pasted from a masked field (`●●●`) — copy the plain text; `Failed to fetch` = an extension blocking `/admin` URLs — incognito window or whitelist |
 | a script won't die | console **kill script** | `podman ps --filter label=drone-life=1` then `podman rm -f -t 0 <id>` |
 | server boots but serves no page | `ls /opt/drone-life/web/dist` | `make build`, then `systemctl restart drone-life` — the static mount is decided at boot, so a server that started without `web/dist` keeps serving nothing until restarted |
 | every submit 503s "runner image … is not built" under systemd, but `make preflight` passes in a `sudo -iu dronelife` shell | `systemctl show drone-life -p Environment` vs `id -u dronelife` | the unit's `XDG_RUNTIME_DIR` uid is wrong (the `%U` trap) — fix it in `/etc/systemd/system/drone-life.service`, `daemon-reload`, restart |

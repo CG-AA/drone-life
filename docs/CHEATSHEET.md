@@ -18,7 +18,7 @@ drone.wait(2)         drone.armed    # sleep / motors-armed flag
 
 ## The map
 
-Arena **−100..100** m on N and E · center **(0, 0)** · your pad at **N −90** ·
+Arena **−100..100** m on N and E · center **(0, 0)** · your pad on the **south edge** (N −90, rows north of it for a big room) ·
 max altitude **60 m** · max speed **10 m/s** · arena edges are soft, walls
 are not.
 

@@ -128,6 +128,7 @@ async function boot(): Promise<void> {
     cur = { data: d, at: performance.now() };
     simT = d.t;
     hud.setScore(d.score);
+    hud.setScores(d.scores);
     hud.setSimTime(d.t);
     hud.setMissionState(d.mission_state ?? {});
     scene.drawPads(d.pads);

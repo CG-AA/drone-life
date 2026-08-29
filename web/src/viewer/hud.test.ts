@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { EVENT_CLASS, splashFor, stripModel } from "./hud";
+import { EVENT_CLASS, boardModel, splashFor, stripModel } from "./hud";
 
 const CLIENT_ONLY = new Set(["stale"]);
 
@@ -85,4 +85,17 @@ it("ignores replayed history so a reconnect never flashes twenty banners", () =>
   expect(splashFor(ev("wave_start", 97), 100)).not.toBeNull();
   // before the first world frame the clock is unknown: trust the event
   expect(splashFor(ev("wave_start", 40), 0)).not.toBeNull();
+});
+
+it("boards the top pilots best first, hides zeros, breaks ties by name", () => {
+  const rows = boardModel([
+    { student_id: "s2", name: "zed", points: 20 },
+    { student_id: "s1", name: "amy", points: 20 },
+    { student_id: "s3", name: "idle", points: 0 },
+    { student_id: "s4", name: "bob", points: 35 },
+  ]);
+  expect(rows.map((r) => r.name)).toEqual(["bob", "amy", "zed"]);
+  expect(boardModel(undefined)).toEqual([]);
+  expect(boardModel(Array.from({ length: 12 }, (_, i) =>
+    ({ student_id: `s${i}`, name: `p${i}`, points: 100 - i }))).length).toBe(8);
 });

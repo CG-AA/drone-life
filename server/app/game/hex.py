@@ -21,11 +21,14 @@ SQRT3 = math.sqrt(3.0)
 # axial direction ring, counter-clockwise starting east
 DIRECTIONS: tuple[Axial, ...] = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 
-# Spawn pads: one row of adjacent cells along the south edge (r = -20 is
+# Spawn pads: rows of adjacent cells along the south edge (r = -20 is
 # n = -90 at HEX_SIZE 3). Pads are cells, never free meters, so every pad
-# marker fills exactly one lattice hex. 20 slots span e = -52..47.
+# marker fills exactly one lattice hex. A row of 20 spans e = -52..47; slot
+# 20 starts the next row one cell north (n = -85.5), and so on — a room of
+# 64 is four rows, all inside the arena.
 PAD_ROW_R = -20
 PAD_Q0 = 0
+PADS_PER_ROW = 20
 
 
 def axial_to_world(cell: Axial, size: float = HEX_SIZE) -> tuple[float, float]:
@@ -55,7 +58,10 @@ def axial_round(qf: float, rf: float) -> Axial:
 
 
 def pad_cell(slot: int) -> Axial:
-    return PAD_Q0 + slot, PAD_ROW_R
+    row, col = divmod(slot, PADS_PER_ROW)
+    # each row north sits half a pitch further east; pull q back every other
+    # row so every row starts at the same edge
+    return PAD_Q0 + col - (row + 1) // 2, PAD_ROW_R + row
 
 
 def pad_position(slot: int) -> tuple[float, float]:

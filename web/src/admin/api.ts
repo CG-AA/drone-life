@@ -9,6 +9,22 @@ export { ApiFailure } from "../shared/http";
 const TOKEN_KEY = "dl_admin_token";
 
 export const getToken = (): string => sessionStorage.getItem(TOKEN_KEY) ?? "";
+
+/** Why a pasted token cannot be the token, or null when it could be. An
+ * ADMIN_TOKEN is printable ASCII (openssl rand -base64); anything else would
+ * make fetch() reject the header before the request leaves the browser, which
+ * the console then misreported as a server outage. The commonest paste is a
+ * row of password-mask bullets copied from a masked field. */
+export function tokenProblem(raw: string): string | null {
+  if (!raw) return "paste the admin token";
+  if (/[\u2022\u25cf\u00b7*]{3,}/.test(raw)) {
+    return "that is the masked dots, not the token — reveal or copy the plain text";
+  }
+  if (!/^[\x21-\x7e]+$/.test(raw)) {
+    return "the token is plain ASCII with no spaces — check what got pasted";
+  }
+  return null;
+}
 export const setToken = (t: string): void => sessionStorage.setItem(TOKEN_KEY, t);
 export const clearToken = (): void => sessionStorage.removeItem(TOKEN_KEY);
 
@@ -23,6 +39,8 @@ export const killScript = (studentId: string) =>
   admin<{ stopped: boolean }>("POST", "/kill", { student_id: studentId });
 export const kickStudent = (studentId: string) =>
   admin<{ ok: boolean }>("POST", "/kick", { student_id: studentId });
+export const banStudent = (studentId: string) =>
+  admin<{ ok: boolean; address_locked: boolean }>("POST", "/ban", { student_id: studentId });
 export const resetWorld = () => admin<{ ok: boolean; epoch: number }>("POST", "/reset");
 export const spawnBots = (count: number, mode: string, script: string) =>
   admin<BotsResult>("POST", "/bots", { count, mode, script });

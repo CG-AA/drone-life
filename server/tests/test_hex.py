@@ -83,7 +83,7 @@ def test_pads_are_lattice_cells_inside_the_arena():
 
     tm = TileMap()
     seen = set()
-    for slot in range(20):
+    for slot in range(64):  # a big room: four rows of 20
         cell = hex.pad_cell(slot)
         assert cell not in seen
         seen.add(cell)
@@ -91,3 +91,5 @@ def test_pads_are_lattice_cells_inside_the_arena():
         n, e = hex.pad_position(slot)
         assert hex.world_to_axial(n, e) == cell
         assert hex.axial_to_world(cell) == (n, e)
+        assert -56 < e < 48 and -91 < n < -70, (slot, n, e)
+    assert hex.pad_position(20)[0] > hex.pad_position(0)[0], "row two is north of row one"
