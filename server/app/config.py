@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     public_url: str = ""
     sim_seed: int = 42
     sim_unthrottled: bool = False  # tests: run the driver without sleeping
+    # dev only: more scripts the admin console may spawn as bots, by path
+    # under examples/ without ".py" — EXTRA_BOT_SCRIPTS=answers/quest_route,…
+    # (the worked answers stay out of the template menu and the default
+    # allowlist so a class never sees them before the wrap)
+    extra_bot_scripts: str = ""
 
     runner_image: str = "drone-life-runner:latest"
     runner_network: str = "slirp4netns:allow_host_loopback=true"

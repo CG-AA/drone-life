@@ -128,12 +128,27 @@ optional SSH reverse tunnel in
 - `make image` then `make e2e`: one real container delivers a crate (without
   the image the suite *skips*, it does not fail).
 - `make load LOAD_BOTS=20` on the actual hardware; overruns < 1% on `/healthz`.
+- `make balance ROUNDS=2 SECONDS=180` once, so `server/state/balance/rounds.jsonl`
+  has numbers to compare the class against (SESSION_PLAN §9).
 - Rehearse one mission switch (edit `MISSION`, restart, `make reset`); time it.
 - Printed `docs/CHEATSHEET.md` per seat; projector readable from 5 m; one phone joins over the room wifi.
 
 Full list: [SESSION_PLAN.md → Day −1 checklist](docs/SESSION_PLAN.md#day-1-checklist-cannot-be-verified-off-the-lab-server).
 
 ### Workshop morning
+
+The whole before-the-class list, in order, is [docs/PRE_WORKSHOP.md](docs/PRE_WORKSHOP.md).
+One script does the mechanical part in order and stops at the first thing
+that is wrong — deploy `main` into `/opt`, build, image, restart every room,
+preflight, a three-bot smoke and a reset — then prints the checklist of what
+only a person can do (env values, the public address from outside, the
+projector, the printouts):
+
+```bash
+sudo -v && bash docs/deploy/pre-workshop.sh        # ONLY=<step> for one step
+```
+
+By hand, the same thing:
 
 ```bash
 cd drone-life

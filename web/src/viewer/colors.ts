@@ -38,6 +38,15 @@ export function contrastRatio(a: number, b: number): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
+/** "#rrggbb" (any case) → packed 24-bit color, or null for anything else —
+ * the wire carries a pilot's bought colour as text, and a bad one must fall
+ * back to the slot colour rather than paint the drone black. */
+export function parseHex(text: unknown): number | null {
+  if (typeof text !== "string") return null;
+  const m = /^#([0-9a-f]{6})$/i.exec(text.trim());
+  return m ? parseInt(m[1], 16) : null;
+}
+
 function hslToHex(h: number, s: number, l: number): number {
   const a = s * Math.min(l, 1 - l);
   const f = (n: number) => {

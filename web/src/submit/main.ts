@@ -13,6 +13,7 @@ import type { ErrorView } from "./errors";
 import { codeTooBig, describeError, tooBigText } from "./errors";
 import type { LogCursor } from "./logmerge";
 import { freshLines } from "./logmerge";
+import { upgradesText, walletText } from "./wallet";
 
 const editor = new Editor($("editor"));
 let studentId = "";
@@ -329,6 +330,7 @@ function appendLogs(batch: LogLine[]): void {
 
 const linkEl = $("d-link");
 const carryingEl = $("d-carrying");
+const walletEl = $("d-wallet");
 let lastCarrying = false;
 
 function updateStrip(me: DroneState): void {
@@ -339,6 +341,8 @@ function updateStrip(me: DroneState): void {
   $("d-n").textContent = me.n.toFixed(1);
   $("d-e").textContent = me.e.toFixed(1);
   $("d-alt").textContent = `${me.alt.toFixed(1)} m`;
+  const wallet = walletText(me.pilot) + upgradesText(me.pilot);
+  if (wallet !== walletEl.textContent) walletEl.textContent = wallet;
   const nowCarrying = Boolean(me.carrying);
   if (nowCarrying !== lastCarrying) {
     lastCarrying = nowCarrying;

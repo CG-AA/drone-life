@@ -22,6 +22,7 @@ class Requirement:
     dr: int
     material: str
     height: int = 1  # satisfied iff the cell stacks at least this high
+    max_height: int | None = None  # …and no higher than this (a beacon is a line of singles)
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,8 @@ def match_at(tm: TileMap, bp: Blueprint, anchor: Axial, rotation: int = 0) -> Ma
     for req in bp.reqs:
         cell = hex.add(anchor, hex.rotate60((req.dq, req.dr), rotation))
         if tm.height(cell) < req.height or tm.top(cell) != req.material:
+            return None
+        if req.max_height is not None and tm.height(cell) > req.max_height:
             return None
         cells.append(cell)
     return Match(bp.name, anchor, tuple(cells))
@@ -89,9 +92,12 @@ class BlueprintTracker:
         self.blueprints = list(blueprints)
         self.claimed: set[Axial] = set()
 
-    def check(self, tm: TileMap, placed: Axial) -> Match | None:
+    def check(self, tm: TileMap, placed: Axial,
+              extra_claimed: frozenset[Axial] = frozenset()) -> Match | None:
+        """`extra_claimed`: cells another tracker owns (siege runs several —
+        a tile that is part of one structure must not complete another)."""
         for bp in self.blueprints:
-            match = find_match(tm, bp, placed, frozenset(self.claimed))
+            match = find_match(tm, bp, placed, frozenset(self.claimed) | extra_claimed)
             if match is not None:
                 self.claimed.update(match.cells)
                 return match

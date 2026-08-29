@@ -58,6 +58,8 @@ canvas { touch-action: none; }
 /* mission status strip under the score: the numbers a room asks about */
 #mstrip {
   display: flex;
+  flex-wrap: wrap; /* the strip grew (pot, room quest): wrap before it reaches the PILOTS board */
+  max-width: min(56vw, 900px);
   align-items: center;
   justify-content: center;
   gap: clamp(10px, 1.6vmin, 22px);
@@ -91,6 +93,10 @@ canvas { touch-action: none; }
 #keep-fill.low { background: var(--danger); }
 #ms-keep-hp { color: var(--text-muted); font-size: 0.85em; }
 #ms-towers { color: #9fd8ff; }
+#ms-pool { color: var(--gold); }
+#ms-pool[hidden] { display: none; }
+#ms-quest { color: #ffb86b; }
+#ms-quest[hidden] { display: none; }
 #ms-record { color: var(--gold); font-size: 0.85em; letter-spacing: 0.12em; }
 #ms-record[hidden] { display: none; }
 
@@ -198,6 +204,7 @@ canvas { touch-action: none; }
   line-height: 1.5; white-space: nowrap;
 }
 #board-rows li .pts { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+#board-rows li .detail { color: var(--muted, #8a93a6); font-size: 0.8em; letter-spacing: 0.04em; margin: 0 0.6em; white-space: nowrap; }
 #board-rows li:first-child { font-weight: 700; }
 #board-rows li .name { overflow: hidden; text-overflow: ellipsis; max-width: 12ch; }
 

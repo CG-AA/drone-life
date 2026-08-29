@@ -15,8 +15,12 @@ N ?= 5
 MODE ?= local
 SCRIPT ?= bot_patrol
 LOAD_BOTS ?= 10
+# balance rounds (make balance): headless bot-only siege rounds on fixed seeds
+ROUNDS ?= 3
+BOTS ?= 6:bot_siege 2:bot_tower
+SECONDS ?= 300
 
-.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load lint lint-fix preflight bots reset clean
+.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load balance lint lint-fix preflight bots reset clean
 
 # ALLOW_DEFAULT_SECRETS: dev boots on the placeholder room code/admin token above.
 # `make run` deliberately does not set it — production refuses the defaults.
@@ -71,12 +75,17 @@ e2e:
 load:
 	cd server && LOAD_BOTS=$(LOAD_BOTS) uv run pytest -q -m load
 
+# balance from numbers: N bot-only siege rounds -> server/state/balance/rounds.jsonl + a table
+# e.g. make balance ROUNDS=2 BOTS="6:bot_siege 2:bot_tower 1:bot_repair" SECONDS=180
+balance:
+	cd server && uv run python -m tools.balance --rounds $(ROUNDS) --bots "$(BOTS)" --seconds $(SECONDS)
+
 lint:
-	cd server && uv run ruff check app tests
+	cd server && uv run ruff check app tests tools
 	cd web && npm run lint
 
 lint-fix:
-	cd server && uv run ruff check --fix app tests
+	cd server && uv run ruff check --fix app tests tools
 
 # workshop morning: can this box actually run a class? (--no-smoke skips the test container)
 # make preflight ROOM=r2 checks room 2 as its unit sees it (docs/ROOMS.md)

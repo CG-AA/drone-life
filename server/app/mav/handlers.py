@@ -3,7 +3,9 @@
 Semantics loosely mirror ArduPilot Copter GUIDED mode so skills transfer:
 arm requires GUIDED + on-ground, takeoff requires armed, setpoints require
 airborne, unsupported commands get COMMAND_ACK UNSUPPORTED, denials always
-carry a STATUSTEXT reason.
+carry a STATUSTEXT reason. An upstream STATUSTEXT is the one free-text
+channel a script has (dronelife.say): it is queued for the mission's
+on_text hook, never interpreted here.
 """
 
 from __future__ import annotations
@@ -55,6 +57,9 @@ def handle(link: Link, drone: DroneSim, msg, t: float) -> None:
         _setpoint_local(link, drone, msg, t)
     elif typ == "SET_POSITION_TARGET_GLOBAL_INT":
         _setpoint_global(link, drone, msg, t)
+    elif typ == "STATUSTEXT":  # the script talking back: dronelife.say(...)
+        text = msg.text
+        drone.hear(text.decode("ascii", "replace") if isinstance(text, bytes) else str(text))
     elif typ.startswith("PARAM_"):
         link.warn_once("param", "params not supported in sim")
     elif typ.startswith("MISSION_"):

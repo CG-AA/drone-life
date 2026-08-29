@@ -53,6 +53,10 @@ def test_lifecycle_contract(name):
     world.views = [view()]
     for kind in DRONE_EVENT_KINDS:  # every documented event, with a live drone
         world.drone_event(mission, world.views[0], kind)
+    for said in ("wallet", "garbage !!", "x" * 50):  # anything a script may say
+        world.text(mission, world.views[0], said)
+    json.dumps(mission.pilot(world.views[0].student_id))  # rides every drone row
+    json.dumps(mission.pilot("nobody"))  # a student the mission never met
     world.run(mission, 5.0)
 
     world.views = []

@@ -31,6 +31,21 @@ export interface DroneState {
   crashed: boolean;
   connected: boolean;
   carrying: string | null;
+  /** Mission.pilot(student_id) — per-pilot mission state on the drone's own
+   * row (siege: the wallet, later upgrades); {} for missions without any.
+   * Coerce field by field like mission_state. */
+  pilot: Record<string, unknown>;
+}
+
+/** siege's DroneState.pilot: coins to spend, bought tiers (0 = stock), and
+ * two cosmetics as "#rrggbb" (null until bought) */
+export interface SiegePilotState {
+  wallet: number;
+  zap: number;
+  speed: number;
+  tower: number;
+  colour: string | null;
+  outline: string | null;
 }
 
 /** Every kind the missions emit today; the viewer renders unknown kinds with a
@@ -41,6 +56,8 @@ export const KNOWN_KINDS = [
   "furnace",                                           // forge
   "keep", "troop", "tower", "beam", "gate",            // siege
   "zap_arc", "poof",                                   // siege cosmetics (short-lived)
+  "quest_mark",                                        // siege room-quest route stops
+  "beacon", "bell", "bell_ring",                       // siege buildings (+ the ring fx)
 ] as const;
 
 export interface EntityState {
@@ -61,22 +78,36 @@ export interface CrateData { carried_by?: string }
 export interface TileSourceData { material: string; remaining: number | null }
 export interface TileCarriedData { carried_by: string; material: string }
 export interface GhostTileData { material: string; need: number; have: number; size: number }
-/** kind: grunt | runner | brute | sapper | champion (missions/siege.py KINDS) */
-export interface TroopData { dir: number; chewing: boolean; kind: string; hp: number; max: number }
+/** kind: grunt | runner | brute | sapper | champion (missions/siege.py KINDS);
+ * frozen while a bell's freeze holds, lured while walking to a beacon */
+export interface TroopData {
+  dir: number; chewing: boolean; kind: string; hp: number; max: number;
+  frozen: boolean; lured: boolean;
+}
 export interface KeepData { hp: number; max: number }
-export interface TowerData { range: number }
-/** an archway creeps pour from; active while its wave is still spawning */
-export interface GateData { label: string; active: boolean }
+/** range grows with the builder's tower tier (0 = stock); ring = six steel around it */
+export interface TowerData { range: number; tier: number; ring: boolean }
+/** a lure: creeps within radius walk to it; chew is 0..1 of the way to eaten */
+export interface BeaconData { radius: number; lured: number; chew: number }
+/** the bell: hover altitude to ring it, charge 0..1 of the dwell */
+export interface BellData { hover: number; charge: number }
+/** an archway creeps pour from; active while its wave is still spawning.
+ * Gate S (the bonus lane) also carries `sealed` and the formation `hold` 0..1 */
+export interface GateData { label: string; active: boolean; sealed?: boolean; hold?: number }
 export interface BeamData { tn: number; te: number; talt: number }
 /** a drone's zap: origin is the entity pose (the drone), target rides in data */
 export interface ZapArcData { tn: number; te: number; talt: number }
 /** where a creep died; verb is zap | squish | tower | leak */
 export interface PoofData { verb: string }
+/** a room route quest's stop: its number, the quest (= wave), touched yet */
+export interface QuestMarkData { label: string; quest: number; done: boolean }
 
 export interface ScoreRow {
   student_id: string;
   name: string;
   points: number;
+  /** siege: what they did, compact ("z12 t2 f8 b6 r3 s1"); "" beyond the top 8 or elsewhere */
+  detail?: string;
 }
 
 export interface PadState {
@@ -110,6 +141,10 @@ export interface SiegeHudState {
   creeps_alive: number;
   pending: number; // creeps of this wave still to spawn
   towers: number;
+  pool: number; // team coins not yet split into wallets
+  /** quests: solved this round, room quests missed, and the live room quest */
+  quests: { solved: number; missed: number;
+            room: { id: number; family: string; left_s: number; solved: boolean } | null };
 }
 
 /** delivery's mission_state */

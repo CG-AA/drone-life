@@ -14,6 +14,9 @@ drone.events()                       # new GAME messages (a list of strings)
 drone.next_event(timeout=10)         # block for the next one (or None)
 drone.land()          drone.rtl()    # land here / fly home and land
 drone.wait(2)         drone.armed    # sleep / motors-armed flag
+drone.say("wallet")                  # talk to the game (siege: your coins)
+drone.say("buy zap")                 # spend them: say("shop") lists prices
+drone.say("quest")                   # opt in to quests (QUESTS.md): route / predict / compute
 ```
 
 ## The map
@@ -43,8 +46,14 @@ gives you `"crate 3 at N 12 E -40"` (prefix stripped). Every position is
 | `zap! brute hp 2` / `drop under 3 m to zap` | keep hovering / get lower |
 | `wave 5 at N 0 E 83, 12 creeps + boss` | a champion (8 hp, +20) comes last — gang up |
 | `build a tower at N 20 E -8` | between waves: ferry 3 steel there → auto-turret (+15) |
-| `wall chewed at …` | a creep is eating your wall — zap, rebuild |
+| `steel chewed at …` / `clay chewed at …` / `repair at N 9 E -62 hover 6` | walls reroute creeps; a closed ring (or a beacon) gets eaten, clay 3× faster; carrying the right tile nearby? hover the hole at that height → `repaired! +1` |
+| `you spot gate E` → `gate E: 3 grunt 1 sapper` · `formation! hold 5 s to open gate S` | scout: hover 10 m from a gate 2 s, the room hears your reports · gate S (N −63 E 5): 3 drones in a triangle 5 s → 6 raiders that pay everyone |
+| `clay pit at N 50 E -44` · `ring tower at …! +25` · `beacon up at …` · `bell up at …, hover 8 m to ring` | clay: cheap walls, beacon ends, the bell · 6 steel around a tower = 28 m reach · clay-steel-clay singles lure creeps within 25 m · 6-clay ring + 3 clay: hover on top 3 s, every creep freezes 15 s |
 | `wave 3 clear! +10` (or `2 leaked +5`) | leaks = -1 each and half the bonus |
+| `+8 coins, wallet 23` | every kill feeds a team pot; each wave clear splits it into everyone's wallet |
+| `bought zap II (3 left)` / `need 40 coins, have 17` | `say("buy zap")`: zap 20/40/80 (reach, faster), speed 30/60, tower 40/80 (your towers), colour/outline 10 (`buy colour #ff8800`) |
+| `quest 7: route 3 stops, 42 s` + `quest 7 stop 1 at N 20 E -30` … | a challenge for your code (regex `^(room )?quest (\d+)`): fly the stops / park where a creep will be / hover the Keep at a computed altitude — `docs/QUESTS.md`; +5 and coins for the room; nobody solving a `room quest` buffs the next wave |
+| `quarry restocked, 27 steel` / `quarry empty, restock next wave` | the quarry is finite per wave — ferry what you will build |
 
 ## Top 5 errors
 

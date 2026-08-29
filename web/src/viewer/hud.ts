@@ -6,6 +6,12 @@ import { REDUCED_MOTION } from "../shared/theme";
 
 const FEED_MAX = 8;
 const FEED_TTL_MS = 45_000;
+/** The one projector concession to a 64-seat room: the ferry loop posts a
+ * row per pickup (~70 a wave into 8 rows), which would bury a quest solve or
+ * a ring tower. Repeats of these kinds within COLLAPSE_MS fold into one row
+ * ("pickups ×6"); milestones, quests, buildings never fold. */
+const COLLAPSE_KINDS = new Set(["pickup", "ferried", "built"]);
+const COLLAPSE_MS = 2000;
 const BANNER_MS = 2800;
 const OVERLAY_MS = 2200;
 /** the round summary is the one overlay worth reading twice */
@@ -25,14 +31,32 @@ export const EVENT_CLASS: Record<string, string> = {
   wall_complete: "triumph",
   furnace_lit: "triumph",
   tower_up: "triumph",
+  ring_up: "triumph",
+  beacon_up: "triumph",
+  bell_up: "triumph",
+  bell_rung: "triumph",
   boss_down: "triumph",
   round_end: "triumph",
+  upgrade: "score",
+  repaired: "score",
+  spotter: "",
+  spotted: "",
+  ferried: "",
+  built: "",
+  gate_open: "triumph",
+  quest_solved: "triumph",
+  quest_room: "warn",
+  quest_missed: "danger",
+  gate_sealed: "danger",
   crashed: "danger",
   crate_lost: "danger",
   tile_lost: "danger",
   keep_hit: "danger",
   keep_fell: "danger",
   tower_down: "danger",
+  ring_lost: "danger",
+  beacon_lost: "danger",
+  bell_lost: "danger",
   mission_error: "danger",
   wave_start: "warn",
   orphan_rtl: "warn",
@@ -57,8 +81,13 @@ export interface StripModel {
   keepText: string;
   keepLow: boolean;
   towers: string;
+  /** the team pot: coins kills earned, split into wallets on wave clear ("" when the
+   * mission publishes none) */
+  pot: string;
   /** the record to beat, shown until the next wave 1 ("" when none) */
   record: string;
+  /** the live room quest ("" when none): the one line the wall needs */
+  quest: string;
 }
 
 export function stripModel(ms: Record<string, unknown>): StripModel | null {
@@ -78,8 +107,11 @@ export function stripModel(ms: Record<string, unknown>): StripModel | null {
   const record = last && typeof last.wave === "number"
     ? `LAST ROUND · WAVE ${last.wave} · ${Number(last.score ?? 0)} PTS`
     : "";
+  const pot = typeof ms.pool === "number" ? `POT ${Math.max(0, Math.round(ms.pool))}` : "";
   return {
     record,
+    pot,
+    quest: roomQuestText(ms.quests),
     wave: wave === 0 ? "GET READY" : `WAVE ${wave}`,
     phase,
     keepPct: Math.max(0, Math.min(100, (hp / max) * 100)),
@@ -89,10 +121,35 @@ export function stripModel(ms: Record<string, unknown>): StripModel | null {
   };
 }
 
+/** "ROOM QUEST 6 · ROUTE · 32s" while a room quest is open, "… · SOLVED"
+ * once someone got it, "" otherwise. Pure so the wording is testable. */
+export function roomQuestText(quests: unknown): string {
+  const q = quests as { room?: Record<string, unknown> | null } | null | undefined;
+  const room = q?.room;
+  if (!room || typeof room.id !== "number") return "";
+  const head = `ROOM QUEST ${room.id} · ${String(room.family ?? "").toUpperCase()}`;
+  if (room.solved) return `${head} · SOLVED`;
+  return `${head} · ${Math.max(0, Math.round(Number(room.left_s ?? 0)))}s`;
+}
+
+/** A folded row's wording: what the kind is, how many so far. Pure. */
+export function foldedText(kind: string, count: number): string {
+  const noun = kind === "pickup" ? "pickups" : kind === "ferried" ? "ferry runs" : "tiles placed";
+  return `${noun} ×${count}`;
+}
+
+/** Whether a new event of `kind` at `nowMs` joins the previous row rather
+ * than adding one: same collapsible kind, inside the window. Pure. */
+export function foldsInto(prev: { kind: string; atMs: number } | null, kind: string,
+                          nowMs: number): boolean {
+  return prev !== null && COLLAPSE_KINDS.has(kind) && prev.kind === kind
+    && nowMs - prev.atMs <= COLLAPSE_MS;
+}
+
 /** Which events get a big moment on the wall, and where. */
 export interface Splash { slot: "banner" | "overlay"; text: string; cls: string; kind: string }
 
-const BANNER_KINDS: Record<string, string> = { wave_start: "warn" };
+const BANNER_KINDS: Record<string, string> = { wave_start: "warn", quest_room: "warn" };
 const OVERLAY_KINDS: Record<string, string> = {
   milestone: "triumph",
   keep_fell: "danger",
@@ -157,7 +214,7 @@ export class Hud {
 
   setScores(scores: ScoreRow[] | undefined): void {
     const rows = boardModel(scores);
-    const key = rows.map((r) => `${r.student_id}:${r.points}`).join("|");
+    const key = rows.map((r) => `${r.student_id}:${r.points}:${r.detail ?? ""}`).join("|");
     if (key === this.lastBoard) return;  // 10 Hz frames, but the board rarely moves
     this.lastBoard = key;
     this.board.hidden = rows.length === 0;
@@ -169,7 +226,14 @@ export class Hud {
       const pts = document.createElement("span");
       pts.className = "pts";
       pts.textContent = String(r.points);
-      li.append(name, pts);
+      li.append(name);
+      if (r.detail) {  // what they did: z12 t2 f8 b6 r3 s1
+        const detail = document.createElement("span");
+        detail.className = "detail";
+        detail.textContent = r.detail;
+        li.append(detail);
+      }
+      li.append(pts);
       return li;
     }));
   }
@@ -190,6 +254,12 @@ export class Hud {
     fill.style.width = `${m.keepPct}%`;
     fill.classList.toggle("low", m.keepLow);
     document.getElementById("ms-towers")!.textContent = m.towers;
+    const pot = document.getElementById("ms-pool")!;
+    pot.textContent = m.pot;
+    pot.hidden = m.pot === "";
+    const quest = document.getElementById("ms-quest")!;
+    quest.textContent = m.quest;
+    quest.hidden = m.quest === "";
     const rec = document.getElementById("ms-record")!;
     rec.textContent = m.record;
     rec.hidden = m.record === "";
@@ -217,12 +287,23 @@ export class Hud {
     this.timers[s.slot] = window.setTimeout(() => { el.hidden = true; }, ms);
   }
 
+  private lastRow: { kind: string; atMs: number; count: number; el: HTMLDivElement } | null = null;
+
   addEvent(ev: EventData): void {
     const s = splashFor(ev, this.simT);
     if (s) this.splash(s);
+    const nowMs = Date.now();
+    const prev = this.lastRow;
+    if (prev && prev.el.isConnected && foldsInto(prev, ev.kind, nowMs)) {
+      prev.count += 1;
+      prev.atMs = nowMs;
+      prev.el.textContent = foldedText(ev.kind, prev.count);
+      return;
+    }
     const div = document.createElement("div");
     div.textContent = ev.msg;
     div.className = EVENT_CLASS[ev.kind] ?? "";
+    this.lastRow = { kind: ev.kind, atMs: nowMs, count: 1, el: div };
     this.feed.prepend(div);
     while (this.feed.childElementCount > FEED_MAX) this.feed.lastElementChild?.remove();
     setTimeout(() => {
