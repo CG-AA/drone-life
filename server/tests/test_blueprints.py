@@ -108,3 +108,23 @@ def test_pre_place_builds_the_pattern():
     for cell in cells:
         assert tm.stack(cell) == ("clay",)
     assert find_match(tm, RING, cells[0]) is not None
+
+
+def test_max_height_rejects_a_taller_stack():
+    single = Blueprint("beacon", (Requirement(0, 0, "steel", 1, max_height=1),))
+    tm = TileMap()
+    tm.place((2, 2), "steel")
+    assert find_match(tm, single, (2, 2)) is not None
+    tm.place((2, 2), "steel")
+    assert find_match(tm, single, (2, 2)) is None, "two high is a wall, not a beacon"
+
+
+def test_extra_claimed_blocks_a_match_across_trackers():
+    tm = TileMap()
+    cells = [hex.add((5, 2), off) for off in hex.ring((0, 0), 1)]
+    for cell in cells:
+        tm.place(cell, "clay")
+    mine = BlueprintTracker([RING])
+    theirs = frozenset({cells[0]})  # another structure already owns one cell
+    assert mine.check(tm, cells[5], extra_claimed=theirs) is None
+    assert mine.check(tm, cells[5]) is not None

@@ -9,7 +9,7 @@ rule, blueprint data, and its GAME texts; everything mechanical lives here.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from ..sim.backend import DroneView
@@ -383,14 +383,23 @@ class FerryTexts:
 
 
 def tick_ferry(world: WorldAPI, drones: Iterable[DroneView], carry: CarrySlots,
-               sources: Iterable[TileSource], dt: float, texts: FerryTexts) -> None:
+               sources: Iterable[TileSource], dt: float, texts: FerryTexts, *,
+               texts_by_material: Mapping[str, FerryTexts] | None = None,
+               ) -> list[tuple[DroneView, TileSource]]:
     """The gather preamble every build mission runs: drop tiles whose carrier
-    died, run the source pickups, send the standard events and texts."""
+    died, run the source pickups, send the standard events and texts. With
+    several materials (siege: steel and clay), `texts_by_material` picks the
+    flavour per tile; `texts` is the fallback. Returns the pickups."""
     drones = list(drones)
-    for _drone_id, _material in carry.sync_losses(drones):
-        world.emit_event("tile_lost", f"a {texts.material} tile was lost")
-        world.broadcast_text(texts.lost_say)
-    for d, _source in tick_sources(drones, sources, carry, dt):
-        world.emit_event("pickup", f"{d.name} picked up {texts.material}",
+    flavours = texts_by_material or {}
+    for _drone_id, material in carry.sync_losses(drones):
+        t = flavours.get(material, texts)
+        world.emit_event("tile_lost", f"a {t.material} tile was lost")
+        world.broadcast_text(t.lost_say)
+    pickups = tick_sources(drones, sources, carry, dt)
+    for d, source in pickups:
+        t = flavours.get(source.material, texts)
+        world.emit_event("pickup", f"{d.name} picked up {t.material}",
                          student_id=d.student_id)
-        world.send_text(d.id, texts.got_say)
+        world.send_text(d.id, t.got_say)
+    return pickups

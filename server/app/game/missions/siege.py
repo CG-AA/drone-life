@@ -26,7 +26,7 @@ from typing import Final
 
 from ...sim.backend import DroneView
 from .. import hex, path
-from ..blueprints import Blueprint, BlueprintTracker, Requirement
+from ..blueprints import Blueprint, BlueprintTracker, Requirement, match_at, ring_blueprint
 from ..building import (
     _EPS,
     HINT_SUSTAIN,
@@ -45,6 +45,7 @@ from ..building import (
 )
 from ..hex import Axial
 from ..mission import SEV_WARNING, Entity, Mission, WorldAPI, fmt_world
+from ..path import FlowField
 from ..quests import (
     BUFF_HP,
     BUFF_SPEED,
@@ -70,6 +71,8 @@ QUARRY = hex.axial_to_world(QUARRY_CELL)
 GATE_CELLS: tuple[Axial, ...] = ((-9, 19), (16, 0), (-16, 0))  # N 86 E 3, N 0 E 83, N 0 E -83
 GATES = tuple(hex.axial_to_world(c) for c in GATE_CELLS)
 GATE_LABELS = ("N", "E", "W")  # what the projector writes on each archway
+PIT_CELL: Axial = (-14, 11)  # ~(50, -44): the quarry mirrored through the Keep
+PIT = hex.axial_to_world(PIT_CELL)
 
 
 def _gates_for(wave: int) -> int:
@@ -79,6 +82,7 @@ def _gates_for(wave: int) -> int:
 
 CLIMB = 1  # 1 tile is a ramp; a 2-stack is a wall
 CHEW_S = 6.0  # s a creep gnaws before a tile pops off
+CHEW_FACTOR = {"steel": 1.0, "clay": 3.0}  # clay is the cheap wall: rerouted the same, eaten fast
 GRACE_S = 45.0  # first-wave delay once a drone shows up: build one tower
 BUILD_S = 20.0  # breather between waves
 SPAWN_GAP = 1.5  # s between creeps of one wave
@@ -92,6 +96,31 @@ TOWER_HEIGHT = 3
 TOWER_RANGE = 16.0
 TOWER_COOLDOWN = 2.0
 BEAM_S = 0.6  # long enough to be seen from the back row
+
+# ----------------------------------------------------------- more buildings
+# Ring a standing watchtower with 6 steel: long range, faster reload. A ring
+# is 1 high (creeps walk over it; only the centre being chewed drops it).
+RING_BP = Blueprint("ring_tower", (Requirement(0, 0, "steel", TOWER_HEIGHT),
+                                   *ring_blueprint("ring", "steel").reqs))
+RING_RANGE = 28.0
+RING_COOLDOWN = 1.5
+RING_POINTS = 25
+# A beacon lures creeps: a clay-steel-clay line, each cell exactly 1 high
+# (a 2-stack is a wall, a 3-stack the tower — max_height keeps them apart).
+BEACON_BP = Blueprint("beacon", (Requirement(0, 0, "steel", 1, max_height=1),
+                                 Requirement(1, 0, "clay", 1, max_height=1),
+                                 Requirement(-1, 0, "clay", 1, max_height=1)))
+BEACON_MAX = 2  # standing at once (each one is its own flow field)
+BEACON_RADIUS = 25.0  # m: creeps this close walk to the beacon, not the Keep
+LURE_BONUS_EACH = 1  # pool += this x seats per creep killed while lured
+# The Bell: 3 clay in the middle of a 6-clay ring, rung by hovering on top.
+# One shot: every creep freezes for FREEZE_S, then the bell is spent.
+BELL_BP = Blueprint("bell", (Requirement(0, 0, "clay", 3), *ring_blueprint("bell", "clay").reqs))
+BELL_RADIUS = 2.5
+BELL_ALT_ABOVE = 3.0  # hover within this of the stack top (6 m): "hover 8 m"
+BELL_DWELL_S = 3.0
+BELL_RING_S = 1.2  # the visible ring
+FREEZE_S = 15.0
 
 ZAP_RADIUS = 4.0
 ZAP_ALT_ABOVE = 3.0  # hover within this of the creep's feet
@@ -110,6 +139,9 @@ BUILD_SITE_STEPS = 8  # cells before the Keep along the lane: ~40 m out, where t
 FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
                    "GAME: got steel, wall or tower it",
                    "GAME: hands full, wall or tower it")
+FERRY_CLAY = FerryTexts("clay", "GAME: clay lost, grab another",
+                        "GAME: got clay, cheap walls, chewed 3x faster",
+                        "GAME: hands full, wall or tower it")
 
 # ------------------------------------------------------------------ economy
 # Kills feed a team pool; every wave clear splits the pool evenly into the
@@ -177,6 +209,10 @@ _HINTS = ("GAME: stack 3 steel = watchtower",
           "GAME: bored? say quest for a challenge",
           "GAME: hover low on a creep to zap it",
           "GAME: 2-high walls turn creeps aside",
+          "GAME: clay walls: cheap, chewed 3x faster",
+          "GAME: ring a tower with 6 steel = long range",
+          "GAME: clay-steel-clay line = beacon, lures creeps",
+          "GAME: bell: 6 clay ring + 3 clay, hover to ring",
           "GAME: drop a tile on a creep to squish it",
           "GAME: clean wave +10, each leak costs -1",
           "GAME: towers shoot 16 m, build by the path")
@@ -196,6 +232,8 @@ class SiegeStats:
     best_wave: int = 0
     quests_solved: int = 0
     quests_missed: int = 0  # room quests nobody solved
+    ring_towers: int = 0
+    bells: int = 0  # rung
 
     @property
     def kills(self) -> int:
@@ -206,7 +244,8 @@ class SiegeStats:
                 "kills": self.kills, "leaks": self.leaks, "towers": self.towers,
                 "keep_hits": self.keep_hits, "keep_falls": self.keep_falls,
                 "best_wave": self.best_wave, "quests_solved": self.quests_solved,
-                "quests_missed": self.quests_missed}
+                "quests_missed": self.quests_missed, "ring_towers": self.ring_towers,
+                "bells": self.bells}
 
 
 @dataclass
@@ -216,6 +255,25 @@ class Tower:
     builder: str | None
     last_shot: float = -math.inf  # loaded and ready
     kills: int = 0
+    ring: bool = False  # ringed with 6 steel: RING_RANGE / RING_COOLDOWN
+
+
+@dataclass
+class Beacon:
+    """A lure: its own flow field; creeps in range walk to it and chew it."""
+
+    builder: str | None
+    cells: tuple[Axial, ...]  # steel anchor, then the two clay
+    flow: FlowField
+    chew_acc: float = 0.0
+    lured: int = 0  # this tick, for the viewer
+
+
+@dataclass
+class Bell:
+    builder: str | None
+    cells: tuple[Axial, ...]
+    dwell: DwellTracker
 
 
 # ------------------------------------------------------------------ creeps
@@ -305,9 +363,19 @@ class SiegeMission(Mission):
         self.carry = CarrySlots()
         self.quarry = TileSource("quarry", *QUARRY, material="steel",
                                  remaining=_quarry_stock(0, 0))
+        self.pit = TileSource("clay_pit", *PIT, material="clay")  # infinite
         self.tracker = PlaceTracker(self.tm, self.carry)
         self.blueprints = BlueprintTracker([TOWER_BP])
+        # one tracker per structure: the watchtower claims its centre, and the
+        # ring must be allowed to include that very cell
+        self.ring_bps = BlueprintTracker([RING_BP])
+        self.beacon_bps = BlueprintTracker([BEACON_BP])
+        self.bell_bps = BlueprintTracker([BELL_BP])
         self.towers: dict[Axial, Tower] = {}
+        self.beacons: dict[Axial, Beacon] = {}
+        self.bells: dict[Axial, Bell] = {}
+        self.lured: set[int] = set()  # creep uids walking to a beacon this tick
+        self.freeze_s = 0.0  # the bell's gift: creeps stand still
         self.creeps: dict[int, GroundUnit] = {}
         self.zap: dict[int, DwellTracker] = {}  # creep uid -> hover dwell
         self.zap_ready: dict[str, float] = {}  # drone id -> when its next zap may land
@@ -354,6 +422,7 @@ class SiegeMission(Mission):
         self.last_brief = float("-inf")  # a periodic announce right after a brief is a dup
         self.site: Axial | None = None  # the suggested tower cell (drawn as a ghost)
         self.hints = SourceHints(self.carry, FERRY.full_say)
+        self.pit_hints = SourceHints(self.carry, FERRY_CLAY.full_say, throttle=self.hints.throttle)
         self.place_hints = PlaceHints(self.tm, self.carry, self.hints.throttle)
         # tick_sources skips a spent pile silently: without this, a pilot
         # hovers an empty quarry forever wondering why nothing happens
@@ -369,7 +438,7 @@ class SiegeMission(Mission):
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([KEEP, QUARRY, *GATES])  # pads are engine-protected already
+        self.tm.set_keep_out([KEEP, QUARRY, PIT, *GATES])  # pads are engine-protected already
         self.rng = random.Random(world.rng.getrandbits(32))
         # the quest dice come AFTER siege's own draw: gate sequences per seed
         # stay what they were before quests existed (a test pins them)
@@ -440,8 +509,12 @@ class SiegeMission(Mission):
         return 1.0 + SPEED_SCALE_PER_TIER * self._up(student_id).speed
 
     def _tower_stats(self, tower: Tower) -> tuple[float, float, int]:
-        """(range, cooldown, tier) for a tower, from its builder's tier."""
+        """(range, cooldown, tier) for a tower: the ring sets the base, the
+        builder's tier adds range; the ring's reload is already the fast one
+        (tiers on top of it would make one tower a wave-killer)."""
         tier = self._up(tower.builder).tower
+        if tower.ring:
+            return RING_RANGE + TOWER_RANGE_PER_TIER * tier, RING_COOLDOWN, tier
         return (TOWER_RANGE + TOWER_RANGE_PER_TIER * tier,
                 max(TOWER_COOLDOWN_MIN, TOWER_COOLDOWN - TOWER_COOLDOWN_PER_TIER * tier),
                 tier)
@@ -492,6 +565,7 @@ class SiegeMission(Mission):
         self.last_brief = world.now
         world.send_text(drone.id, f"GAME: keep at {fmt_world(*KEEP)}, protect it!")
         world.send_text(drone.id, f"GAME: quarry at {fmt_world(*QUARRY)}")
+        world.send_text(drone.id, f"GAME: clay pit at {fmt_world(*PIT)}")
         left_s = max(0, math.ceil(self.timer))
         if self.state == "grace":
             world.send_text(drone.id, f"GAME: first wave in {left_s}s, build!")
@@ -514,8 +588,16 @@ class SiegeMission(Mission):
         self.carry.clear()
         self.tracker.reset()
         self.blueprints.reset()
+        self.ring_bps.reset()
+        self.beacon_bps.reset()
+        self.bell_bps.reset()
         self.quarry.dwell.clear()
+        self.pit.dwell.clear()
         self.towers.clear()
+        self.beacons.clear()
+        self.bells.clear()
+        self.lured.clear()
+        self.freeze_s = 0.0
         self.creeps.clear()
         self.zap.clear()
         self.zap_high.clear()
@@ -535,6 +617,7 @@ class SiegeMission(Mission):
         self.last_build_hint = self.last_brief = float("-inf")
         self.site = None
         self.hints.clear()
+        self.pit_hints.clear()
         self.place_hints.clear()
         self.empty_hint.clear()
         self.pool = 0
@@ -562,6 +645,7 @@ class SiegeMission(Mission):
             "towers": len(self.towers),
             "pool": self.pool,
             "quests": self.quests.hud(self.stats.quests_solved, self.stats.quests_missed),
+            "frozen_s": max(0, math.ceil(self.freeze_s)),
         }
 
     # ------------------------------------------------------------------ tick
@@ -569,31 +653,24 @@ class SiegeMission(Mission):
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
 
-        tick_ferry(world, drones, self.carry, [self.quarry], dt, FERRY)
+        tick_ferry(world, drones, self.carry, [self.quarry, self.pit], dt, FERRY,
+                   texts_by_material={"steel": FERRY, "clay": FERRY_CLAY})
         self.hints.tick(world, drones, *QUARRY, dt)
+        self.pit_hints.tick(world, drones, *PIT, dt)
         self.empty_hint.tick(world, drones, *QUARRY, dt)
         placed, refused = self.tracker.tick(drones, dt)
         self.place_hints.tick(world, drones, dt)
         for p in placed:
             self._squish(world, p)
-            match = self.blueprints.check(self.tm, p.cell)
-            if match is None:
+            if not self._raise_structure(world, p):
                 world.send_text(p.drone.id, f"GAME: placed! tile at {fmt_cell(p.cell)}")
-            else:
-                self.towers[match.anchor] = Tower(builder=p.drone.student_id)
-                self.stats.towers += 1
-                world.add_score(TOWER_POINTS, f"watchtower at {fmt_cell(match.anchor)}",
-                                student_id=p.drone.student_id, feed=False)
-                world.emit_event("tower_up",
-                                 f"{p.drone.name} raised a watchtower! +{TOWER_POINTS}",
-                                 student_id=p.drone.student_id,
-                                 data={"points": TOWER_POINTS})
-                world.broadcast_text(f"GAME: tower up! +{TOWER_POINTS}")
         for d, _cell in refused:
             world.send_text(d.id, "GAME: can't build there")
 
         if self.tm.version != self._flow_version:
             self._check_towers(world)
+            self._check_beacons(world)
+            self._check_bells(world)
             self._reflood()
 
         # beams and fx are wall-clock cosmetics (world.now keeps advancing), so
@@ -610,16 +687,11 @@ class SiegeMission(Mission):
                 self.spawn_timer += SPAWN_GAP
                 self._spawn_creep()
 
-        result = step_units(self.creeps.values(), self.tm, self.flow, dt, CHEW_S)
-        for u in result.arrived:
-            self.leaks += 1
-            self._kill(world, u.uid, "leak")
-            for _ in range(u.keep_cost):
-                self._keep_hit(world)
-        for _u, cell in result.chews:
-            if self.tm.remove_top(cell) is not None:
-                world.broadcast_text(f"GAME: wall chewed at {fmt_cell(cell)}",
-                                     severity=SEV_WARNING)
+        self._ring_bells(world, drones, dt)
+        if self.freeze_s > 0:
+            self.freeze_s -= dt  # the bell: nobody walks, nobody chews
+        else:
+            self._march(world, dt)
 
         self._fire_towers(world)
         self._zap(world, drones, dt)
@@ -638,6 +710,161 @@ class SiegeMission(Mission):
                 and world.now - self.last_build_hint > BUILD_HINT_EVERY):
             self.last_build_hint = world.now
             self._call_build_site(world)
+
+    def _march(self, world: WorldAPI, dt: float) -> None:
+        """Creeps walk: the lured ones to their beacon, the rest to the Keep.
+        Two calls to the walker, two meanings of 'arrived' — a beacon's
+        arrivals chew the beacon, the Keep's are leaks."""
+        self.lured.clear()
+        by_beacon: dict[Axial, list[GroundUnit]] = {a: [] for a in self.beacons}
+        to_keep: list[GroundUnit] = []
+        for uid, u in self.creeps.items():
+            near = min(((math.hypot(u.n - hex.axial_to_world(a)[0],
+                                    u.e - hex.axial_to_world(a)[1]), a)
+                        for a in self.beacons), default=None)
+            if near is not None and near[0] <= BEACON_RADIUS:
+                by_beacon[near[1]].append(u)
+                self.lured.add(uid)
+            else:
+                to_keep.append(u)
+        chews: list[Axial] = []
+        result = step_units(to_keep, self.tm, self.flow, dt, CHEW_S, chew_factor=CHEW_FACTOR)
+        for u in result.arrived:
+            self.leaks += 1
+            self._kill(world, u.uid, "leak")
+            for _ in range(u.keep_cost):
+                self._keep_hit(world)
+        chews += [cell for _u, cell in result.chews]
+        for anchor, units in by_beacon.items():
+            beacon = self.beacons[anchor]
+            lured = step_units(units, self.tm, beacon.flow, dt, CHEW_S, chew_factor=CHEW_FACTOR)
+            beacon.lured = len(units)
+            for u in lured.arrived:  # standing on the beacon: eating it
+                beacon.chew_acc += dt * u.chew_rate
+            chews += [cell for _u, cell in lured.chews]
+            if beacon.chew_acc >= CHEW_S - _EPS:
+                beacon.chew_acc = 0.0
+                chews.append(anchor)
+        for cell in chews:
+            material = self.tm.remove_top(cell)
+            if material is not None:  # widest: "GAME: steel chewed at N -97 E -97" = 34
+                world.broadcast_text(f"GAME: {material} chewed at {fmt_cell(cell)}",
+                                     severity=SEV_WARNING)
+
+    # ------------------------------------------------------------ structures
+
+    def _raise_structure(self, world: WorldAPI, p) -> bool:
+        """A placement may complete a structure; say which. True if it did."""
+        sid, name = p.drone.student_id, p.drone.name
+        raised = False
+        match = self.blueprints.check(self.tm, p.cell, extra_claimed=self._others(self.blueprints))
+        if match is not None:
+            self.towers[match.anchor] = Tower(builder=sid)
+            self.stats.towers += 1
+            world.add_score(TOWER_POINTS, f"watchtower at {fmt_cell(match.anchor)}",
+                            student_id=sid, feed=False)
+            world.emit_event("tower_up", f"{name} raised a watchtower! +{TOWER_POINTS}",
+                             student_id=sid, data={"points": TOWER_POINTS})
+            world.broadcast_text(f"GAME: tower up! +{TOWER_POINTS}")
+            raised = True
+        ring = self.ring_bps.check(self.tm, p.cell, extra_claimed=self._others(self.ring_bps))
+        if ring is not None and ring.anchor in self.towers:
+            self.towers[ring.anchor].ring = True
+            self.stats.ring_towers += 1
+            world.add_score(RING_POINTS, f"ring tower at {fmt_cell(ring.anchor)}",
+                            student_id=sid, feed=False)
+            world.emit_event("ring_up", f"{name} ringed a tower: long range! +{RING_POINTS}",
+                             student_id=sid, data={"points": RING_POINTS})
+            # widest: "GAME: ring tower at N -97 E -97! +25" = 37
+            world.broadcast_text(f"GAME: ring tower at {fmt_cell(ring.anchor)}! +{RING_POINTS}")
+            raised = True
+        elif ring is not None:  # a ring around a stack that is not a tower (cannot happen
+            for cell in ring.cells:  # in practice: 3 steel on a cell IS a tower)
+                self.ring_bps.claimed.discard(cell)
+        if len(self.beacons) < BEACON_MAX:
+            beacon = self.beacon_bps.check(self.tm, p.cell,
+                                           extra_claimed=self._others(self.beacon_bps))
+            if beacon is not None:
+                self.beacons[beacon.anchor] = Beacon(
+                    sid, beacon.cells, path.flood(self.tm, beacon.anchor, climb=CLIMB))
+                world.emit_event("beacon_up", f"{name} lit a beacon at {fmt_cell(beacon.anchor)}",
+                                 student_id=sid)
+                # widest: "GAME: beacon up at N -97 E -97, creeps lured" = 45
+                world.broadcast_text(f"GAME: beacon up at {fmt_cell(beacon.anchor)}, creeps lured")
+                raised = True
+        bell = self.bell_bps.check(self.tm, p.cell, extra_claimed=self._others(self.bell_bps))
+        if bell is not None:
+            top = self.tm.top_alt(bell.anchor)
+            dwell = DwellTracker(BELL_RADIUS, top + BELL_ALT_ABOVE, BELL_DWELL_S)
+            self.bells[bell.anchor] = Bell(sid, bell.cells, dwell)
+            world.emit_event("bell_up", f"{name} built a bell at {fmt_cell(bell.anchor)}",
+                             student_id=sid)
+            # widest: "GAME: bell up at N -97 E -97, hover 8 m to ring" = 47
+            world.broadcast_text(
+                f"GAME: bell up at {fmt_cell(bell.anchor)}, hover {round(top + 2)} m to ring")
+            raised = True
+        return raised
+
+    def _others(self, mine: BlueprintTracker) -> frozenset[Axial]:
+        """Cells every OTHER tracker owns: a tile in one structure never
+        completes another (the watchtower centre is the one exception the
+        ring tracker needs, so the ring does not exclude the tower's claims)."""
+        trackers = [self.blueprints, self.ring_bps, self.beacon_bps, self.bell_bps]
+        out: set[Axial] = set()
+        for t in trackers:
+            if t is not mine and not (mine is self.ring_bps and t is self.blueprints):
+                out |= t.claimed
+        return frozenset(out)
+
+    def _check_beacons(self, world: WorldAPI) -> None:
+        gone = [a for a, b in self.beacons.items() if not self._standing(BEACON_BP, b.cells)]
+        for anchor in gone:
+            b = self.beacons.pop(anchor)
+            for cell in b.cells:
+                self.beacon_bps.claimed.discard(cell)
+            world.emit_event("beacon_lost", f"the beacon at {fmt_cell(anchor)} was chewed down")
+            world.broadcast_text(f"GAME: beacon chewed at {fmt_cell(anchor)}", severity=SEV_WARNING)
+
+    def _check_bells(self, world: WorldAPI) -> None:
+        for anchor in [a for a, b in self.bells.items() if not self._standing(BELL_BP, b.cells)]:
+            b = self.bells.pop(anchor)
+            for cell in b.cells:
+                self.bell_bps.claimed.discard(cell)
+            world.emit_event("bell_lost", f"the bell at {fmt_cell(anchor)} was chewed down")
+            world.broadcast_text(f"GAME: bell chewed at {fmt_cell(anchor)}", severity=SEV_WARNING)
+
+    def _standing(self, bp: Blueprint, cells: tuple[Axial, ...]) -> bool:
+        """The matched cells still satisfy their requirements, in match order."""
+        for req, cell in zip(bp.reqs, cells, strict=True):
+            h = self.tm.height(cell)
+            if h < req.height or self.tm.top(cell) != req.material:
+                return False
+            if req.max_height is not None and h > req.max_height:
+                return False
+        return True
+
+    def _ring_bells(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
+        for anchor, bell in list(self.bells.items()):
+            n, e = hex.axial_to_world(anchor)
+            top = self.tm.top_alt(anchor)
+            def above(d: DroneView, t: float = top) -> bool:
+                return d.alt > t  # on top of the stack, not beside it
+
+            winner = bell.dwell.update(drones, n, e, dt, eligible=above)
+            if winner is None:
+                continue
+            del self.bells[anchor]
+            for cell in bell.cells:
+                while self.tm.remove_top(cell) is not None:
+                    pass
+                self.bell_bps.claimed.discard(cell)
+            self.freeze_s = FREEZE_S
+            self.stats.bells += 1
+            self._fx(world, "bell_ring", n, e, top, BELL_RING_S)
+            world.emit_event("bell_rung",
+                             f"{winner.name} rang the bell — creeps frozen {round(FREEZE_S)} s!",
+                             student_id=winner.student_id, data={"freeze_s": FREEZE_S})
+            world.broadcast_text(f"GAME: bell rung! creeps frozen {round(FREEZE_S)} s")
 
     # ---------------------------------------------------------------- combat
 
@@ -715,8 +942,11 @@ class SiegeMission(Mission):
             if drone is not None and verb == "zap":
                 world.send_text(drone.id, f"GAME: zap! {u.kind} hp {u.hp}")
             return False
+        lured = uid in self.lured
         self._kill(world, uid, verb)
         self.pool += COINS_PER_KILL_EACH * self._seated(world)
+        if lured and verb != "leak":  # a kill in the beacon's kill zone pays extra
+            self.pool += LURE_BONUS_EACH * self._seated(world)
         who = drone.student_id if drone is not None else student_id
         # the feed row names the pilot: "+2: Alice zapped a grunt" is the
         # 'that was me' moment for twenty people at once; tower shots stay quiet
@@ -741,6 +971,7 @@ class SiegeMission(Mission):
         u = self.creeps.pop(uid, None)
         self.zap.pop(uid, None)
         self.zap_high.pop(uid, None)
+        self.lured.discard(uid)
         if u is not None:
             if verb == "zap":
                 self.stats.zapped += 1
@@ -909,14 +1140,32 @@ class SiegeMission(Mission):
 
     def _check_towers(self, world: WorldAPI) -> None:
         for cell in [c for c in self.towers if self.tm.height(c) < TOWER_HEIGHT]:
-            del self.towers[cell]
+            tower = self.towers.pop(cell)
             self.blueprints.claimed.discard(cell)  # chewed down: rebuildable
+            if tower.ring:
+                self._drop_ring(cell)
             world.emit_event("tower_down", f"watchtower lost at {fmt_cell(cell)}")
             world.broadcast_text(f"GAME: tower down at {fmt_cell(cell)}",
                                  severity=SEV_WARNING)
+        for cell, tower in self.towers.items():
+            if tower.ring and match_at(self.tm, RING_BP, cell) is None:
+                tower.ring = False
+                self._drop_ring(cell)
+                world.emit_event("ring_lost", f"the ring at {fmt_cell(cell)} is broken")
+                # widest: "GAME: ring lost at N -97 E -97, watchtower again" = 48
+                world.broadcast_text(f"GAME: ring lost at {fmt_cell(cell)}, watchtower again",
+                                     severity=SEV_WARNING)
+
+    def _drop_ring(self, centre: Axial) -> None:
+        """Release a ring's claims (the centre stays the watchtower's)."""
+        for cell in hex.ring(centre, 1):
+            self.ring_bps.claimed.discard(cell)
+        self.ring_bps.claimed.discard(centre)
 
     def _reflood(self) -> None:
         self.flow = path.flood(self.tm, KEEP_CELL, climb=CLIMB)
+        for anchor, beacon in self.beacons.items():
+            beacon.flow = path.flood(self.tm, anchor, climb=CLIMB)
         self._flow_version = self.tm.version
 
     def _round_end(self, world: WorldAPI) -> None:
@@ -940,6 +1189,7 @@ class SiegeMission(Mission):
     def _announce(self, world: WorldAPI) -> None:
         world.broadcast_text(f"GAME: keep at {fmt_world(*KEEP)}, protect it!")
         world.broadcast_text(f"GAME: quarry at {fmt_world(*QUARRY)}")
+        world.broadcast_text(f"GAME: clay pit at {fmt_world(*PIT)}")
         world.broadcast_text(_HINTS[self._hint])
         self._hint = (self._hint + 1) % len(_HINTS)
 
@@ -984,15 +1234,30 @@ class SiegeMission(Mission):
     def entities(self, world: WorldAPI) -> list[Entity]:
         out = [Entity(id="keep", kind="keep", n=KEEP[0], e=KEEP[1], alt=0.0,
                       data={"hp": self.keep_hp, "max": KEEP_HP}),
-               self.quarry.entity()]
+               self.quarry.entity(), self.pit.entity()]
         for i, (gate, label) in enumerate(zip(GATES, GATE_LABELS, strict=True)):
             active = self.state == "active" and gate in self.gates and self.pending > 0
             out.append(Entity(id=f"gate{i}", kind="gate", n=gate[0], e=gate[1], alt=0.0,
                               data={"label": label, "active": active}))
+        frozen = self.freeze_s > 0
         for uid, u in self.creeps.items():
             out.append(Entity(id=f"creep{uid}", kind="troop", n=u.n, e=u.e, alt=u.alt,
                               data={"dir": u.heading, "chewing": u.chewing,
-                                    "kind": u.kind, "hp": u.hp, "max": u.max_hp}))
+                                    "kind": u.kind, "hp": u.hp, "max": u.max_hp,
+                                    "frozen": frozen, "lured": uid in self.lured}))
+        for anchor, beacon in self.beacons.items():
+            n, e = hex.axial_to_world(anchor)
+            out.append(Entity(id=f"beacon_{anchor[0]}_{anchor[1]}", kind="beacon", n=n, e=e,
+                              alt=self.tm.top_alt(anchor),
+                              data={"radius": BEACON_RADIUS, "lured": beacon.lured,
+                                    "chew": round(beacon.chew_acc / CHEW_S, 2)}))
+        for anchor, bell in self.bells.items():
+            n, e = hex.axial_to_world(anchor)
+            charge = max(bell.dwell.acc.values(), default=0.0) / BELL_DWELL_S
+            out.append(Entity(id=f"bell_{anchor[0]}_{anchor[1]}", kind="bell", n=n, e=e,
+                              alt=self.tm.top_alt(anchor),
+                              data={"hover": round(self.tm.top_alt(anchor) + 2),
+                                    "charge": round(min(1.0, charge), 2)}))
         # the suggested site, as a ghost the instructor can point at, while
         # there is time to build and until a tower stands there
         if (self.state in ("grace", "build") and self.site is not None
@@ -1007,7 +1272,7 @@ class SiegeMission(Mission):
             reach, _cooldown, tier = self._tower_stats(tower)
             out.append(Entity(id=f"tower_{cell[0]}_{cell[1]}", kind="tower",
                               n=n, e=e, alt=self.tm.top_alt(cell),
-                              data={"range": reach, "tier": tier}))
+                              data={"range": reach, "tier": tier, "ring": tower.ring}))
         for mark_id, cell, data in room_marks(self.quests.room):
             n, e = hex.axial_to_world(cell)
             out.append(Entity(id=mark_id, kind="quest_mark", n=n, e=e, alt=0.0, data=data))

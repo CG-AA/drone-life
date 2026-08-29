@@ -57,6 +57,7 @@ export const KNOWN_KINDS = [
   "keep", "troop", "tower", "beam", "gate",            // siege
   "zap_arc", "poof",                                   // siege cosmetics (short-lived)
   "quest_mark",                                        // siege room-quest route stops
+  "beacon", "bell", "bell_ring",                       // siege buildings (+ the ring fx)
 ] as const;
 
 export interface EntityState {
@@ -77,11 +78,19 @@ export interface CrateData { carried_by?: string }
 export interface TileSourceData { material: string; remaining: number | null }
 export interface TileCarriedData { carried_by: string; material: string }
 export interface GhostTileData { material: string; need: number; have: number; size: number }
-/** kind: grunt | runner | brute | sapper | champion (missions/siege.py KINDS) */
-export interface TroopData { dir: number; chewing: boolean; kind: string; hp: number; max: number }
+/** kind: grunt | runner | brute | sapper | champion (missions/siege.py KINDS);
+ * frozen while a bell's freeze holds, lured while walking to a beacon */
+export interface TroopData {
+  dir: number; chewing: boolean; kind: string; hp: number; max: number;
+  frozen: boolean; lured: boolean;
+}
 export interface KeepData { hp: number; max: number }
-/** range grows with the builder's tower tier (0 = stock) */
-export interface TowerData { range: number; tier: number }
+/** range grows with the builder's tower tier (0 = stock); ring = six steel around it */
+export interface TowerData { range: number; tier: number; ring: boolean }
+/** a lure: creeps within radius walk to it; chew is 0..1 of the way to eaten */
+export interface BeaconData { radius: number; lured: number; chew: number }
+/** the bell: hover altitude to ring it, charge 0..1 of the dwell */
+export interface BellData { hover: number; charge: number }
 /** an archway creeps pour from; active while its wave is still spawning */
 export interface GateData { label: string; active: boolean }
 export interface BeamData { tn: number; te: number; talt: number }

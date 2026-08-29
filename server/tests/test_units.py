@@ -129,3 +129,29 @@ def test_chew_then_remove_then_walk_through():
     events = run([u], tm, flow, 6.0, chew_s=1.0)
     assert not u.chewing, "walking clears the chew state"
     assert events and events[-1][1].arrived == [u], "1-high remnant is a ramp"
+
+
+def test_chew_factor_scales_the_clock_by_material():
+    tm = TileMap()
+    for wall in hex.ring(GOAL, 1):
+        tm.place(wall, "steel")
+        tm.place(wall, "steel")
+    for wall in hex.ring(GOAL, 2):  # an outer 3-high clay ring: two chews to climb it
+        tm.place(wall, "clay")
+        tm.place(wall, "clay")
+        tm.place(wall, "clay")
+    flow = path.flood(tm, GOAL, climb=1)
+    u = unit_at((0, 3), uid=1)
+    chewed = []
+    t = 0.0
+    while t < 20 and len(chewed) < 3:
+        r = step_units([u], tm, flow, DT, 6.0, chew_factor={"clay": 3.0})
+        t += DT
+        for _unit, cell in r.chews:
+            chewed.append((round(t, 1), tm.top(cell)))
+            tm.remove_top(cell)
+            flow = path.flood(tm, GOAL, climb=1)
+    assert [m for _t, m in chewed[:2]] == ["clay", "clay"], "the outer ring goes first"
+    clay_each = chewed[1][0] - chewed[0][0]
+    assert abs(clay_each - 2.0) < 0.3, "6 s / 3x = 2 s per clay tile"
+    assert chewed[2][1] == "steel" and chewed[2][0] - chewed[1][0] > 5.0, "steel at 1x"

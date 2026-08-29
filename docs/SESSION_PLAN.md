@@ -189,6 +189,18 @@ per tier), speed 30/60 (+25 % caps per tier), tower 40/80 (+4 m range,
 are personal and last the round; at ~15 coins a wave a pilot buys one tier
 by wave 2 and reaches the top rungs only in a long round.
 
+Buildings: the clay pit (`PIT_CELL`, infinite) feeds walls chewed at
+`CHEW_FACTOR` 3× (steel 1×; the flow field prices both the same, so a clay
+wall reroutes like steel and only *loses* faster). Ring tower (6 steel
+around a watchtower): `RING_RANGE` 28, `RING_COOLDOWN` 1.5, `RING_POINTS`
+25; the builder's tower tier adds range only. Beacon (clay-steel-clay
+singles): `BEACON_RADIUS` 25, `BEACON_MAX` 2, `LURE_BONUS_EACH` 1 coin per
+seat per lured kill; arrivals chew the steel in `CHEW_S`. Bell (6-clay ring
++ 3 clay): `BELL_DWELL_S` 3 at `BELL_ALT_ABOVE` 3 m over the top, `FREEZE_S`
+15, one shot. Costs in ferry time (quarry ~45 m, pit ~65 m from the Keep,
+~30 s a tile): a watchtower ≈ 1.5 min solo, the ring +3 min solo (1 min
+with three ferries), a bell ≈ 3 min solo.
+
 Quests (`server/app/game/quests.py`): personal from `QUEST_FROM_WAVE` 2,
 opt-in, `QUEST_FIRST_S` 5 after enrolling then `QUEST_GAP_S` 20 between
 quests, at most `ISSUE_PER_TICK` 4 issued per tick; tiers follow the gate

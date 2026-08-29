@@ -95,7 +95,8 @@ def test_hud_state_tracks_the_wave_machine():
     hud = {k: v for k, v in m.hud().items() if k not in ("stats", "last_round")}
     assert hud == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
                    "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0,
-                   "pool": 0, "quests": {"solved": 0, "missed": 0, "room": None}}
+                   "pool": 0, "quests": {"solved": 0, "missed": 0, "room": None},
+                   "frozen_s": 0}
     world.views = [view("d0", n=-90.0, e=-76.0)]
     world.run(m, 10.0)
     assert m.hud()["timer_s"] == 35 and m.hud()["state"] == "grace"
@@ -573,7 +574,7 @@ def test_creep_chews_through_a_full_ring():
         m.tm.place(wall, "steel")
     add_creep(m, (0, 4), speed=1.5)
     world.run(m, 25.0)
-    assert any("wall chewed at" in t for t in texts(world))
+    assert any("steel chewed at" in t for t in texts(world))
     assert m.keep_hp == KEEP_HP - 1, "enclosure delays, never stops"
     assert_grammar(world)
 
@@ -733,7 +734,8 @@ def test_a_newcomer_is_briefed_not_backfilled():
     mine = [t for target, t in world.texts if target == "d1"]
     assert mine[0].startswith("GAME: keep at N 0 E 0")
     assert mine[1].startswith("GAME: quarry at")
-    assert mine[2].startswith("GAME: wave 1 at N") and "creeps" in mine[2]
+    assert mine[2].startswith("GAME: clay pit at N 50 E -44")
+    assert mine[3].startswith("GAME: wave 1 at N") and "creeps" in mine[3]
     assert not [t for target, t in world.texts if target == "d0"], "nobody else hears it"
     m.state, m.timer = "build", 12.4
     world.texts.clear()

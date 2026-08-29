@@ -69,7 +69,7 @@ over and even **land on top**.
   grow with the room too: more pilots, more creeps.
 
   Walls 2 tiles high reroute the creeps into your kill zones — but nothing
-  is forever: a blocked creep **chews** through (watch for `wall chewed`
+  is forever: a blocked creep **chews** through (watch for `steel chewed` / `clay chewed`
   warnings, and rebuild). You get 45 s of peace before wave 1, and 20 s
   between waves. A zap takes one creep per 1.5 s per drone — a clump needs
   more drones, not a longer hover. The clocks only run while somebody is
@@ -141,6 +141,7 @@ Every message names your next action. Positions are always `N <int> E <int>`
 |---|---|
 | `quarry at N -32 E 39` / `clay pit at N 27 E -42` | the pile → hover it low (below 3 m) for 2 s |
 | `got steel, place on the wall` (siege: `wall or tower it`) | carrying → fly to a target cell |
+| `got clay, cheap walls, chewed 3x faster` (siege) | the clay pit's tile: walls, beacon ends, the bell |
 | `got clay, build a ring of 6` | forge: build anywhere, but close a ring |
 | `wall gap at N 9 E -62 hover 4` | rampart tells you where AND the altitude |
 | `hover 6 m to place` | right cell, wrong height → hover at that altitude |
@@ -171,7 +172,11 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `champion down! +20` | the boss fell — everyone hears it |
 | `stack 3 steel = watchtower` / `build a tower at N 20 E -8` | 3 tiles on one cell → auto-firing tower (+15); the game suggests a spot between waves |
 | `tower up! +15` / `tower down at …` | a tower rose / was chewed from under |
-| `wall chewed at N 9 E -62` | a blocked creep is eating through → rebuild, zap it |
+| `steel chewed at N 9 E -62` / `clay chewed at …` | a blocked creep is eating through → rebuild, zap it; clay goes 3× faster than steel |
+| `clay pit at N 50 E -44` / `got clay, cheap walls, chewed 3x faster` | the second pile — infinite, unlike the quarry — for walls, beacons and the bell |
+| `ring tower at N 20 E -8! +25` / `ring lost at …, watchtower again` | 6 steel around a standing watchtower: 28 m reach, 1.5 s reload; a chewed ring cell drops it back |
+| `beacon up at N 8 E 31, creeps lured` / `beacon chewed at …` | clay–steel–clay, each cell exactly one high: creeps within 25 m walk to it instead of the Keep and eat the steel (6 s); kills in that zone pay the pot one extra coin per seat; two beacons at most |
+| `bell up at N -18 E 9, hover 8 m to ring` / `bell rung! creeps frozen 15 s` | a 6-clay ring with 3 clay in the middle; hover on top (8 m) for 3 s and every creep freezes for 15 s — towers and zaps keep working; the bell is spent |
 | `wave 3 clear! +10` / `wave 3 clear, 2 leaked +5` | breathe — a clean wave pays double |
 | `wave 4 in 20s, build!` | 20 s of peace: ferry steel, stack a tower |
 | `+8 coins, wallet 23` | every kill pays the team pot one coin per pilot; each wave clear splits the pot evenly into wallets — `drone.say("wallet")` to ask your balance |
@@ -239,7 +244,7 @@ connection string and the messages are identical.
 | `DRONE: CRASH: hit a wall` | flew into a tile stack side-on | go over the top (walls max out at 8 m) or around |
 | tile won't place | wrong altitude, wrong cell, or empty hands | hover at the **announced** altitude on the announced spot, carrying |
 | creep won't die under me | too high, or it walked out from under you, or it has more hp | stay within ~4 m of it, **below its feet + 3 m**, for a full 1.5 s — the game says `drop under 3 m to zap` if you're high, and `zap! brute hp 2` if it just needs more |
-| my wall is disappearing | a blocked creep is chewing it | that's the `wall chewed` warning — zap the chewer, rebuild the tile |
+| my wall is disappearing | a blocked creep is chewing it | that's the `steel chewed` (or `clay chewed`) warning — zap the chewer, rebuild the tile |
 
 ## Pro moves
 

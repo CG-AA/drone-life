@@ -45,5 +45,12 @@ EVENT_KINDS: frozenset[str] = frozenset({
     "quest_room",
     "quest_solved",
     "quest_missed",
+    "ring_up",
+    "ring_lost",
+    "beacon_up",
+    "beacon_lost",
+    "bell_up",
+    "bell_rung",
+    "bell_lost",
 })
 # END-EVENT-KINDS

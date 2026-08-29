@@ -41,7 +41,9 @@ in `server/app/game/missions/siege.py` unless noted.
   repair happen — and they must stay beatable: a deliberately naive bot per
   role (`examples/bot_*.py`, SESSION_PLAN §7), not an optimal one; "beat
   the house bot" is the ladder, so the house bot has to be catchable.
-- **Buildings.** The 4-high stack is legal and currently means nothing:
+- **Buildings.** *(shipped 2026-08-29: clay pit, ring tower, beacon, bell —
+  see the siege block of the cheat sheet and §9 of SESSION_PLAN)* The
+  original notes, for the record: the 4-high stack is legal and currently means nothing:
   4 steel = long-range tower (or a different weapon); clay in siege as cheap
   chew-fodder vs steel that only sappers eat fast; a repairable gate at a
   lane; a beacon/lure tile that pulls creeps into a kill zone. Each is a

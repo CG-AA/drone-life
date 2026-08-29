@@ -341,3 +341,26 @@ def test_place_hint_silent_over_keepout():
     d = view(alt=20.0)  # over the keep-out cell: no altitude would work
     run_place_hints(world, hints, [d], STUCK_S + 0.2)
     assert world.texts == []
+
+
+def test_tick_ferry_flavours_texts_by_material_and_returns_pickups():
+    from app.game.building import FerryTexts, tick_ferry
+
+    world = FakeWorld()
+    carry = CarrySlots()
+    steel = TileSource("quarry", 0.0, 0.0, material="steel")
+    clay = TileSource("pit", 30.0, 0.0, material="clay")
+    texts = {"steel": FerryTexts("steel", "GAME: steel lost", "GAME: got steel", "GAME: full"),
+             "clay": FerryTexts("clay", "GAME: clay lost", "GAME: got clay", "GAME: full")}
+    world.views = [view("d0", n=0.0, e=0.0, alt=2.0), view("d1", n=30.0, e=0.0, alt=2.0)]
+    got = []
+    for _ in range(25):
+        world.now += 0.1
+        got += tick_ferry(world, world.views, carry, [steel, clay], 0.1, texts["steel"],
+                          texts_by_material=texts)
+    assert sorted((d.id, s.material) for d, s in got) == [("d0", "steel"), ("d1", "clay")]
+    assert ("d1", "GAME: got clay") in world.texts and ("d0", "GAME: got steel") in world.texts
+    world.views = [view("d1", n=30.0, e=0.0, alt=2.0, crashed=True)]
+    tick_ferry(world, world.views, carry, [steel, clay], 0.1, texts["steel"],
+               texts_by_material=texts)
+    assert ("*", "GAME: clay lost") in world.texts

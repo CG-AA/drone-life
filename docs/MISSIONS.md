@@ -124,8 +124,11 @@ frame **[enforced]**. Kinds in play today, and who renders them
 | `furnace` | — | building.ts |
 | `keep` | `hp`, `max` | siege.ts |
 | `gate` | `label`, `active` | siege.ts |
-| `troop` | `dir` (deg), `chewing`, `kind`, `hp`, `max` | siege.ts |
-| `tower` | `range`, `tier` | siege.ts |
+| `troop` | `dir` (deg), `chewing`, `kind`, `hp`, `max`, `frozen`, `lured` | siege.ts |
+| `tower` | `range`, `tier`, `ring` | siege.ts |
+| `beacon` | `radius`, `lured`, `chew` | siege.ts |
+| `bell` | `hover`, `charge` | siege.ts |
+| `bell_ring` | — (an fx, ~1 s) | siege.ts |
 | `quest_mark` | `label`, `quest`, `done` | siege.ts |
 | `beam` | `tn`, `te`, `talt` | siege.ts (tower shot, 0.35 s) |
 | `zap_arc` | `tn`, `te`, `talt` | siege.ts (a drone's zap, 0.3 s) |

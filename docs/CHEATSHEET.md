@@ -46,7 +46,11 @@ gives you `"crate 3 at N 12 E -40"` (prefix stripped). Every position is
 | `zap! brute hp 2` / `drop under 3 m to zap` | keep hovering / get lower |
 | `wave 5 at N 0 E 83, 12 creeps + boss` | a champion (8 hp, +20) comes last — gang up |
 | `build a tower at N 20 E -8` | between waves: ferry 3 steel there → auto-turret (+15) |
-| `wall chewed at …` | a creep is eating your wall — zap, rebuild |
+| `steel chewed at …` / `clay chewed at …` | a creep is eating your wall — zap, rebuild (clay goes 3× faster) |
+| `clay pit at N 50 E -44` / `got clay, cheap walls, chewed 3x faster` | the second pile: infinite, for walls, beacons and the bell |
+| `ring tower at N 20 E -8! +25` | 6 steel around a watchtower = long range (28 m), fast reload |
+| `beacon up at N 8 E 31, creeps lured` | a clay-steel-clay line of singles: creeps within 25 m walk to it and eat it — kill them there for extra coins |
+| `bell up at N -18 E 9, hover 8 m to ring` | 6 clay ring + 3 clay in the middle; hover on top 3 s → every creep freezes 15 s, once |
 | `wave 3 clear! +10` (or `2 leaked +5`) | leaks = -1 each and half the bonus |
 | `+8 coins, wallet 23` | every kill feeds a team pot; each wave clear splits it into everyone's wallet |
 | `bought zap II (3 left)` / `need 40 coins, have 17` | `say("buy zap")`: zap 20/40/80 (reach, faster), speed 30/60, tower 40/80 (your towers), colour/outline 10 (`buy colour #ff8800`) |

@@ -146,7 +146,7 @@ def test_tower_tier_extends_reach_and_floors_the_cooldown():
     world.run(m, 0.3)
     assert not m.creeps, "tier I reaches 20 m"
     tower = next(e for e in m.entities(world) if e.kind == "tower")
-    assert tower.data == {"range": TOWER_RANGE + TOWER_RANGE_PER_TIER, "tier": 1}
+    assert tower.data == {"range": TOWER_RANGE + TOWER_RANGE_PER_TIER, "tier": 1, "ring": False}
     say(world, m, "buy tower")  # tier II: cooldown 2.0 - 1.0 = 1.0, at the floor
     assert m._tower_stats(m.towers[(4, 1)])[1] == TOWER_COOLDOWN_MIN
     assert say(world, m, "buy tower") == "GAME: tower maxed at II"

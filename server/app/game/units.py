@@ -9,7 +9,7 @@ map. Units are mission-owned agents (viewer entities), not sim bodies.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from . import hex
@@ -54,13 +54,15 @@ class StepResult:
 
 
 def step_units(units: Iterable[GroundUnit], tm: TileMap, flow: FlowField,
-               dt: float, chew_s: float) -> StepResult:
+               dt: float, chew_s: float,
+               chew_factor: Mapping[str, float] | None = None) -> StepResult:
     """Advance every unit one tick. A unit on the goal cell lands in
     `arrived`; otherwise it walks toward the next cell's center, or — when
     that cell is too high to climb — chews it. Marooned on a stack (the next
     cell too far BELOW), it chews its own cell down instead: the pedestal
     rule. A completed chew lands in `chews`; the caller removes the tile and
-    re-floods on the version change."""
+    re-floods on the version change. `chew_factor` speeds chewing per top
+    material (siege: clay goes 3x faster) — unlisted materials chew at 1x."""
     result = StepResult()
     for u in units:
         here = u.cell
@@ -74,7 +76,9 @@ def step_units(units: Iterable[GroundUnit], tm: TileMap, flow: FlowField,
         if abs(dh) <= flow.climb:
             _walk(u, nxt, tm, dt)
         else:
-            _chew(u, nxt if dh > 0 else here, dt, chew_s, result)
+            target = nxt if dh > 0 else here
+            factor = 1.0 if chew_factor is None else chew_factor.get(tm.top(target) or "", 1.0)
+            _chew(u, target, dt * factor, chew_s, result)
         u.alt = tm.height_at(u.n, u.e)
     return result
 
