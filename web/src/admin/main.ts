@@ -62,7 +62,10 @@ async function poll(): Promise<void> {
       showGate("bad admin token — enter it again");
       throw e;
     }
-    $("summary").textContent = "server unreachable — retrying…";
+    // say why: "Failed to fetch" with a 200 in curl is a browser extension
+    // (ad/privacy blockers match "/admin" paths), not the server
+    const why = e instanceof Error ? e.message : String(e);
+    $("summary").textContent = `server unreachable — retrying… (${why})`;
     $("health-line").textContent = "";
     lastHealth = null; // a gap in the samples would fake a tick rate
   } finally {
