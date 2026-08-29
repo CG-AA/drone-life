@@ -24,8 +24,8 @@ from ..hex import Axial
 from ..mission import Entity, Mission, WorldAPI, fmt_world
 
 CRATE_COUNT = 3  # floor: crates alive even in an empty room
-CRATE_MAX = 8
-PILOTS_PER_CRATE = 3  # one crate in the air per this many connected pilots
+CRATE_MAX = 64  # a hard ceiling for the projector, not a balance knob
+PILOTS_PER_CRATE = 1  # one crate on the ground per connected pilot
 SPAWN_STAGGER_S = 2.0  # top-up spawns spread out, never one announce burst
 # deliberately tighter than building.PICKUP_RADIUS (2.5): a crate is a precise
 # grab, a quarry is a generous pile
@@ -109,15 +109,16 @@ class DeliveryMission(Mission):
         self.setup(world)
 
     def _desired(self, world: WorldAPI) -> int:
-        """Grabbable crates scale with the room: enough that a full class is
-        never starved, few enough that a rehearsal with 3 bots feels the same."""
+        """Grabbable crates scale with the room — one per connected pilot, so
+        a class of 60 is never starved — with a floor so a rehearsal with 3
+        bots feels the same."""
         pilots = sum(1 for d in world.drones() if d.connected)
         return min(CRATE_MAX, max(CRATE_COUNT, math.ceil(pilots / PILOTS_PER_CRATE)))
 
     def _on_ground(self) -> int:
         """Only a crate nobody is carrying can be flown to. Counting the whole
-        population starved a full class: at 20 pilots the target is 7, and once
-        7 were in the air nothing on the ground was ever topped up."""
+        population starved a full class: with 20 pilots and 20 crates in the
+        air, nothing on the ground was ever topped up."""
         return sum(1 for c in self.crates.values() if c.carried_by is None)
 
     def _spawn_crate(self, world: WorldAPI) -> None:

@@ -268,7 +268,7 @@ async def test_three_wrong_codes_lock_the_address_out_everywhere(tmp_path):
             assert ok.status_code == 200
             headers = {"X-Admin-Token": settings.admin_token}
             lifted = await alice.post("/api/v1/admin/unlock", headers=headers)
-            assert lifted.json() == {"unlocked": 1}
+            assert lifted.json() == {"unlocked": 1, "unbanned": 0}
             assert (await mallory.get("/api/v1/world?code=test-room")).status_code == 200
 
 
@@ -284,3 +284,42 @@ async def test_two_typos_then_the_right_code_is_not_a_lockout(tmp_path):
             assert await join("test-room") == 200
             assert [await join(c) for c in ("x", "y")] == [403, 403]
             assert await join("test-room") == 200
+
+
+async def test_ban_keeps_the_name_and_the_address_out_until_unlock(tmp_path):
+    settings = make_settings(tmp_path)
+    async with running_app(settings) as app:
+        mallory = await transport_client(app, "10.0.0.66")
+        elsewhere = await transport_client(app, "10.0.0.77")
+        async with mallory, elsewhere:
+            joined = await mallory.post("/api/v1/join",
+                                        json={"room_code": "test-room", "name": "Mal"})
+            assert joined.status_code == 200
+            sid = joined.json()["student_id"]
+            headers = {"X-Admin-Token": settings.admin_token}
+            banned = await elsewhere.post("/api/v1/admin/ban",
+                                          json={"student_id": sid},
+                                          headers=headers)
+            assert banned.json() == {"ok": True, "address_locked": True}
+            # the name is out from anywhere; the address is out under any name
+            again = await elsewhere.post("/api/v1/join",
+                                         json={"room_code": "test-room", "name": "mal"})
+            assert again.status_code == 403 and again.json()["error"]["code"] == "banned"
+            alias = await mallory.post("/api/v1/join",
+                                       json={"room_code": "test-room", "name": "Zed"})
+            assert alias.status_code == 429 and alias.json()["error"]["code"] == "locked"
+            lifted = await elsewhere.post("/api/v1/admin/unlock", headers=headers)
+            assert lifted.json() == {"unlocked": 1, "unbanned": 1}
+            back = await mallory.post("/api/v1/join",
+                                      json={"room_code": "test-room", "name": "Mal"})
+            assert back.status_code == 200
+
+
+def test_ban_has_no_expiry_but_unlock_lifts_it():
+    clock = FakeClock()
+    guard = StrikeGuard(3, lockout_s=60, clock=clock)
+    guard.ban("10.0.0.66")
+    guard.ban("")  # a bot has no address: nothing to ban
+    clock.advance(10 ** 6)
+    assert guard.blocked("10.0.0.66") and not guard.blocked("")
+    assert guard.unlock_all() == 1 and not guard.blocked("10.0.0.66")

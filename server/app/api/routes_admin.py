@@ -58,6 +58,20 @@ async def kick(body: StudentBody, service: DroneLifeService = Depends(get_servic
     return {"ok": True}
 
 
+@router.post("/ban")
+async def ban(body: StudentBody, request: Request,
+              service: DroneLifeService = Depends(get_service)) -> dict:
+    """Kick and keep out: the name cannot rejoin, and the address it joined
+    from is refused everywhere (mind a shared wifi: that is everyone behind
+    it). Until restart, or POST /unlock."""
+    student = await service.ban(body.student_id)
+    if student is None:
+        raise err(404, "student", f"no student {body.student_id!r}")
+    if student.ip:
+        request.app.state.join_strikes.ban(student.ip)
+    return {"ok": True, "address_locked": bool(student.ip)}
+
+
 @router.post("/bots")
 async def bots(body: BotsBody, service: DroneLifeService = Depends(get_service)) -> dict:
     if body.mode not in ("local", "container"):
@@ -76,5 +90,7 @@ async def bots(body: BotsBody, service: DroneLifeService = Depends(get_service))
 
 @router.post("/unlock")
 async def unlock(request: Request, _: None = Depends(require_admin)) -> dict:
-    """Lift every room-code lockout (a student who typoed three times)."""
-    return {"unlocked": request.app.state.join_strikes.unlock_all()}
+    """Lift every room-code lockout (a student who typoed three times) and
+    every ban."""
+    return {"unlocked": request.app.state.join_strikes.unlock_all(),
+            "unbanned": request.app.state.service.registry.unban_all()}

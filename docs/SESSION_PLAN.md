@@ -142,8 +142,8 @@ worked answer in the repo — don't reveal that until the wrap.
 ## 9. Balance knobs (numbers from the pre-workshop rehearsal)
 
 Delivery (all in `server/app/game/missions/delivery.py`): crate supply is
-roster-scaled — one crate per `PILOTS_PER_CRATE` (3) connected pilots,
-clamped to [`CRATE_COUNT` 3, `CRATE_MAX` 8], one top-up per
+roster-scaled — one crate per `PILOTS_PER_CRATE` (1) connected pilot,
+clamped to [`CRATE_COUNT` 3, `CRATE_MAX` 64], one top-up per
 `SPAWN_STAGGER_S` (2 s); value `POINTS` (10).
 
 Measured (20 × `bot_courier`, local mode, 7.8 min): **12.5 deliveries/min**,
@@ -152,7 +152,7 @@ from the pack — it spreads the room, leave it), score climbs linearly
 (no starvation flattening), 7 crates live for 20 pilots, tick overruns
 0.05 %. Twenty optimal bots are the *ceiling* — expect a human class at
 roughly a third of that rate, which sits mid-band. **Verdict: ship the
-defaults.** If a fast class ever floods it, raise `PILOTS_PER_CRATE` 3→4;
+defaults.** If a fast class ever floods it, raise `PILOTS_PER_CRATE` 1→2;
 if a slow one starves, lower `CRATE_MAX` won't help — lower
 `PILOTS_PER_CRATE` 3→2 instead.
 

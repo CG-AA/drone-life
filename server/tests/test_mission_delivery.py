@@ -189,8 +189,8 @@ def test_carried_crates_do_not_count_as_supply():
 
 def test_crate_count_capped():
     mission, world = make()
-    world.views = crowd(30)
-    world.run(mission, 30 * SPAWN_STAGGER_S)
+    world.views = crowd(CRATE_MAX + 10)
+    world.run(mission, (CRATE_MAX + 10) * SPAWN_STAGGER_S)
     assert len(mission.crates) == CRATE_MAX
 
 

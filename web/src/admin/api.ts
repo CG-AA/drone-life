@@ -39,6 +39,8 @@ export const killScript = (studentId: string) =>
   admin<{ stopped: boolean }>("POST", "/kill", { student_id: studentId });
 export const kickStudent = (studentId: string) =>
   admin<{ ok: boolean }>("POST", "/kick", { student_id: studentId });
+export const banStudent = (studentId: string) =>
+  admin<{ ok: boolean; address_locked: boolean }>("POST", "/ban", { student_id: studentId });
 export const resetWorld = () => admin<{ ok: boolean; epoch: number }>("POST", "/reset");
 export const spawnBots = (count: number, mode: string, script: string) =>
   admin<BotsResult>("POST", "/bots", { count, mode, script });

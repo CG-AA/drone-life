@@ -113,8 +113,15 @@ class StrikeGuard:
         self.clock = clock
         self.misses: dict[str, list[float]] = {}
         self.locked_at: dict[str, float] = {}
+        self.banned: set[str] = set()  # an admin's doing: no expiry
+
+    def ban(self, key: str) -> None:
+        if key:
+            self.banned.add(key)
 
     def blocked(self, key: str) -> bool:
+        if key in self.banned:
+            return True
         since = self.locked_at.get(key)
         if since is None:
             return False
@@ -136,9 +143,10 @@ class StrikeGuard:
         self.locked_at.pop(key, None)
 
     def unlock_all(self) -> int:
-        n = len(self.locked_at)
+        n = len(self.locked_at) + len(self.banned)
         self.misses.clear()
         self.locked_at.clear()
+        self.banned.clear()
         return n
 
 

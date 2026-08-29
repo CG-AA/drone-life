@@ -4,8 +4,8 @@
 
 import type { BotsResult, RosterStudent } from "../shared/protocol";
 import { $, actionButton, banner, guarded, runPill, typedConfirm } from "../shared/ui";
-import { ApiFailure, clearToken, fetchHealth, fetchRoster, getToken, kickStudent, killScript,
-  resetWorld, setToken, spawnBots, tokenProblem } from "./api";
+import { ApiFailure, banStudent, clearToken, fetchHealth, fetchRoster, getToken, kickStudent,
+  killScript, resetWorld, setToken, spawnBots, tokenProblem } from "./api";
 import { formatHealth, type HealthSample } from "./health";
 import { ageMs, attention, orderRoster, updateAges } from "./glance";
 
@@ -131,10 +131,20 @@ function renderRoster(roster: RosterStudent[]): void {
         `could not stop ${s.name}'s script`, () => void poll(), "really kill?"),
       actionButton("kick", () => kickStudent(s.student_id),
         `could not kick ${s.name}`, () => void poll(), "really kick?"),
+      banButton(s),
     );
 
     body.appendChild(tr);
   }
+}
+
+function banButton(s: RosterStudent): HTMLButtonElement {
+  const b = actionButton("ban", () => banStudent(s.student_id),
+    `could not ban ${s.name}`, () => void poll(), "really ban?");
+  b.title = "kick, and keep this name and the address it joined from out until " +
+    "restart or unlock — on a shared wifi that address is everyone behind it";
+  b.classList.add("danger");
+  return b;
 }
 
 // -------------------------------------------------------------------- controls
