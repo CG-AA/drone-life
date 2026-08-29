@@ -135,3 +135,19 @@
 @media (pointer: coarse) {
   button { min-height: 44px; }
 }
+
+/* the room list on the join overlay: one row per small room (docs/ROOMS.md) */
+#room-here { font-size: 0.8125rem; color: var(--text-muted); }
+#room-here a { color: var(--accent); }
+#room-list { display: grid; gap: 6px; margin: 2px 0 8px; }
+#room-list .room {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); text-decoration: none; font-size: 0.9375rem;
+}
+#room-list a.room:hover, #room-list a.room:focus-visible {
+  border-color: var(--accent); background: var(--bg-raised);
+}
+#room-list .room.full, #room-list .room.closed { color: var(--text-faint); }
+#room-list .room-seats { font-size: 0.8125rem; color: var(--text-muted); white-space: nowrap; }
+#room-list .room.full .room-seats { color: var(--warn); }

@@ -1,11 +1,16 @@
 """Runtime configuration. Every knob is an env var; see docs/DEPLOY.md."""
 
+import re
 from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
+
+# a room id is a systemd instance name, a podman label value and a state-dir
+# segment at once — keep it to what all three accept without quoting
+ROOM_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # placeholders the startup guard refuses to run on — see check_secrets()
 DEFAULT_ROOM_CODE = "classroom"
@@ -28,6 +33,13 @@ class Settings(BaseSettings):
 
     max_students: int = 20
     mission: str = "delivery"
+    # rooms (docs/ROOMS.md): the small missions run as several processes behind
+    # the proxy on /r1, /r2, …; the big room stays at /. ROOM_ID names this
+    # process (the systemd instance), ROOMS lists the small rooms the student
+    # page offers, ROOM_LABEL is what that list calls this room.
+    room_id: str = "main"
+    room_label: str = ""
+    rooms: str = ""  # ROOMS=r1,r2,r3 — ids; each is served at /<id>/
     # what the projector's "join the sky at" card shows: the address students
     # can actually reach (the public gateway), which is rarely the address the
     # projector page itself was opened on. Empty = the page's own origin.
@@ -55,6 +67,20 @@ class Settings(BaseSettings):
         strips what the browser sent — so `ROOM_CODE=abc ` would 403 the whole
         class while the startup guard and preflight both saw a real value."""
         return v.strip()
+
+    @field_validator("room_id")
+    @classmethod
+    def _room_id_is_a_name(cls, v: str) -> str:
+        v = v.strip()
+        if not ROOM_ID_RE.match(v):
+            raise ValueError(f"ROOM_ID={v!r} — use lowercase letters, digits, '-' or '_' "
+                             "(it names a systemd instance, a podman label and a state dir)")
+        return v
+
+    @property
+    def room_list(self) -> list[str]:
+        """ROOMS as ids, in the order the student page lists them."""
+        return [r for r in (x.strip() for x in self.rooms.split(",")) if r]
 
     @property
     def abs_state_dir(self) -> Path:

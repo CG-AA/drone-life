@@ -15,7 +15,7 @@
         <div class="title">drone life — <span id="pilot-name">…</span></div>
         <span class="tb-pill" id="mission-pill" title="the game running right now">mission: …</span>
         <span class="tb-pill" id="score-pill" title="the whole room's score">team 0</span>
-        <a class="tb-link" id="sky-link" href="/" target="_blank" rel="noopener"
+        <a class="tb-link" id="sky-link" href="./" target="_blank" rel="noopener"
            title="the projector view, in a new tab">sky view ↗</a>
         <label class="visually-hidden" for="template-select">load a starter template</label>
         <select id="template-select">
@@ -64,6 +64,9 @@
     <form id="join-form">
       <h1>drone life</h1>
       <p>Join the sky: pick a name, enter the room code from your instructor.</p>
+      <!-- the small rooms behind the proxy, when the server lists any (docs/ROOMS.md) -->
+      <p id="room-here" class="hidden"></p>
+      <div id="room-list" class="hidden" role="list" aria-label="pick a room"></div>
       <label class="visually-hidden" for="join-name">your name</label>
       <input id="join-name" placeholder="your name" maxlength="24" autocomplete="off" />
       <label class="visually-hidden" for="join-code">room code</label>

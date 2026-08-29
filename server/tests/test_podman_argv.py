@@ -25,7 +25,10 @@ def test_runs_a_disposable_named_container(tmp_path):
     _, _, argv = build(tmp_path)
     assert argv[:4] == ["podman", "run", "--rm", "-i"]
     assert value_of(argv, "--name") == "dl-s0-abc"
-    assert value_of(argv, "--label") == "drone-life=1"  # make kill-prod sweeps on this
+    labels = [argv[i + 1] for i, a in enumerate(argv) if a == "--label"]
+    # make kill-prod sweeps on the first; a room's own sweep() on the second, so
+    # restarting room 2 leaves room 1's running scripts alone (docs/ROOMS.md)
+    assert labels == ["drone-life=1", "drone-life-room=main"]
 
 
 def test_drops_every_capability(tmp_path):
@@ -81,3 +84,11 @@ def test_network_and_entrypoint(tmp_path):
     assert f"DRONE_URL=tcp:{settings.drone_host}:{student.port}" in envs
     assert f"STUDENT_NAME={student.name}" in envs
     assert argv[-3:] == [settings.runner_image, "python", "/work/current.py"]
+
+
+def test_the_room_label_follows_room_id(tmp_path):
+    settings = make_settings(tmp_path, room_id="r2")
+    student = Student(id="s0", name="Zoe", token="tok", slot=0, sysid=1, port=5760)
+    argv = container_argv(settings, student, "dl-r2-s0-abc", tmp_path / "s0")
+    labels = [argv[i + 1] for i, a in enumerate(argv) if a == "--label"]
+    assert "drone-life-room=r2" in labels

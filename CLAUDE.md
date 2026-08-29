@@ -35,6 +35,10 @@ Setup from a fresh box, deploys, and the workshop-day flow: `README.md`.
   HUD table is test-pinned to that file (marker block — keep its format).
 - **Wire shapes**: `server/app/api/messages.py` ↔ `web/src/shared/protocol.ts`
   mirror each other; update both sides together.
+- **The page may live under a prefix** (`/rN/` rooms, `docs/ROOMS.md`):
+  frontend REST/WS go through `web/src/shared/http.ts` / `ws.ts`, which add
+  `shared/prefix.ts`; never `fetch("/api/…")` or root-absolute hrefs/assets
+  directly (Vite `base: "./"`). The server stays prefix-unaware.
 - Architecture seams and bring-up order: see `CONTRIBUTING.md`.
 
 ## Gotchas

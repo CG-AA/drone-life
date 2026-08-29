@@ -6,7 +6,11 @@
 ROOM_CODE ?= classroom
 ADMIN_TOKEN ?= change-me
 MISSION ?= delivery
-HOST ?= 127.0.0.1:8000
+# PORT follows a sourced room env file (docs/ROOMS.md): `. /etc/drone-life.d/r2.env`
+# then `make reset` talks to room 2. ROOM= scopes preflight and kill-prod the same way.
+PORT ?= 8000
+HOST ?= 127.0.0.1:$(PORT)
+ROOM ?=
 N ?= 5
 MODE ?= local
 SCRIPT ?= bot_patrol
@@ -38,10 +42,15 @@ kill-dev:
 	-pkill -f 'uvicorn app.main:app --reload' || true
 	-pkill -f 'vite' || true
 
-# kill every prod instance: uvicorn servers (non-reload) plus any bot containers
+# kill every prod instance: uvicorn servers (non-reload) plus any bot containers.
+# make kill-prod ROOM=r2 takes only room 2's containers (its server is systemd's to stop).
 kill-prod:
+ifeq ($(ROOM),)
 	-pkill -f 'uvicorn app.main:app --host'
 	-podman ps -aq --filter label=drone-life=1 | xargs -r podman rm -f -t 0
+else
+	-podman ps -aq --filter label=drone-life-room=$(ROOM) | xargs -r podman rm -f -t 0
+endif
 
 test: test-server test-web
 
@@ -70,8 +79,9 @@ lint-fix:
 	cd server && uv run ruff check --fix app tests
 
 # workshop morning: can this box actually run a class? (--no-smoke skips the test container)
+# make preflight ROOM=r2 checks room 2 as its unit sees it (docs/ROOMS.md)
 preflight:
-	cd server && uv run python -m app.preflight $(PREFLIGHT_ARGS)
+	cd server && uv run python -m app.preflight $(if $(ROOM),--room $(ROOM)) $(PREFLIGHT_ARGS)
 
 # spawn demo bots: make bots N=10 MODE=container SCRIPT=bot_courier
 bots:

@@ -372,6 +372,9 @@ class DroneLifeService:
                 "drones": len(self.world.drones), "ticks": self.ticks,
                 "overruns": self.overruns, "score": self.engine.score,
                 "mission": self.engine.mission.name, "students": len(self.registry.students),
+                # the room list on the student page reads these three (docs/ROOMS.md)
+                "room": self.settings.room_id, "label": self.settings.room_label,
+                "max_students": self.settings.max_students,
                 "uptime_s": round(time.monotonic() - self._started_at, 1),
                 "driver_alive": alive, "last_tick_age_s": round(age, 2),
                 "driver_errors": self.driver_errors}

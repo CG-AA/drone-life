@@ -1,13 +1,13 @@
 [Unit]
-Description=drone-life workshop game server
+Description=drone-life workshop game server — room %i
 After=network-online.target
 Wants=network-online.target
-# A bad /etc/drone-life.env (placeholder secrets, unknown MISSION) makes the
+# A bad env file (placeholder secrets, unknown MISSION, no PORT) makes the
 # server exit non-zero on purpose. Without a start limit systemd would restart
 # it every 3 s forever and `systemctl status` would flicker green; with one it
 # gives up after 5 tries in 60 s and stays visibly failed — check
-# `journalctl -u drone-life -n 50`, fix the env file, `systemctl reset-failed
-# drone-life`, start again.
+# `journalctl -u drone-life@%i -n 50`, fix the file, `systemctl reset-failed
+# drone-life@%i`, start again.
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -15,12 +15,22 @@ StartLimitBurst=5
 Type=simple
 User=dronelife
 WorkingDirectory=/opt/drone-life/server
+# One template, N rooms (docs/ROOMS.md): `drone-life@main` is the big room on
+# :8000, `drone-life@r1` … the small ones behind the proxy on /r1/ …. The
+# instance name is the room id; its state dir follows it unless the room file
+# says otherwise.
+Environment=ROOM_ID=%i STATE_DIR=state/%i
+# shared: ROOM_CODE, ADMIN_TOKEN, MISSION, PUBLIC_URL, ROOMS, FORWARDED_ALLOW_IPS
 EnvironmentFile=/etc/drone-life.env
+# this room: PORT, MAVLINK_BASE_PORT, MAX_STUDENTS (+ overrides). Required on
+# purpose — and there is no PORT default here — so a room that is not written
+# down fails at start instead of silently sharing :8000 with its neighbour.
+EnvironmentFile=/etc/drone-life.d/%i.env
 # uv installed in the service user's home.
 # --proxy-headers only believes X-Forwarded-For from peers listed in
-# FORWARDED_ALLOW_IPS (set it in the EnvironmentFile above) — without that the
+# FORWARDED_ALLOW_IPS (set it in the shared EnvironmentFile) — without that the
 # per-IP join limit collapses into one bucket for the whole class.
-ExecStart=/home/dronelife/.local/bin/uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+ExecStart=/home/dronelife/.local/bin/uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers
 Restart=on-failure
 RestartSec=3
 # Rootless podman needs XDG_RUNTIME_DIR pointing at the service user's own

@@ -235,3 +235,125 @@ def test_run_exit_code_and_one_line_per_check(settings, monkeypatch, capsys):
     monkeypatch.setattr(preflight, "collect", lambda *a, **k: [Check("a", FAIL, "broken")])
     assert preflight.run(settings) == 1
     assert "0 passed, 0 warned, 1 FAILED" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ rooms
+
+def write_rooms(tmp_path, **rooms):
+    d = tmp_path / "drone-life.d"
+    d.mkdir(exist_ok=True)
+    for name, body in rooms.items():
+        (d / f"{name}.env").write_text(body)
+    return d
+
+
+def test_env_file_reads_like_systemd(tmp_path):
+    f = tmp_path / "r1.env"
+    f.write_text("# room 1\nPORT=8001\nROOM_LABEL=\"Room 1 — north\"\nMAX_STUDENTS=20 \n\nnoise\n")
+    assert preflight.read_env_file(f) == {"PORT": "8001", "ROOM_LABEL": "Room 1 — north",
+                                          "MAX_STUDENTS": "20"}
+
+
+def test_room_env_overrides_the_shared_file(tmp_path):
+    shared = tmp_path / "drone-life.env"
+    shared.write_text("ROOM_CODE=abc\nMISSION=freefly\nPUBLIC_URL=https://h\n")
+    room = tmp_path / "r2.env"
+    room.write_text("PORT=8002\nPUBLIC_URL=https://h/r2\n")
+    assert preflight.load_room_env(shared, room) == {
+        "ROOM_CODE": "abc", "MISSION": "freefly", "PUBLIC_URL": "https://h/r2", "PORT": "8002"}
+    assert preflight.load_room_env(tmp_path / "missing", room) == {"PORT": "8002", "PUBLIC_URL": "https://h/r2"}
+
+
+def test_health_url_follows_the_room_port(monkeypatch):
+    monkeypatch.delenv("PORT", raising=False)
+    assert preflight.health_url() == "http://127.0.0.1:8000/healthz"
+    monkeypatch.setenv("PORT", "8003")
+    assert preflight.health_url() == "http://127.0.0.1:8003/healthz"
+    assert preflight.health_url(8001) == "http://127.0.0.1:8001/healthz"
+
+
+GOOD_ROOMS = {
+    "main": "PORT=8000\nMAVLINK_BASE_PORT=5760\nMAX_STUDENTS=64\nSTATE_DIR=state/main\n",
+    "r1": "PORT=8001\nMAVLINK_BASE_PORT=5860\nMAX_STUDENTS=20\nSTATE_DIR=state/r1\n",
+    "r2": "PORT=8002\nMAVLINK_BASE_PORT=5960\nMAX_STUDENTS=20\nSTATE_DIR=state/r2\n",
+}
+
+
+def parse(body):
+    return dict(line.split("=", 1) for line in body.splitlines())
+
+
+def test_room_plan_accepts_the_documented_layout():
+    rooms = {k: parse(v) for k, v in GOOD_ROOMS.items()}
+    assert preflight.room_plan(rooms, {"ROOM_CODE": "abc"}) == []
+
+
+@pytest.mark.parametrize(("body", "needle"), [
+    ("PORT=8003\nMAVLINK_BASE_PORT=5870\nMAX_STUDENTS=20\n",
+     "overlap: r1 5860-5879 and r3 5870-5889"),
+    ("PORT=8003\nMAVLINK_BASE_PORT=5800\nMAX_STUDENTS=20\n",
+     "overlap: main 5760-5823 and r3 5800-5819"),
+    ("PORT=8001\nMAVLINK_BASE_PORT=6060\n", "PORT 8001 is used by r1, r3"),
+    ("MAVLINK_BASE_PORT=6060\n", "r3: no PORT"),
+    ("PORT=8003\nMAVLINK_BASE_PORT=6060\nSTATE_DIR=state/r1\n",
+     "STATE_DIR state/r1 is shared by r1, r3"),
+    ("PORT=8003\nMAVLINK_BASE_PORT=6060\nROOM_CODE=other\n", "r3: its own ROOM_CODE differs"),
+])
+def test_room_plan_names_the_rooms_that_collide(body, needle):
+    rooms = {k: parse(v) for k, v in GOOD_ROOMS.items()}
+    rooms["r3"] = parse(body)
+    problems = preflight.room_plan(rooms, {"ROOM_CODE": "abc"})
+    assert any(needle in p for p in problems), problems
+
+
+def test_check_room_plan_reads_the_files_and_names_each_room(settings, tmp_path):
+    shared = tmp_path / "drone-life.env"
+    shared.write_text("ROOM_CODE=abc\n")
+    d = write_rooms(tmp_path, **GOOD_ROOMS)
+    check = preflight.check_room_plan(settings, rooms_dir=d, shared=shared)
+    assert check.status == PASS
+    assert check.detail == "main:8000:5760-5823, r1:8001:5860-5879, r2:8002:5960-5979"
+
+    (d / "r2.env").write_text("PORT=8001\nMAVLINK_BASE_PORT=5860\n")
+    check = preflight.check_room_plan(settings, rooms_dir=d, shared=shared)
+    assert check.status == FAIL
+    assert "PORT 8001" in check.detail and "overlap" in check.detail
+
+
+def test_check_room_plan_without_rooms_is_a_single_room(settings, tmp_path):
+    assert preflight.check_room_plan(settings, rooms_dir=tmp_path / "nope").status == PASS
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert preflight.check_room_plan(settings, rooms_dir=empty).status == WARN
+
+
+def test_room_ports_probe_each_room_on_its_own_port(settings, tmp_path, monkeypatch):
+    base = settings.mavlink_base_port
+    d = write_rooms(tmp_path, r1=f"PORT=8001\nMAVLINK_BASE_PORT={base}\nMAX_STUDENTS=2\n",
+                    r2=f"PORT=8002\nMAVLINK_BASE_PORT={base + 2}\nMAX_STUDENTS=2\n")
+    asked = []
+    monkeypatch.setattr(preflight, "server_running", lambda url: asked.append(url) or False)
+    checks = preflight.check_room_ports(settings, rooms_dir=d)
+    assert [c.name for c in checks] == ["ports r1", "ports r2"]
+    assert all(c.status == PASS for c in checks)
+    assert asked == ["http://127.0.0.1:8001/healthz", "http://127.0.0.1:8002/healthz"]
+
+    squatter = socket.socket()
+    squatter.bind(("127.0.0.1", base + 2))
+    try:
+        checks = preflight.check_room_ports(settings, rooms_dir=d)
+        assert checks[1].status == FAIL and str(base + 2) in checks[1].detail
+    finally:
+        squatter.close()
+
+
+def test_runtime_dir_prefers_the_template_unit(tmp_path, settings, monkeypatch):
+    monkeypatch.setattr(preflight.pwd, "getpwnam", lambda name: type("pw", (), {"pw_uid": 1234})())
+    template = tmp_path / "drone-life@.service"
+    template.write_text("[Service]\nUser=dronelife\nEnvironment=XDG_RUNTIME_DIR=/run/user/9\n")
+    old = tmp_path / "drone-life.service"
+    old.write_text("[Service]\nUser=dronelife\nEnvironment=XDG_RUNTIME_DIR=/run/user/1234\n")
+    check = preflight.check_runtime_dir(settings, units=(template, old))
+    assert check.status == FAIL and "drone-life@.service" in check.detail
+    check = preflight.check_runtime_dir(settings, units=(tmp_path / "none", tmp_path / "none2"))
+    assert check.status == PASS and "no none or none2" in check.detail

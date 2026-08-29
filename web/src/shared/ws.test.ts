@@ -62,6 +62,12 @@ it("connects to the url it was given", () => {
   expect(latest().url).toBe("ws://lab:8000/ws/viewer?code=abc");
 });
 
+it("keeps the page's room prefix in front of the socket path", () => {
+  vi.stubGlobal("location", { protocol: "https:", host: "drones.example.org", pathname: "/r3/submit" });
+  new GameSocket("/ws/student?token=t").connect();
+  expect(latest().url).toBe("wss://drones.example.org/r3/ws/student?token=t");
+});
+
 it("reconnects after a connection it did not close, with a growing backoff", () => {
   const ws = new GameSocket("/ws/viewer");
   ws.connect();

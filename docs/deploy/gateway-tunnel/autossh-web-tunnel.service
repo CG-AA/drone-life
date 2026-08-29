@@ -9,6 +9,8 @@ User=lamb
 # NOT in the repo. This unit shares /etc/default/autossh-reverse-tunnel with
 # autossh-reverse-tunnel.service; append the TUNNEL_*_HTTP / TUNNEL_*_APP variables
 # from autossh-web-tunnel.env to that file before enabling this unit.
+# $TUNNEL_ROOM_FORWARDS is deliberately unbraced: systemd word-splits it into
+# one -R per room (docs/ROOMS.md); empty means no extra forwards.
 EnvironmentFile=/etc/default/autossh-reverse-tunnel
 Environment="AUTOSSH_GATETIME=0"
 ExecStart=/usr/bin/autossh -M 0 -N -q \
@@ -17,6 +19,7 @@ ExecStart=/usr/bin/autossh -M 0 -N -q \
     -o BatchMode=yes -o StrictHostKeyChecking=yes \
     -R ${TUNNEL_BIND_HTTP}:${TUNNEL_FORWARD_HTTP} \
     -R ${TUNNEL_BIND_APP}:${TUNNEL_FORWARD_APP} \
+    $TUNNEL_ROOM_FORWARDS \
     -i ${TUNNEL_KEY} ${TUNNEL_REMOTE}
 Restart=always
 RestartSec=10

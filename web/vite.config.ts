@@ -7,6 +7,10 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 const target = process.env.DL_SERVER ?? "http://127.0.0.1:8000";
 
 export default defineConfig({
+  // relative asset URLs: one build serves `/` and every `/rN/` room behind the
+  // proxy (docs/ROOMS.md); all three pages sit at dist root, so `./assets/…`
+  // resolves the same from `/rN/submit` and `/rN/`
+  base: "./",
   build: {
     // a classroom failure gets debugged from a projector console: readable traces
     sourcemap: true,

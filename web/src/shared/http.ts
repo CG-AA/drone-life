@@ -1,4 +1,7 @@
-/** Shared REST plumbing: the server's {"error": {...}} envelope as a typed throw. */
+/** Shared REST plumbing: the server's {"error": {...}} envelope as a typed throw.
+ * Paths are root-absolute server routes; the room prefix is added here. */
+
+import { withPrefix } from "./prefix";
 
 export interface ApiError {
   code: string;
@@ -16,7 +19,7 @@ export class ApiFailure extends Error {
 export async function request<T>(method: string, path: string,
                                  headers: Record<string, string>,
                                  body?: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(withPrefix(path), {
     method,
     headers: { "Content-Type": "application/json", ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),

@@ -49,3 +49,8 @@ it("falls back to its own origin while PUBLIC_URL is unset or blank", () => {
   expect(attractView(true, 0, "x", HOST, "").joinUrl).toBe("https://drones.example.org/submit");
   expect(attractView(true, 0, "x", HOST, "  ").joinUrl).toBe("https://drones.example.org/submit");
 });
+
+it("keeps the room prefix the projector was opened under (main.ts passes origin + prefix)", () => {
+  expect(attractView(true, 0, "x", "https://drones.example.org/r2").joinUrl)
+    .toBe("https://drones.example.org/r2/submit");
+});
