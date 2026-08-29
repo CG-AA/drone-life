@@ -11,6 +11,9 @@ from dataclasses import asdict, dataclass
 log = logging.getLogger(__name__)
 
 
+NAME_MAX = 24  # what a name is cut to on join; the roster merge keeps to it too
+
+
 @dataclass
 class Student:
     id: str  # "s<slot>"
@@ -71,7 +74,7 @@ class Registry:
         if slot is None:
             raise RoomFullError(f"room is full ({self.max_students} drones)")
         student = Student(
-            id=f"s{slot}", name=name.strip()[:24], token=secrets.token_urlsafe(16),
+            id=f"s{slot}", name=name.strip()[:NAME_MAX], token=secrets.token_urlsafe(16),
             slot=slot, sysid=slot + 1, port=self.base_port + slot, ip=ip,
         )
         self.students[student.id] = student

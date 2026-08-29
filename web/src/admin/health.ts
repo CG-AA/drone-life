@@ -31,7 +31,7 @@ export function formatHealth(h: Health, prev: HealthSample | null, now: number):
   }
   parts.push(`overruns ${((h.overruns / Math.max(h.ticks, 1)) * 100).toFixed(2)}%`);
   if (h.driver_errors > 0) parts.push(`${h.driver_errors} sim errors`);
-  parts.push(`${h.students} students`);
+  parts.push(`${h.students}/${h.max_students} students`);  // seats, not just heads: rooms differ
   parts.push(`up ${uptime(h.uptime_s)}`);
   return parts.join(" — ");
 }

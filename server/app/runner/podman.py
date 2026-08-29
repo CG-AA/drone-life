@@ -25,7 +25,10 @@ def container_argv(s: Settings, student: Student, name: str, script_dir: Path) -
     return [
         "podman", "run", "--rm", "-i",
         "--name", name,
+        # every room's container carries the first (`make kill-prod` sweeps on it);
+        # a room's own sweep() keys on the second, so it never kills a neighbour's
         "--label", "drone-life=1",
+        "--label", f"drone-life-room={s.room_id}",
         "--network", s.runner_network,
         "--memory", "256m", "--cpus", "0.5", "--pids-limit", "64",
         "--read-only", "--tmpfs", "/tmp:rw,size=16m,mode=1777",

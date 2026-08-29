@@ -1,7 +1,8 @@
 /** REST helpers for the submit page. Token lives in localStorage. */
 
 import { ApiFailure, request } from "../shared/http";
-import type { JoinInfo, StatusInfo } from "../shared/protocol";
+import { withPrefix } from "../shared/prefix";
+import type { Health, JoinInfo, RoomsInfo, StatusInfo } from "../shared/protocol";
 
 export { ApiFailure } from "../shared/http";
 
@@ -40,8 +41,24 @@ export const resetMine = () => authed<{ ok: boolean }>("POST", "/api/v1/reset-mi
 /** No variant: the server picks the starter for the mission that is live. */
 export const fetchTemplate = async (variant = ""): Promise<string> => {
   const q = variant ? `?variant=${encodeURIComponent(variant)}` : "";
-  const res = await fetch(`/api/v1/template${q}`);
+  const res = await fetch(withPrefix(`/api/v1/template${q}`));
   if (!res.ok) throw new ApiFailure(
     { code: "template", msg: `no ${variant} template (${res.status})` }, res.status);
   return res.text();
 };
+
+/** The rooms this page can offer (empty unless the server sets ROOMS). */
+export const fetchRooms = () => request<RoomsInfo>("GET", "/api/v1/rooms", {});
+
+/** A room's own /healthz, reached through the proxy at its prefix — so this
+ * is the one request that must NOT get this page's prefix added. Null when
+ * the room is down (stopped for the day, or not proxied): the list says "closed". */
+export async function fetchRoomHealth(path: string): Promise<Health | null> {
+  try {
+    const res = await fetch(`${path}/healthz`);
+    if (!res.ok) return null;
+    return await res.json() as Health;
+  } catch {
+    return null;
+  }
+}

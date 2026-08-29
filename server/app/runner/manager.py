@@ -164,7 +164,7 @@ class RunnerManager:
         async with self._lock(student.id):
             await self._stop_locked(student.id, reason="replaced")
             run_id = uuid.uuid4().hex[:8]
-            name = f"dl-{student.id}-{run_id}"
+            name = f"dl-{self.s.room_id}-{student.id}-{run_id}"  # s0 exists in every room
             argv = container_argv(self.s, student, name, script_dir)
             return await self._start(student, run_id, argv, mode="container", container=name)
 
@@ -305,10 +305,12 @@ class RunnerManager:
             await self.stop(student_id)
 
     async def sweep(self) -> None:
-        """Remove leftover containers from a previous server life (--rm leaks on SIGKILL)."""
+        """Remove leftover containers from a previous server life (--rm leaks on SIGKILL).
+        Only this room's: the other rooms on the box are alive and flying
+        (docs/ROOMS.md) — `make kill-prod` is the sweep that takes everything."""
         try:
             p = await asyncio.create_subprocess_exec(
-                "podman", "ps", "-aq", "--filter", "label=drone-life=1",
+                "podman", "ps", "-aq", "--filter", f"label=drone-life-room={self.s.room_id}",
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             )
             out, _ = await p.communicate()

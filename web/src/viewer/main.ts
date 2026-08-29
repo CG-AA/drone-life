@@ -3,6 +3,7 @@
 import type { EntityState, EventData, HelloData, TilesData, WorldData }
   from "../shared/protocol";
 import { ApiFailure, request } from "../shared/http";
+import { prefix } from "../shared/prefix";
 import { GameSocket } from "../shared/ws";
 import { attractView } from "./attract";
 import { CameraController } from "./controls";
@@ -93,7 +94,7 @@ async function boot(): Promise<void> {
   let droneCount = 0;
   let publicUrl = ""; // the server's PUBLIC_URL, once hello arrives
   const showAttract = (): void => {
-    const v = attractView(connected, droneCount, code, location.origin, publicUrl);
+    const v = attractView(connected, droneCount, code, location.origin + prefix(), publicUrl);
     document.getElementById("attract-url")!.textContent = v.joinUrl;
     document.getElementById("attract-code")!.textContent = v.code;
     attract.classList.toggle("hidden", v.mode === "hidden");

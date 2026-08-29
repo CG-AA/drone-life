@@ -9,14 +9,14 @@ import type { Health } from "../shared/protocol";
 function health(over: Partial<Health> = {}): Health {
   return {
     ok: true, drones: 3, ticks: 20_000, overruns: 24, score: 40, mission: "delivery",
-    students: 12, uptime_s: 8040, driver_alive: true, last_tick_age_s: 0.03,
-    driver_errors: 0, ...over,
+    students: 12, room: "main", label: "", max_students: 20, uptime_s: 8040,
+    driver_alive: true, last_tick_age_s: 0.03, driver_errors: 0, ...over,
   };
 }
 
 it("reports rate, overruns, students and uptime once it has two samples", () => {
   const line = formatHealth(health(), { ticks: 19_940, at: 1_000 }, 4_000);
-  expect(line).toBe("sim ok — 20.0 ticks/s — overruns 0.12% — 12 students — up 2h 14m");
+  expect(line).toBe("sim ok — 20.0 ticks/s — overruns 0.12% — 12/20 students — up 2h 14m");
 });
 
 it("omits the rate on the first sample rather than inventing one", () => {

@@ -1,10 +1,13 @@
 /** Submit page: join → edit → run → watch logs and your drone strip. */
 
-import type { DroneState, HelloData, LogLine, RunState, WorldData } from "../shared/protocol";
+import { prefix } from "../shared/prefix";
+import type { DroneState, HelloData, LogLine, RoomRow, RunState, WorldData }
+  from "../shared/protocol";
 import { $, armedConfirm, banner, guarded, runPill } from "../shared/ui";
 import { GameSocket } from "../shared/ws";
-import { ApiFailure, CODE_KEY, STUDENT_KEY, TOKEN_KEY, fetchStatus, fetchTemplate,
-  join, resetMine, stopRun, submitCode } from "./api";
+import { ApiFailure, CODE_KEY, STUDENT_KEY, TOKEN_KEY, fetchRoomHealth, fetchRooms,
+  fetchStatus, fetchTemplate, join, resetMine, stopRun, submitCode } from "./api";
+import { currentRoom, describeRoom, roomName, worthListing } from "./rooms";
 import { Editor } from "./editor";
 import type { ErrorView } from "./errors";
 import { codeTooBig, describeError, tooBigText } from "./errors";
@@ -36,6 +39,61 @@ function showJoin(error = ""): void {
   if (!codeEl.value) codeEl.value = localStorage.getItem(CODE_KEY) ?? "";
   const empty = [nameEl, codeEl].find((el) => !el.value);
   (empty ?? nameEl).focus();
+}
+
+// ------------------------------------------------------------------ rooms
+
+const ROOMS_POLL_MS = 3000;
+
+function renderRooms(rooms: RoomRow[], healths: Parameters<typeof describeRoom>[1][]): void {
+  const list = $("room-list");
+  const views = rooms.map((r, i) => describeRoom(r, healths[i]));
+  list.classList.toggle("hidden", !worthListing(views));
+  list.replaceChildren(...views.map((v) => {
+    const row = document.createElement(v.status === "open" ? "a" : "span");
+    row.className = `room ${v.status}`;
+    row.setAttribute("role", "listitem");
+    if (row instanceof HTMLAnchorElement) row.href = v.href;
+    const name = document.createElement("span");
+    name.className = "room-name";
+    name.textContent = v.label;
+    const seats = document.createElement("span");
+    seats.className = "room-seats";
+    seats.textContent = v.status === "open" && v.mission ? `${v.seats} · ${v.mission}` : v.seats;
+    row.append(name, seats);
+    return row;
+  }));
+}
+
+/** The small rooms behind the proxy (docs/ROOMS.md): if this server lists
+ * any, the join overlay offers them with live counts — unless this page is
+ * already one of them, which gets a one-line "switch room" instead. Polled
+ * only while the overlay is up; a server with no ROOMS shows nothing. */
+async function offerRooms(): Promise<void> {
+  let rooms: RoomRow[];
+  try {
+    rooms = (await fetchRooms()).rooms;
+  } catch {
+    return; // an older server, or unreachable: the join form alone is fine
+  }
+  if (rooms.length === 0) return;
+  const here = currentRoom(rooms, prefix());
+  if (here) {
+    const el = $("room-here");
+    el.replaceChildren(`you are in ${roomName(here.id)} · `);
+    const link = document.createElement("a");
+    link.href = "../submit";
+    link.textContent = "switch room";
+    el.append(link);
+    el.classList.remove("hidden");
+    return;
+  }
+  const tick = async (): Promise<void> => {
+    if ($("join-overlay").classList.contains("hidden")) return; // joined: nothing to pick
+    renderRooms(rooms, await Promise.all(rooms.map((r) => fetchRoomHealth(r.path))));
+  };
+  await tick();
+  window.setInterval(() => void tick(), ROOMS_POLL_MS);
 }
 
 /** Render a mapped failure into the banner, wiring up whatever it offers. */
@@ -104,6 +162,13 @@ async function enter(id: string, name: string): Promise<void> {
 async function restore(): Promise<boolean> {
   try {
     const st = await fetchStatus();
+    // the roster can be re-seated under a stored token (rooms merged into the
+    // big one, docs/ROOMS.md): the server's id and name win over the cached ones
+    const name = st.name ?? saved?.name ?? ""; // ?? : a server from before /status carried it
+    if (saved && (st.student_id !== saved.student_id || name !== saved.name)) {
+      saved = { student_id: st.student_id, name };
+      localStorage.setItem(STUDENT_KEY, JSON.stringify(saved));
+    }
     if (st.run) setRunState(st.run);
     else runPill($("run-pill"), null);
     appendLogs(st.log_tail);
@@ -309,12 +374,13 @@ stopBtn.addEventListener("click", () => void stop());
 templateSel.addEventListener("change", onTemplatePick);
 
 if (localStorage.getItem(TOKEN_KEY) && saved?.student_id) {
-  const student = saved;
   void (async () => {
     // status first: it decides whether the stored token is still worth using,
-    // and seeds the log cursor so the socket's replay doesn't double-print
-    if (await restore()) await enter(student.student_id, student.name);
+    // refreshes who we are, and seeds the log cursor so the socket's replay
+    // doesn't double-print
+    if (await restore() && saved) await enter(saved.student_id, saved.name);
   })().catch(() => showJoin("could not restore your session — join again"));
 } else {
   showJoin();
 }
+void offerRooms();

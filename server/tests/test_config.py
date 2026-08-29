@@ -63,3 +63,16 @@ async def test_lifespan_starts_with_real_secrets(tmp_path):
     app = create_app(make_settings(tmp_path))
     async with app.router.lifespan_context(app):
         assert app.state.service.world is not None
+
+
+@pytest.mark.parametrize("bad", ["", "Room 1", "r1/", "../main", "R1"])
+def test_room_id_must_be_a_plain_name(tmp_path, bad):
+    """ROOM_ID becomes a state path segment, a podman label and a systemd
+    instance name — anything that needs quoting in one of them is refused."""
+    with pytest.raises(ValueError, match="ROOM_ID"):
+        make_settings(tmp_path, room_id=bad)
+
+
+def test_rooms_parses_a_comma_list(tmp_path):
+    assert make_settings(tmp_path, rooms=" r1, r2,,r3 ").room_list == ["r1", "r2", "r3"]
+    assert make_settings(tmp_path).room_list == []

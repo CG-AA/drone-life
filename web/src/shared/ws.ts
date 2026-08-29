@@ -5,6 +5,7 @@
  * watchdog closes the socket, which routes staleness through the same
  * onclose → onStatus(false) → backoff path a clean disconnect takes. */
 
+import { prefix } from "./prefix";
 import { parseEnvelope } from "./protocol";
 
 type Handler = (data: never, t: number) => void;
@@ -49,7 +50,7 @@ export class GameSocket {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     // every callback binds this local socket: a stale socket firing late must
     // never act on (or close) the replacement that this.ws points to by then
-    const sock = new WebSocket(`${proto}//${location.host}${this.url}`);
+    const sock = new WebSocket(`${proto}//${location.host}${prefix()}${this.url}`);
     this.ws = sock;
     let opened = false;
     sock.onopen = () => {

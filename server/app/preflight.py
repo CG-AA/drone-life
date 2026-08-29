@@ -26,10 +26,25 @@ PASS = "PASS"
 FAIL = "FAIL"
 WARN = "WARN"
 
-HEALTH_URL = "http://127.0.0.1:8000/healthz"  # the port the Makefile and unit both use
+HEALTH_URL = "http://127.0.0.1:8000/healthz"  # the port the Makefile and `main` room use
 SMOKE_TIMEOUT = 30
 MIN_FREE_BYTES = 1 << 30  # containers + logs + snapshot: a gig is plenty, less is a smell
-UNIT_PATH = Path("/etc/systemd/system/drone-life.service")
+# the template unit (rooms, docs/ROOMS.md) or the older single unit — whichever is installed
+UNIT_PATHS = (Path("/etc/systemd/system/drone-life@.service"),
+              Path("/etc/systemd/system/drone-life.service"))
+UNIT_PATH = UNIT_PATHS[1]
+# the shared env file and the per-room ones the template unit reads (docs/ROOMS.md)
+ENV_FILE = Path("/etc/drone-life.env")
+ROOMS_DIR = Path("/etc/drone-life.d")
+# what a room file leaves unsaid: the Settings defaults, and the unit's STATE_DIR=state/%i
+ROOM_DEFAULTS = {"MAVLINK_BASE_PORT": "5760", "MAX_STUDENTS": "20"}
+
+
+def health_url(port: int | None = None) -> str:
+    """This room's health endpoint. PORT is the unit's (and the runbook's) env
+    var for the HTTP port, not a Settings field — uvicorn gets it on the CLI."""
+    port = port or int(os.environ.get("PORT", "8000"))
+    return f"http://127.0.0.1:{port}/healthz"
 
 
 @dataclass
@@ -101,10 +116,11 @@ def server_running(url: str = HEALTH_URL) -> bool:
         return False
 
 
-def check_ports(s: Settings) -> Check:
+def check_ports(s: Settings, health: str | None = None, name: str = "mavlink ports") -> Check:
     """One MAVLink listener per student slot. A squatter here = joins 500."""
-    if server_running():
-        return Check("mavlink ports", WARN, "server already up — it owns these ports, skipped")
+    health = health or health_url()
+    if server_running(health):
+        return Check(name, WARN, f"server already up on {health} — it owns these ports, skipped")
     busy = []
     for i in range(s.max_students):
         port = s.mavlink_base_port + i
@@ -116,10 +132,121 @@ def check_ports(s: Settings) -> Check:
         finally:
             sock.close()
     if busy:
-        return Check("mavlink ports", FAIL,
+        return Check(name, FAIL,
                      f"in use: {', '.join(busy)} — `make kill-prod`, or `ss -ltnp` to find them")
     last = s.mavlink_base_port + s.max_students - 1
-    return Check("mavlink ports", PASS, f"{s.mavlink_base_port}-{last} free")
+    return Check(name, PASS, f"{s.mavlink_base_port}-{last} free")
+
+
+# ------------------------------------------------------------------ rooms
+
+def read_env_file(path: Path) -> dict[str, str]:
+    """KEY=VALUE lines the way systemd's EnvironmentFile reads them: blank lines
+    and #-comments skipped, whitespace around the line ignored, one pair of
+    surrounding quotes removed. Values are otherwise verbatim."""
+    env: dict[str, str] = {}
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        env[key.strip()] = value
+    return env
+
+
+def load_room_env(shared: Path, room: Path) -> dict[str, str]:
+    """What the template unit gives instance `room`: the shared file, then the
+    room's own on top — the same precedence as its two EnvironmentFile= lines."""
+    env = read_env_file(shared) if shared.is_file() else {}
+    env.update(read_env_file(room))
+    return env
+
+
+def room_files(rooms_dir: Path) -> dict[str, dict[str, str]]:
+    return {p.stem: read_env_file(p) for p in sorted(rooms_dir.glob("*.env"))}
+
+
+def room_plan(rooms: dict[str, dict[str, str]], shared: dict[str, str]) -> list[str]:
+    """Why these room files cannot run side by side, or [] if they can. Pure,
+    so the whole plan is a unit test: HTTP ports and state dirs must differ,
+    MAVLink ranges must not overlap, and every room must share the classroom
+    code (one code on every projector is the promise docs/ROOMS.md makes)."""
+    problems: list[str] = []
+    by_port: dict[str, list[str]] = {}
+    by_state: dict[str, list[str]] = {}
+    ranges: list[tuple[str, int, int]] = []
+    for room, env in rooms.items():
+        port = env.get("PORT")
+        if not port:
+            problems.append(f"{room}: no PORT — the unit passes it to uvicorn, so the room "
+                            "would not start")
+        else:
+            by_port.setdefault(port, []).append(room)
+        by_state.setdefault(env.get("STATE_DIR", f"state/{room}"), []).append(room)
+        try:
+            base = int(env.get("MAVLINK_BASE_PORT", ROOM_DEFAULTS["MAVLINK_BASE_PORT"]))
+            seats = int(env.get("MAX_STUDENTS", ROOM_DEFAULTS["MAX_STUDENTS"]))
+        except ValueError:
+            problems.append(f"{room}: MAVLINK_BASE_PORT / MAX_STUDENTS are not numbers")
+            continue
+        ranges.append((room, base, base + seats - 1))
+        code = env.get("ROOM_CODE")
+        if code is not None and shared.get("ROOM_CODE") is not None \
+                and code.strip() != shared["ROOM_CODE"].strip():
+            problems.append(f"{room}: its own ROOM_CODE differs from the shared one — students "
+                            "are told one code for every room")
+    for port, names in by_port.items():
+        if len(names) > 1:
+            problems.append(f"PORT {port} is used by {', '.join(names)}")
+    for state, names in by_state.items():
+        if len(names) > 1:
+            problems.append(f"STATE_DIR {state} is shared by {', '.join(names)} — their "
+                            "rosters would overwrite each other")
+    for i, (a, a0, a1) in enumerate(ranges):
+        for b, b0, b1 in ranges[i + 1:]:
+            if a0 <= b1 and b0 <= a1:
+                problems.append(f"MAVLink ranges overlap: {a} {a0}-{a1} and {b} {b0}-{b1} — "
+                                "room N is 5760+100N by convention")
+    return problems
+
+
+def check_room_plan(s: Settings, rooms_dir: Path = ROOMS_DIR, shared: Path = ENV_FILE) -> Check:
+    """Every room file on the box, checked against each other — a room that
+    passes on its own can still squat a neighbour's ports."""
+    if not rooms_dir.is_dir():
+        return Check("rooms", PASS, f"no {rooms_dir} — single room")
+    rooms = room_files(rooms_dir)
+    if not rooms:
+        return Check("rooms", WARN, f"{rooms_dir} has no *.env — the template unit needs one per "
+                                    "instance (docs/ROOMS.md)")
+    problems = room_plan(rooms, read_env_file(shared) if shared.is_file() else {})
+    if problems:
+        return Check("rooms", FAIL, "; ".join(problems))
+    summary = ", ".join(
+        f"{room}:{env.get('PORT')}:{int(env.get('MAVLINK_BASE_PORT', 5760))}-"
+        f"{int(env.get('MAVLINK_BASE_PORT', 5760)) + int(env.get('MAX_STUDENTS', 20)) - 1}"
+        for room, env in rooms.items())
+    return Check("rooms", PASS, summary)
+
+
+def check_room_ports(s: Settings, rooms_dir: Path = ROOMS_DIR) -> list[Check]:
+    """`--all-rooms`: are every room's MAVLink ports free (or owned by that
+    room's running server)? One line per room."""
+    checks = []
+    for room, env in room_files(rooms_dir).items() if rooms_dir.is_dir() else []:
+        try:
+            base = env.get("MAVLINK_BASE_PORT", ROOM_DEFAULTS["MAVLINK_BASE_PORT"])
+            seats = env.get("MAX_STUDENTS", ROOM_DEFAULTS["MAX_STUDENTS"])
+            room_settings = Settings(mavlink_host=s.mavlink_host, mavlink_base_port=int(base),
+                                     max_students=int(seats), allow_default_secrets=True)
+            port = int(env.get("PORT", "0")) or None
+        except ValueError as exc:
+            checks.append(Check(f"ports {room}", FAIL, f"unreadable room file: {exc}"))
+            continue
+        checks.append(check_ports(room_settings, health_url(port), name=f"ports {room}"))
+    return checks
 
 
 def check_web_dist(s: Settings) -> Check:
@@ -188,17 +315,22 @@ def check_mission(s: Settings) -> Check:
     return Check("mission", PASS, s.mission)
 
 
-def check_runtime_dir(s: Settings, unit: Path = UNIT_PATH) -> Check:
+def check_runtime_dir(s: Settings, unit: Path | None = None,
+                      units: tuple[Path, ...] = UNIT_PATHS) -> Check:
     """Rootless podman needs XDG_RUNTIME_DIR and the unit hardcodes a uid.
     preflight runs from a login shell, where PAM sets the right one — so a green
     preflight is no proof the *service* can reach podman. Compare the unit's
-    value against the uid of the unit's own User=, not whoever ran this."""
+    value against the uid of the unit's own User=, not whoever ran this.
+    Reads the template unit if installed, else the old single one."""
+    if unit is None:
+        unit = next((u for u in units if u.is_file()), units[0])
     try:
         rows = [row.strip() for row in unit.read_text().splitlines()]
     except OSError:
         return Check("runtime dir", PASS,
-                     f"no {unit} on this box — this shell's XDG_RUNTIME_DIR is not a "
-                     "service's; re-check after installing the unit")
+                     f"no {' or '.join(u.name for u in units)} in {unit.parent} — this "
+                     "shell's XDG_RUNTIME_DIR is not a service's; re-check after installing "
+                     "the unit")
     declared = user = None
     for row in rows:
         if row.startswith("Environment=") and "XDG_RUNTIME_DIR=" in row:
@@ -259,10 +391,13 @@ def smoke_run(s: Settings) -> Check:
     return Check("smoke run", PASS, "container ran and exited 0")
 
 
-def collect(s: Settings, *, smoke: bool = True) -> list[Check]:
+def collect(s: Settings, *, smoke: bool = True, all_rooms: bool = False) -> list[Check]:
     checks = [check_podman(s), check_image(s), check_subids(s), check_slirp4netns(s),
               check_ports(s), check_web_dist(s), check_state_dir(s), check_disk(s),
-              check_defaults(s), check_mission(s), check_runtime_dir(s), check_proxy(s)]
+              check_defaults(s), check_mission(s), check_runtime_dir(s), check_proxy(s),
+              check_room_plan(s)]
+    if all_rooms:
+        checks.extend(check_room_ports(s))
     if not smoke:
         return checks
     blocked = [c for c in checks[:2] if c.status == FAIL]  # podman + image
@@ -273,8 +408,8 @@ def collect(s: Settings, *, smoke: bool = True) -> list[Check]:
     return checks
 
 
-def run(s: Settings, *, smoke: bool = True) -> int:
-    checks = collect(s, smoke=smoke)
+def run(s: Settings, *, smoke: bool = True, all_rooms: bool = False) -> int:
+    checks = collect(s, smoke=smoke, all_rooms=all_rooms)
     for check in checks:
         print(check.line())
     failed = sum(c.status == FAIL for c in checks)
@@ -288,8 +423,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="check this box can run a workshop")
     parser.add_argument("--no-smoke", action="store_true",
                         help="skip the test container run (faster, less thorough)")
+    parser.add_argument("--room", metavar="ID",
+                        help=f"check instance ID the way its unit sees it: {ENV_FILE} then "
+                             f"{ROOMS_DIR}/ID.env are loaded over this shell's environment")
+    parser.add_argument("--all-rooms", action="store_true",
+                        help=f"also probe every room in {ROOMS_DIR} for free MAVLink ports")
     args = parser.parse_args()
-    sys.exit(run(Settings(), smoke=not args.no_smoke))
+    if args.room:
+        room_file = ROOMS_DIR / f"{args.room}.env"
+        if not room_file.is_file():
+            sys.exit(f"preflight: no {room_file} — every instance needs one (docs/ROOMS.md)")
+        os.environ.update(load_room_env(ENV_FILE, room_file))
+        os.environ["ROOM_ID"] = args.room
+    sys.exit(run(Settings(), smoke=not args.no_smoke, all_rooms=args.all_rooms))
 
 
 if __name__ == "__main__":

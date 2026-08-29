@@ -83,6 +83,10 @@ PUBLIC_URL=http://203.0.113.5:8000
 # 127.0.0.1 (uvicorn's default) — see docs/deploy/gateway-tunnel/README.md.
 FORWARDED_ALLOW_IPS=10.0.0.5
 EOF
+# This file is what every room shares. The one-room deploy also needs the
+# room's own file — sh docs/deploy/rooms/mkrooms.sh 0 | sudo sh writes
+# /etc/drone-life.d/main.env (PORT, MAVLink range, seats). Several rooms of
+# ~20 for the small missions: docs/ROOMS.md.
 sudo chown root:dronelife /etc/drone-life.env
 sudo chmod 640 /etc/drone-life.env   # dronelife must read it: the unit's EnvironmentFile= does, and so does the runbook's `. /etc/drone-life.env`
 ```
@@ -92,14 +96,18 @@ sudo chmod 640 /etc/drone-life.env   # dronelife must read it: the unit's Enviro
 Every knob is an env var read by `server/app/config.py` (pydantic-settings;
 a `.env` file in `server/` also works for dev). The HTTP bind address and port
 are **not** settings — they are uvicorn CLI flags (see the Makefile `run`
-target and the systemd unit).
+target); the systemd unit passes `PORT` from the room's env file
+(`/etc/drone-life.d/<id>.env`, [ROOMS.md](ROOMS.md)).
 
 | variable | default | meaning |
 |---|---|---|
 | `ROOM_CODE` | `classroom` | what students type to join — override for any reachable deploy |
 | `ADMIN_TOKEN` | `change-me` | instructor console + admin API token — override likewise |
 | `MISSION` | `delivery` | which mission plugin runs (`canyon`, `delivery`, `forge`, `freefly`, `rampart`, `siege`) |
-| `MAX_STUDENTS` | `20` | roster cap = drone slots = MAVLink ports |
+| `MAX_STUDENTS` | `20` | roster cap = drone slots = MAVLink ports (64 for the siege room) |
+| `ROOM_ID` | `main` | this process's name: the systemd instance, its podman label, its state dir. Lowercase letters, digits, `-`, `_` |
+| `ROOM_LABEL` | *(empty)* | what the student page's room list calls this room; empty = "Room N" from the id |
+| `ROOMS` | *(empty)* | `r1,r2,…` — the small rooms behind the proxy that the student page lists with live counts; empty = no list ([ROOMS.md](ROOMS.md)) |
 | `PUBLIC_URL` | *(empty)* | what the projector's "join the sky at" card shows, e.g. `http://203.0.113.5:8000` — the address **students** can reach, which is rarely where the projector page itself was opened (localhost, the LAN). Empty = the page's own origin |
 | `SIM_SEED` | `42` | mission RNG seed (crate spawns, wave gates) |
 | `SIM_UNTHROTTLED` | `false` | tests only: run the driver without sleeping |
@@ -109,7 +117,7 @@ target and the systemd unit).
 | `RUNNER_NETWORK` | `slirp4netns:allow_host_loopback=true` | podman network for sandboxes |
 | `DRONE_HOST` | `10.0.2.2` | host loopback as seen from inside a container |
 | `RUN_MAX_SECONDS` | `900` | wall-clock cap per script run |
-| `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`) |
+| `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`); the unit sets `state/<ROOM_ID>` |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
 | `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |
 | `JOIN_STRIKES` | `3` | wrong room codes from one IP before it is locked out of `/join`, `/world` and the viewer (right code or not); `0` disables |
@@ -131,19 +139,28 @@ sets `ALLOW_DEFAULT_SECRETS=1`; `make run` deliberately does not.
 
 ## systemd
 
+One template unit, one instance per room ([ROOMS.md](ROOMS.md)); the
+one-room deploy is the instance called `main`:
+
 ```bash
 cd /opt/drone-life
-sudo cp docs/deploy/drone-life.service /etc/systemd/system/
+sudo cp docs/deploy/drone-life@.service /etc/systemd/system/
 # the unit hardcodes XDG_RUNTIME_DIR=/run/user/1001 — make it *your* dronelife uid
-sudo sed -i "s#/run/user/[0-9]*#/run/user/$(id -u dronelife)#" /etc/systemd/system/drone-life.service
-grep XDG_RUNTIME_DIR /etc/systemd/system/drone-life.service   # /run/user/<uid of dronelife>
+sudo sed -i "s#/run/user/[0-9]*#/run/user/$(id -u dronelife)#" /etc/systemd/system/drone-life@.service
+grep XDG_RUNTIME_DIR /etc/systemd/system/drone-life@.service   # /run/user/<uid of dronelife>
+sh docs/deploy/rooms/mkrooms.sh 0 | sudo sh     # /etc/drone-life.d/main.env: PORT=8000, 64 seats
 sudo systemctl daemon-reload
-sudo systemctl enable --now drone-life
+sudo systemctl enable --now drone-life@main
 curl -s localhost:8000/healthz
 ```
 
-Notes on the unit ([docs/deploy/drone-life.service](deploy/drone-life.service)):
+Notes on the unit ([docs/deploy/drone-life@.service](deploy/drone-life@.service)):
 
+- `%i` is the room: `ROOM_ID=%i`, `STATE_DIR=state/%i`, and
+  `EnvironmentFile=/etc/drone-life.d/%i.env` on top of the shared
+  `/etc/drone-life.env`. The room file is required and there is no `PORT`
+  default, on purpose — an instance nobody wrote down fails at start
+  instead of silently binding a neighbour's port.
 - It runs as user `dronelife` via `User=`; because rootless podman needs a
   session, `enable-linger` (step 1) is what makes containers work when nobody
   is logged in. It assumes the clone lives at `/opt/drone-life` and uv at
@@ -158,10 +175,10 @@ Notes on the unit ([docs/deploy/drone-life.service](deploy/drone-life.service)):
   (placeholder secrets, unknown `MISSION`) makes the server exit non-zero
   deliberately. The limit stops systemd from restarting it every 3 s forever
   behind a green-looking status: after 5 failures in a minute the unit stays
-  *failed* — read `journalctl -u drone-life -n 50`, fix the file, then
-  `sudo systemctl reset-failed drone-life && sudo systemctl start drone-life`.
-- `MISSION` is read from `/etc/drone-life.env` only; without it the deploy
-  runs `delivery`.
+  *failed* — read `journalctl -u drone-life@main -n 50`, fix the file, then
+  `sudo systemctl reset-failed drone-life@main && sudo systemctl start drone-life@main`.
+- `MISSION` is read from `/etc/drone-life.env` (or a room's own file) only;
+  without it the deploy runs `delivery`.
 
 ## OCI VM reverse proxy
 
@@ -192,7 +209,11 @@ server {
 }
 ```
 
-Lab-server firewall: allow 8000 **only** from the OCI VM's address.
+Several rooms behind the same proxy — `location /r1/ { proxy_pass http://LAB:8001/; }`
+and so on, plus one tunnel forward per room — are laid out in [ROOMS.md](ROOMS.md).
+
+Lab-server firewall: allow 8000 (and 8001–8005 with rooms) **only** from the
+OCI VM's address.
 
 **Pair that firewall rule with `FORWARDED_ALLOW_IPS`** (`/etc/drone-life.env`,
 same address). `--proxy-headers` is already on in the systemd unit, but uvicorn
@@ -215,7 +236,7 @@ than keying the limiter on anything else a client can set.
 sudo -iu dronelife
 cd /opt/drone-life && set -a && . /etc/drone-life.env && set +a && make preflight
 
-systemctl status drone-life           # green? (`failed` + "start-limit-hit": see the systemd section)
+systemctl status drone-life@main           # green? (`failed` + "start-limit-hit": see the systemd section)
 make bots N=3                         # smoke: three drones on the projector (ADMIN_TOKEN comes from the sourced env file)
 make reset                            # clean slate between sessions
 ```
@@ -224,15 +245,21 @@ make reset                            # clean slate between sessions
 the MAVLink port range, `web/dist`, the state dir and disk, the access-control
 secrets (the same call the server refuses to boot on), that `MISSION` names a
 real mission, that the unit's `XDG_RUNTIME_DIR` matches the service user's uid,
-and that `FORWARDED_ALLOW_IPS` is set — then runs one real container. Exit 1
+that `FORWARDED_ALLOW_IPS` is set, and that the room files in
+`/etc/drone-life.d/` can run side by side (distinct ports and state dirs,
+no MAVLink overlap, one shared code) — then runs one real container. Exit 1
 means don't start class — every failure line names its fix.
 `make` does **not** read `/etc/drone-life.env` by itself: the
 `set -a && . /etc/drone-life.env && set +a` prefix above is what makes
-preflight (and `make bots` / `make reset`, which pick up `ADMIN_TOKEN` the same
-way) see the deploy you are about to run. `make preflight PREFLIGHT_ARGS=--no-smoke`
-skips the container run when you only want the fast checks. Preflight checks
-*your shell's* environment, not the service's — for that, compare
-`systemctl show drone-life -p Environment` with `id -u dronelife`.
+preflight (and `make bots` / `make reset`, which pick up `ADMIN_TOKEN` and
+`PORT` the same way) see the deploy you are about to run.
+`make preflight ROOM=r2` loads `/etc/drone-life.env` and
+`/etc/drone-life.d/r2.env` itself, the way that room's unit does;
+`PREFLIGHT_ARGS=--all-rooms` also probes every room's MAVLink ports, and
+`PREFLIGHT_ARGS=--no-smoke` skips the container run when you only want the
+fast checks. Preflight checks *your shell's* environment, not the service's —
+for that, compare `systemctl show drone-life@main -p Environment` with
+`id -u dronelife`.
 
 - Projector: open `https://drones.example.org/`, enter the room code once.
 - Students: `https://drones.example.org/submit` + the room code.
@@ -241,32 +268,34 @@ skips the container run when you only want the fast checks. Preflight checks
 - A student stuck? Their **reset drone** button, the console's **kill script**, or:
   `curl -X POST .../api/v1/admin/kill -H "X-Admin-Token: ..." -d '{"student_id":"s3"}'`
 - Between class sessions: `make reset` (kills all scripts, respawns drones,
-  fresh crates + score). `server/state/` keeps the roster across restarts —
+  fresh crates + score). `server/state/main/` keeps the roster across restarts —
   delete it for a completely fresh class.
 - Minute-by-minute session plan (mission order, transitions, bots, balance
   knobs): `docs/SESSION_PLAN.md`.
 
 ## When things break
 
-Server logs are `journalctl -u drone-life -f`. The instructor console's health
+Server logs are `journalctl -u drone-life@main -f`. The instructor console's health
 line is the fastest read on whether the sim itself is alive.
 
 | symptom | check | fix |
 |---|---|---|
 | every submit says "runner image … is not built" | `podman image exists drone-life-runner:latest` | `make image` — no restart needed, the next submit picks it up |
-| every submit says "podman is not working here" | `make preflight`, then `journalctl -u drone-life \| grep podman` | podman failed for a reason that is not a missing image — usually `XDG_RUNTIME_DIR` or subuid. Probe it **as the service does**, not from your shell (a login shell gets a working runtime dir from PAM and will lie to you): `sudo -u dronelife XDG_RUNTIME_DIR=/run/user/$(id -u dronelife) podman image exists drone-life-runner:latest` |
-| a student's log ends "the sandbox failed to start (podman exit 125)" | `journalctl -u drone-life \| grep podman` | usually the image or subuid ranges: `make preflight` names which |
-| projector frozen, console says **SIM STALLED** | `curl -s localhost:8000/healthz` | `journalctl -u drone-life -n 100` for the traceback, then `systemctl restart drone-life` |
+| every submit says "podman is not working here" | `make preflight`, then `journalctl -u drone-life@main \| grep podman` | podman failed for a reason that is not a missing image — usually `XDG_RUNTIME_DIR` or subuid. Probe it **as the service does**, not from your shell (a login shell gets a working runtime dir from PAM and will lie to you): `sudo -u dronelife XDG_RUNTIME_DIR=/run/user/$(id -u dronelife) podman image exists drone-life-runner:latest` |
+| a student's log ends "the sandbox failed to start (podman exit 125)" | `journalctl -u drone-life@main \| grep podman` | usually the image or subuid ranges: `make preflight` names which |
+| projector frozen, console says **SIM STALLED** | `curl -s localhost:8000/healthz` | `journalctl -u drone-life@main -n 100` for the traceback, then `systemctl restart drone-life@main` |
 | console health line shows climbing "sim errors" | server log has `driver tick failed` | a mission or sim bug — restart clears it, the traceback names the file |
-| server won't start, port 8000 busy | `ss -ltnp 'sport = :8000'` | `make kill-prod` (uvicorn + leftover containers), then start again |
+| server won't start, port 8000 busy | `ss -ltnp 'sport = :8000'` | `make kill-prod` (every uvicorn + leftover container on the box), then start again |
+| a room's unit fails at once with uvicorn complaining about `--port` | `ls /etc/drone-life.d/` | that instance has no env file, or the file has no `PORT` — [ROOMS.md](ROOMS.md) |
+| two rooms fight over MAVLink ports (joins 500 in one of them) | `make preflight ROOM=r1 PREFLIGHT_ARGS=--all-rooms` | the `rooms` line names the overlap; room N is `5760+100N` |
 | joins return 500 | `ss -ltnp` over 5760–5779 | something squats a MAVLink port — kill it, restart |
 | students can reach the page but not join | the room code they were given vs `ROOM_CODE` in `/etc/drone-life.env` | tell them the right one — a wrong code is a clear message on their page, not a hang |
 | console says **server unreachable** while `curl localhost:8000/healthz` is 200 | the reason in parentheses on that line; F12 shows no `/api/v1/admin/students` request at all | the browser refused the request before sending it: `…value 9679…` / "masked dots" = the token was pasted from a masked field (`●●●`) — copy the plain text; `Failed to fetch` = an extension blocking `/admin` URLs — incognito window or whitelist |
-| a script won't die | console **kill script** | `podman ps --filter label=drone-life=1` then `podman rm -f -t 0 <id>` |
-| server boots but serves no page | `ls /opt/drone-life/web/dist` | `make build`, then `systemctl restart drone-life` — the static mount is decided at boot, so a server that started without `web/dist` keeps serving nothing until restarted |
-| every submit 503s "runner image … is not built" under systemd, but `make preflight` passes in a `sudo -iu dronelife` shell | `systemctl show drone-life -p Environment` vs `id -u dronelife` | the unit's `XDG_RUNTIME_DIR` uid is wrong (the `%U` trap) — fix it in `/etc/systemd/system/drone-life.service`, `daemon-reload`, restart |
-| `systemctl status` shows `failed` with "start-limit-hit" and won't come back | `journalctl -u drone-life -n 50` | the env file is bad (placeholder secrets / unknown `MISSION`) — fix it, then `sudo systemctl reset-failed drone-life && sudo systemctl start drone-life` |
-| boot fails on a corrupt snapshot | `journalctl -u drone-life -n 50` | `rm server/state/snapshot.json` and restart — roster, tokens and score are lost, students re-join and same names take the same slots |
+| a script won't die | console **kill script** | `podman ps --filter label=drone-life=1` (one room: `label=drone-life-room=r2`) then `podman rm -f -t 0 <id>` |
+| server boots but serves no page | `ls /opt/drone-life/web/dist` | `make build`, then `systemctl restart drone-life@main` — the static mount is decided at boot, so a server that started without `web/dist` keeps serving nothing until restarted |
+| every submit 503s "runner image … is not built" under systemd, but `make preflight` passes in a `sudo -iu dronelife` shell | `systemctl show drone-life@main -p Environment` vs `id -u dronelife` | the unit's `XDG_RUNTIME_DIR` uid is wrong (the `%U` trap) — fix it in `/etc/systemd/system/drone-life@.service`, `daemon-reload`, restart |
+| `systemctl status` shows `failed` with "start-limit-hit" and won't come back | `journalctl -u drone-life@main -n 50` | the env file is bad (placeholder secrets / unknown `MISSION`) — fix it, then `sudo systemctl reset-failed drone-life@main && sudo systemctl start drone-life@main` |
+| boot fails on a corrupt snapshot | `journalctl -u drone-life@main -n 50` | `rm server/state/main/snapshot.json` and restart — roster, tokens and score are lost, students re-join and same names take the same slots |
 | proxy or OCI VM dead | can you reach the lab server directly? | hotspot fallback: `set -a && . /etc/drone-life.env && set +a && make run` on the lab server binds `0.0.0.0:8000`, students use `http://<lab-ip>:8000/submit`. (Sourcing the env file is not optional — bare `make run` uses the Makefile's placeholder secrets and refuses to start.) Open the room's firewall to that port only, and put the URL on the projector |
 
 "Flaky" is not a diagnosis. A student whose drone flew home on its own didn't
@@ -292,7 +321,7 @@ belong to `make preflight`, not to a poll that runs every few seconds.
 ## Restarts and mission switches
 
 A restart keeps the **roster, student tokens and the team score** (from
-`server/state/snapshot.json`, written every 30 s and on exit). It does **not**
+`server/state/main/snapshot.json`, written every 30 s and on exit). It does **not**
 keep drone positions, mission entities (crates, tiles, waves) or running
 scripts: the mission runs `setup()` again and every container is swept. Students
 do not need to re-join — their page reconnects with the token it already has.
@@ -301,7 +330,7 @@ Switching missions is a restart, since `MISSION` is read at boot:
 
 ```bash
 sudo sed -i 's/^MISSION=.*/MISSION=siege/' /etc/drone-life.env
-sudo systemctl restart drone-life   # ~5 s
+sudo systemctl restart drone-life@main   # ~5 s
 set -a && . /etc/drone-life.env && set +a && make reset   # fresh score for the new mission
 ```
 
@@ -310,11 +339,13 @@ account that can read the env file — root or `dronelife`.)
 
 Footguns:
 
-- `make clean` deletes `server/state/` — every token with it. Students would
-  have to re-join. It is not part of any deploy step.
+- `make clean` deletes `server/state/` — every room, every token with it.
+  Students would have to re-join. It is not part of any deploy step.
 - The systemd unit never reads the Makefile. `MISSION=` on a `make` command
   line only affects a server you start with `make dev-server` / `make run`;
-  under systemd only `/etc/drone-life.env` counts.
+  under systemd only `/etc/drone-life.env` (and the room's own file) counts.
+- Moving the class from the small rooms into the big one is a merge, not a
+  restart: [ROOMS.md](ROOMS.md), "The day".
 - Rehearse the real class size on the real hardware before the day:
   `make load LOAD_BOTS=20`, and watch the console's overrun percentage.
 

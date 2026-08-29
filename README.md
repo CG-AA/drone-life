@@ -139,10 +139,13 @@ Full list: [SESSION_PLAN.md → Day −1 checklist](docs/SESSION_PLAN.md#day-1-c
 cd drone-life
 set -a && . /etc/drone-life.env && set +a     # once per terminal
 make preflight                                # 0 FAILED, or the doors stay shut
-systemctl status drone-life || curl -s localhost:8000/healthz   # B: unit green?  A: your `make run` answering?
+systemctl status drone-life@main || curl -s localhost:8000/healthz   # B: unit green?  A: your `make run` answering?
 make bots N=3                                 # three drones move on the projector?
 make reset                                    # clean slate: kills the bots, zeroes the score
 ```
+
+Several rooms of ~20 for the small missions, merged into one 64-seat siege
+for the main event: [docs/ROOMS.md](docs/ROOMS.md).
 
 Projector on `/` with the room code typed in; `/admin` open on the instructor
 laptop. Minute-by-minute from here:
@@ -169,7 +172,7 @@ They need only a browser — no installs. The longer handout is
 `MISSION` is read at boot: edit it in `/etc/drone-life.env`
 (`sudo sed -i 's/^MISSION=.*/MISSION=siege/' /etc/drone-life.env` — `sudo`
 even on deploy A: `/etc` is root's, so a plain `sed -i` cannot write there),
-restart the server (`sudo systemctl restart drone-life`, or Ctrl-C and
+restart the server (`sudo systemctl restart drone-life@main`, or Ctrl-C and
 `make run` again), then `make reset` for a fresh score. The two rehearsed procedures (with and
 without carrying the score over) are
 [SESSION_PLAN.md → Transition procedures](docs/SESSION_PLAN.md#5-transition-procedures).

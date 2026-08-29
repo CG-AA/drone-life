@@ -30,7 +30,7 @@ under one minute; the rest is students pressing Run again.
 
 ## 3. Before doors open (T−20)
 
-- `systemctl status drone-life` green; `MISSION=freefly` in `/etc/drone-life.env`.
+- `systemctl status drone-life@main` green; `MISSION=freefly` in `/etc/drone-life.env`.
   Pulled new code since the last class? `make image` too — cheap, and the
   sandbox then matches the server (the live `dronelife.py` is mounted into
   every run regardless, so a stale image cannot break imports).
@@ -64,7 +64,7 @@ under one minute; the rest is students pressing Run again.
 **Box A — fresh start** (used at every switch in the default plan):
 
 1. Edit the mission and restart. Prod:
-   `sudo sed -i 's/^MISSION=.*/MISSION=<name>/' /etc/drone-life.env && sudo systemctl restart drone-life`.
+   `sudo sed -i 's/^MISSION=.*/MISSION=<name>/' /etc/drone-life.env && sudo systemctl restart drone-life@main`.
    Dev: Ctrl-C the server, `MISSION=<name> make dev-server`.
 2. The restart restores roster **and score** from the snapshot — including any
    `Bot-*` entries, which come back as ghost drones parked on pads (their

@@ -185,6 +185,7 @@ export interface JoinInfo {
  * strip a moment later, and this view carries a subset of DroneState. */
 export interface StatusInfo {
   student_id: string;
+  name: string;
   run: RunState | null;
   drone: unknown;
   log_tail: LogLine[];
@@ -216,10 +217,24 @@ export interface Health {
   score: number;
   mission: string;
   students: number;
+  /** ROOM_ID / ROOM_LABEL / MAX_STUDENTS of the process that answered — what
+   * the student page's room list shows per room (docs/ROOMS.md) */
+  room: string;
+  label: string;
+  max_students: number;
   uptime_s: number;
   driver_alive: boolean;
   last_tick_age_s: number;
   driver_errors: number;
+}
+
+/** GET /api/v1/rooms — the small rooms behind the proxy; each lives at `path`/. */
+export interface RoomRow {
+  id: string;
+  path: string;
+}
+export interface RoomsInfo {
+  rooms: RoomRow[];
 }
 
 export interface BotsResult {

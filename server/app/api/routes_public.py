@@ -77,6 +77,14 @@ def default_variant(mission: str) -> str:
     return mission if mission in ("delivery", "siege") else "beginner"
 
 
+@router.get("/rooms")
+async def rooms(service: DroneLifeService = Depends(get_service)) -> dict:
+    """The small rooms behind the proxy (docs/ROOMS.md). The student page lists
+    them and reads each one's own /healthz for the live count. Unauthenticated
+    and unlimited on purpose: it names nothing that list would not show."""
+    return {"rooms": [{"id": r, "path": f"/{r}"} for r in service.settings.room_list]}
+
+
 @router.get("/template")
 async def template(variant: str = "",
                    service: DroneLifeService = Depends(get_service)) -> PlainTextResponse:
@@ -131,6 +139,7 @@ async def status(student: Student = Depends(require_student),
     drone = service.world.drones.get(service.drone_id_for(student))
     return {
         "student_id": student.id,
+        "name": student.name,  # both can change under a stored token: rooms merge (ROOMS.md)
         "run": run.payload() if run else None,
         "drone": asdict(DroneView.of(drone)) if drone else None,
         "log_tail": service.runner.log_for(student.id).tail(50),

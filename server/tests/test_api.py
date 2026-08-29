@@ -174,8 +174,24 @@ async def test_healthz(client):
     body = r.json()
     assert body["ok"] is True
     assert set(body) == {"ok", "drones", "ticks", "overruns", "score", "mission",
-                         "students", "uptime_s", "driver_alive", "last_tick_age_s",
-                         "driver_errors"}
+                         "students", "room", "label", "max_students", "uptime_s",
+                         "driver_alive", "last_tick_age_s", "driver_errors"}
+    # the student page's room list reads these off each room's own /healthz
+    assert body["room"] == "main" and body["max_students"] == 4
+
+
+async def test_rooms_lists_the_small_rooms_unauthenticated(tmp_path):
+    """ROOMS names the rooms behind the proxy; the student page offers them."""
+    async with running_app(make_settings(tmp_path, rooms="r1, r2,,r3")) as app:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            r = await c.get("/api/v1/rooms")
+            assert r.status_code == 200
+            assert r.json() == {"rooms": [{"id": "r1", "path": "/r1"}, {"id": "r2", "path": "/r2"},
+                                          {"id": "r3", "path": "/r3"}]}
+            # the default: one room, nothing to pick
+            r = await c.get("/healthz")
+            assert r.json()["room"] == "main"
 
 
 async def test_rampart_tiles_and_terrain_wiring(tmp_path):
