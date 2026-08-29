@@ -125,6 +125,12 @@ worked answer in the repo — don't reveal that until the wrap.
   the game's own `build a tower at …` suggestion and stacks three, so the
   room sees a tower rise and start shooting. (`bot_builder` is rampart's:
   it waits for `wall gap` lines siege never sends and hovers forever.)
+  Two more house bots demo the roles: `SCRIPT=bot_repair` ferries steel to
+  the newest `steel chewed at` hole (naive: newest, not nearest — a student
+  beats it with a sorted list), and `SCRIPT=bot_scout` parks 12 m over the
+  wave's gate, becomes its spotter and prints what comes through (an
+  `events()`-driven loop with no blocking goto — the §6.4 pattern). The
+  house bots demo every role and stay beatable on purpose.
 - Never leave bots in during a "record" round — the record should be human.
 
 ## 8. Contingencies
@@ -188,6 +194,17 @@ per tier), speed 30/60 (+25 % caps per tier), tower 40/80 (+4 m range,
 `TOWER_COOLDOWN_MIN` 1 s), colour/outline 10 (cosmetic, repeatable). Tiers
 are personal and last the round; at ~15 coins a wave a pilot buys one tier
 by wave 2 and reaches the top rungs only in a long round.
+
+Roles: a chewed cell is a ghost and a `repair at … hover N` callout to
+carriers within `REPAIR_CALL_RADIUS` 40 m every `TARGET_EVERY`, for
+`REPAIR_TTL_S` 90; a tile back on it pays `REPAIR_POINTS` 1. A drone
+within `SPOT_RADIUS` 10 m of a gate for `SPOT_DWELL` 2 s is its spotter:
+it hears every spawn through that gate (`gate E: 3 grunt 1 sapper`) and
+the room hears the spotter every `SPOT_FEED_EVERY` 10 s. The PILOTS board
+carries each pilot's tally (`z` kills, `t` towers, `f` ferried, `b`
+placed, `r` repaired, `s` spots) beside their points — the "who did what"
+behind the score. Ferrying alone scores nothing (a pickup-crash loop
+would farm it); the feed notes every 5 pickups / placements.
 
 Buildings: the clay pit (`PIT_CELL`, infinite) feeds walls chewed at
 `CHEW_FACTOR` 3× (steel 1×; the flow field prices both the same, so a clay

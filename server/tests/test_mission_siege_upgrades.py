@@ -56,7 +56,7 @@ def test_buying_climbs_the_tiers_and_debits_the_wallet():
                                            "D0 bought zap III"]
     assert bought[0]["data"] == {"item": "zap", "level": 1, "price": 20}
     assert m.pilot("s-d0") == {"wallet": 420, "zap": 3, "speed": 0, "tower": 0,
-                               "colour": None, "outline": None}
+                               "colour": None, "outline": None, "detail": ""}
 
 
 def test_unknown_items_and_menus():

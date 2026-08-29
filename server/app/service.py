@@ -37,7 +37,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
-BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder", "bot_siege", "bot_tower"}
+BOT_SCRIPTS = {"bot_patrol", "bot_courier", "bot_builder", "bot_siege", "bot_tower",
+               "bot_repair", "bot_scout"}
 SNAPSHOT_INTERVAL = 30.0
 MISSION_EVERY = P.TICK_HZ // P.MISSION_HZ  # mission + WS run every Nth sim tick
 DRIVER_ERROR_EVERY = 30.0  # a 20 Hz bug must not flood the feed (cf. engine.py)

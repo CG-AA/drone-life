@@ -37,6 +37,7 @@ class GroundUnit:
     bounty: int = 2  # points for the kill
     keep_cost: int = 1  # hits on the goal when it arrives
     chew_rate: float = 1.0  # x: a 2.0 gnaws through a tile in half the time
+    gate: int = -1  # which gate it came through (siege's spotters), -1 = unknown
 
     @property
     def cell(self) -> Axial:

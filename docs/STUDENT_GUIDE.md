@@ -172,7 +172,9 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `champion down! +20` | the boss fell — everyone hears it |
 | `stack 3 steel = watchtower` / `build a tower at N 20 E -8` | 3 tiles on one cell → auto-firing tower (+15); the game suggests a spot between waves |
 | `tower up! +15` / `tower down at …` | a tower rose / was chewed from under |
-| `steel chewed at N 9 E -62` / `clay chewed at …` | a blocked creep is eating through → rebuild, zap it; clay goes 3× faster than steel |
+| `steel chewed at N 9 E -62` / `clay chewed at …` | a blocked creep is eating through → rebuild, zap it; clay goes 3× faster than steel; the hole stays a ghost on the wall |
+| `repair at N 9 E -62 hover 6` | you carry the right material and a chewed cell is within 40 m: hover it at that altitude → `repaired! N 9 E -62 whole again +1` |
+| `you spot gate E` / `gate E: 3 grunt 1 sapper` / `gate E unwatched` | hover within 10 m of a gate for 2 s and you are its scout: every creep through it is reported to you (kinds and counts), and the room hears you on the wall; leave and the post is free |
 | `clay pit at N 50 E -44` / `got clay, cheap walls, chewed 3x faster` | the second pile — infinite, unlike the quarry — for walls, beacons and the bell |
 | `ring tower at N 20 E -8! +25` / `ring lost at …, watchtower again` | 6 steel around a standing watchtower: 28 m reach, 1.5 s reload; a chewed ring cell drops it back |
 | `beacon up at N 8 E 31, creeps lured` / `beacon chewed at …` | clay–steel–clay, each cell exactly one high: creeps within 25 m walk to it instead of the Keep and eat the steel (6 s); kills in that zone pay the pot one extra coin per seat; two beacons at most |

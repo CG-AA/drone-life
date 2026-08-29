@@ -32,7 +32,10 @@ in `server/app/game/missions/siege.py` unless noted.
   wave) or a multiplier on the wave bonus — never in personal points that
   make the rest of the room decorative. The per-pilot board stays for
   bragging; the round score is what the class beats. *(proposed)*
-- **Roles.** Give each role a callout stream, a stat, and a house bot:
+- **Roles.** *(shipped 2026-08-29: repair + scout callouts, per-pilot
+  tally on the board, `bot_repair` / `bot_scout`; ferry vs build are
+  separate stats — a true depot hand-off is a balance-session question)*
+  Give each role a callout stream, a stat, and a house bot:
   ferry (quarry → site, `tile_carried`), builder (walls/towers at ghosts),
   zapper (lane assignment), repair (rebuild chewed cells — the ghost for a
   chewed wall already exists), scout/spotter (an event-driven pilot that

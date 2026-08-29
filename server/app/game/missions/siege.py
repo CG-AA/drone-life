@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from ...sim.backend import DroneView
@@ -41,6 +41,7 @@ from ..building import (
     SourceHints,
     TileSource,
     fmt_cell,
+    hover_alt_hint,
     tick_ferry,
 )
 from ..hex import Axial
@@ -132,6 +133,19 @@ ZAP_ARC_S = 0.3
 POOF_S = 0.6
 
 TARGET_EVERY = 3.0  # per-drone nearest-creep hint
+
+# ------------------------------------------------------------------- roles
+# Repair: every chewed cell becomes a ghost and a callout to nearby carriers;
+# a tile back on it scores. Scout: hover a gate and you hear what comes
+# through it, and the room hears you.
+REPAIR_TTL_S = 90.0  # a repair nobody takes stops being announced
+REPAIR_CALL_RADIUS = 40.0  # m: carriers this close hear "repair at"
+REPAIR_POINTS = 1
+SPOT_RADIUS = 10.0  # m of a gate
+SPOT_DWELL = 2.0  # s hovering it to become its spotter
+SPOT_FEED_EVERY = 10.0  # s per gate: the relay line on the projector
+FERRY_FEED_EVERY = 5  # pickups per "ferried" feed row
+BUILD_FEED_EVERY = 5  # placements per "built" feed row
 ANNOUNCE_EVERY = 30.0
 BUILD_HINT_EVERY = 20.0  # 'build a tower at …' while the room has time to build
 BUILD_SITE_STEPS = 8  # cells before the Keep along the lane: ~40 m out, where the
@@ -219,6 +233,32 @@ _HINTS = ("GAME: stack 3 steel = watchtower",
 
 
 @dataclass
+class PilotStats:
+    """What one pilot did this round — the 'who did what' behind the points."""
+
+    zapped: int = 0
+    squished: int = 0
+    towers: int = 0
+    ferried: int = 0  # tiles picked up
+    placed: int = 0  # tiles put down
+    repaired: int = 0  # …onto a chewed cell
+    spots: int = 0  # gate reports relayed to the room
+
+    def as_dict(self) -> dict:
+        return {"zapped": self.zapped, "squished": self.squished, "towers": self.towers,
+                "ferried": self.ferried, "placed": self.placed, "repaired": self.repaired,
+                "spots": self.spots}
+
+    @property
+    def detail(self) -> str:
+        """The board's compact column: z12 t2 f8 b6 r3 s1, empties dropped."""
+        parts = [(k, v) for k, v in (("z", self.zapped + self.squished), ("t", self.towers),
+                                     ("f", self.ferried), ("b", self.placed),
+                                     ("r", self.repaired), ("s", self.spots)) if v]
+        return " ".join(f"{k}{v}" for k, v in parts)
+
+
+@dataclass
 class SiegeStats:
     """This round's tally — the summary the whiteboard used to get by hand."""
 
@@ -234,6 +274,10 @@ class SiegeStats:
     quests_missed: int = 0  # room quests nobody solved
     ring_towers: int = 0
     bells: int = 0  # rung
+    pilots: dict[str, PilotStats] = field(default_factory=dict)  # student_id -> theirs
+
+    def pilot(self, student_id: str | None) -> PilotStats:
+        return self.pilots.setdefault(student_id or "?", PilotStats())
 
     @property
     def kills(self) -> int:
@@ -245,7 +289,8 @@ class SiegeStats:
                 "keep_hits": self.keep_hits, "keep_falls": self.keep_falls,
                 "best_wave": self.best_wave, "quests_solved": self.quests_solved,
                 "quests_missed": self.quests_missed, "ring_towers": self.ring_towers,
-                "bells": self.bells}
+                "bells": self.bells,
+                "pilots": {sid: p.as_dict() for sid, p in self.pilots.items()}}
 
 
 @dataclass
@@ -274,6 +319,15 @@ class Bell:
     builder: str | None
     cells: tuple[Axial, ...]
     dwell: DwellTracker
+
+
+@dataclass
+class Repair:
+    """A chewed cell: what stood there, how high it was, since when."""
+
+    material: str
+    need: int
+    since: float
 
 
 # ------------------------------------------------------------------ creeps
@@ -376,6 +430,11 @@ class SiegeMission(Mission):
         self.bells: dict[Axial, Bell] = {}
         self.lured: set[int] = set()  # creep uids walking to a beacon this tick
         self.freeze_s = 0.0  # the bell's gift: creeps stand still
+        self.repairs: dict[Axial, Repair] = {}  # chewed cells worth rebuilding
+        self.spot_dwell = [DwellTracker(SPOT_RADIUS, float("inf"), SPOT_DWELL) for _ in GATES]
+        self.spotters: dict[int, str] = {}  # gate index -> drone id
+        self.last_spot_feed: dict[int, float] = {}  # gate index -> when the room last heard
+        self.last_repair_call = 0.0
         self.creeps: dict[int, GroundUnit] = {}
         self.zap: dict[int, DwellTracker] = {}  # creep uid -> hover dwell
         self.zap_ready: dict[str, float] = {}  # drone id -> when its next zap may land
@@ -491,8 +550,10 @@ class SiegeMission(Mission):
             world.send_text(drone.id, SAY_MENU)
 
     def pilot(self, student_id: str) -> dict:
+        mine = self.stats.pilots.get(student_id)
         return {"wallet": self.wallets.get(student_id, 0),
-                **self._up(student_id).as_dict()}
+                **self._up(student_id).as_dict(),
+                "detail": mine.detail if mine is not None else ""}
 
     # ------------------------------------------------------------------ shop
 
@@ -598,6 +659,12 @@ class SiegeMission(Mission):
         self.bells.clear()
         self.lured.clear()
         self.freeze_s = 0.0
+        self.repairs.clear()
+        for dw in self.spot_dwell:
+            dw.clear()
+        self.spotters.clear()
+        self.last_spot_feed.clear()
+        self.last_repair_call = 0.0
         self.creeps.clear()
         self.zap.clear()
         self.zap_high.clear()
@@ -653,8 +720,13 @@ class SiegeMission(Mission):
     def tick(self, world: WorldAPI, dt: float) -> None:
         drones = list(world.drones())
 
-        tick_ferry(world, drones, self.carry, [self.quarry, self.pit], dt, FERRY,
-                   texts_by_material={"steel": FERRY, "clay": FERRY_CLAY})
+        for d, _source in tick_ferry(world, drones, self.carry, [self.quarry, self.pit], dt,
+                                     FERRY, texts_by_material={"steel": FERRY, "clay": FERRY_CLAY}):
+            mine = self.stats.pilot(d.student_id)
+            mine.ferried += 1
+            if mine.ferried % FERRY_FEED_EVERY == 0:
+                world.emit_event("ferried", f"{d.name} ferried {mine.ferried} tiles",
+                                 student_id=d.student_id)
         self.hints.tick(world, drones, *QUARRY, dt)
         self.pit_hints.tick(world, drones, *PIT, dt)
         self.empty_hint.tick(world, drones, *QUARRY, dt)
@@ -662,6 +734,7 @@ class SiegeMission(Mission):
         self.place_hints.tick(world, drones, dt)
         for p in placed:
             self._squish(world, p)
+            self._count_placement(world, p)
             if not self._raise_structure(world, p):
                 world.send_text(p.drone.id, f"GAME: placed! tile at {fmt_cell(p.cell)}")
         for d, _cell in refused:
@@ -686,6 +759,7 @@ class SiegeMission(Mission):
             if self.spawn_timer <= 0:
                 self.spawn_timer += SPAWN_GAP
                 self._spawn_creep()
+                self._report_spawn(world)
 
         self._ring_bells(world, drones, dt)
         if self.freeze_s > 0:
@@ -706,6 +780,10 @@ class SiegeMission(Mission):
         if self.creeps and world.now - self.last_target > TARGET_EVERY:
             self.last_target = world.now
             self._call_targets(world, drones)
+        self._watch_gates(world, drones, dt)
+        if self.repairs and world.now - self.last_repair_call > TARGET_EVERY:
+            self.last_repair_call = world.now
+            self._call_repairs(world, drones)
         if (self.state in ("grace", "build")
                 and world.now - self.last_build_hint > BUILD_HINT_EVERY):
             self.last_build_hint = world.now
@@ -746,10 +824,13 @@ class SiegeMission(Mission):
                 beacon.chew_acc = 0.0
                 chews.append(anchor)
         for cell in chews:
+            need = self.tm.height(cell)
             material = self.tm.remove_top(cell)
             if material is not None:  # widest: "GAME: steel chewed at N -97 E -97" = 34
                 world.broadcast_text(f"GAME: {material} chewed at {fmt_cell(cell)}",
                                      severity=SEV_WARNING)
+                if cell not in self.repairs:  # the first bite sets what "whole" was
+                    self.repairs[cell] = Repair(material, need, world.now)
 
     # ------------------------------------------------------------ structures
 
@@ -761,6 +842,7 @@ class SiegeMission(Mission):
         if match is not None:
             self.towers[match.anchor] = Tower(builder=sid)
             self.stats.towers += 1
+            self.stats.pilot(sid).towers += 1
             world.add_score(TOWER_POINTS, f"watchtower at {fmt_cell(match.anchor)}",
                             student_id=sid, feed=False)
             world.emit_event("tower_up", f"{name} raised a watchtower! +{TOWER_POINTS}",
@@ -804,6 +886,114 @@ class SiegeMission(Mission):
                 f"GAME: bell up at {fmt_cell(bell.anchor)}, hover {round(top + 2)} m to ring")
             raised = True
         return raised
+
+    def _count_placement(self, world: WorldAPI, p) -> None:
+        mine = self.stats.pilot(p.drone.student_id)
+        mine.placed += 1
+        if mine.placed % BUILD_FEED_EVERY == 0:
+            world.emit_event("built", f"{p.drone.name} placed {mine.placed} tiles",
+                             student_id=p.drone.student_id)
+        rep = self.repairs.get(p.cell)
+        if rep is None:
+            return
+        if self.tm.height(p.cell) >= rep.need:  # whole again
+            del self.repairs[p.cell]
+        mine.repaired += 1
+        world.add_score(REPAIR_POINTS, f"{p.drone.name} repaired {fmt_cell(p.cell)}",
+                        student_id=p.drone.student_id, feed=False)
+        world.emit_event("repaired", f"{p.drone.name} repaired the wall at {fmt_cell(p.cell)}"
+                         f" +{REPAIR_POINTS}", student_id=p.drone.student_id,
+                         data={"points": REPAIR_POINTS})
+        # widest: "GAME: repaired! N -97 E -97 whole again +1" = 42
+        world.send_text(p.drone.id, f"GAME: repaired! {fmt_cell(p.cell)} "
+                        + ("whole again" if p.cell not in self.repairs else "one more")
+                        + f" +{REPAIR_POINTS}")
+
+    def _call_repairs(self, world: WorldAPI, drones: list[DroneView]) -> None:
+        """Every TARGET_EVERY: the nearest chewed cell to each carrier within
+        reach, with the altitude that places. Stale repairs age out."""
+        for cell, rep in list(self.repairs.items()):
+            if world.now - rep.since > REPAIR_TTL_S or self.tm.height(cell) >= rep.need:
+                del self.repairs[cell]
+        if not self.repairs:
+            return
+        for d in drones:
+            if not d.connected or not d.armed or d.crashed:
+                continue
+            material = self.carry.item(d.id)
+            if material is None:
+                continue
+            best = min(((math.hypot(d.n - hex.axial_to_world(c)[0],
+                                    d.e - hex.axial_to_world(c)[1]), c)
+                        for c, r in self.repairs.items() if r.material == material),
+                       default=None)
+            if best is None or best[0] > REPAIR_CALL_RADIUS:
+                continue
+            cell = best[1]  # widest: "GAME: repair at N -97 E -97 hover 10" = 37
+            world.send_text(d.id, f"GAME: repair at {fmt_cell(cell)} hover "
+                            f"{hover_alt_hint(self.tm, cell)}")
+
+    def _watch_gates(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
+        """A drone that hovers a gate for SPOT_DWELL becomes its spotter, and
+        stays it while it stays near; leaving (or crashing) hands the post
+        back."""
+        by_id = {d.id: d for d in drones}
+        for i, gate in enumerate(GATES):
+            current = self.spotters.get(i)
+            if current is not None:
+                d = by_id.get(current)
+                if (d is None or not d.armed or d.crashed or not d.connected
+                        or math.hypot(d.n - gate[0], d.e - gate[1]) > SPOT_RADIUS):
+                    del self.spotters[i]
+                    if d is not None and d.connected:
+                        world.send_text(d.id, f"GAME: gate {GATE_LABELS[i]} unwatched")
+                continue
+            taken = set(self.spotters.values())
+
+            def free(d: DroneView, t: frozenset[str] = frozenset(taken)) -> bool:
+                return d.id not in t  # one post per drone
+
+            winner = self.spot_dwell[i].update(drones, gate[0], gate[1], dt, eligible=free)
+            if winner is not None:
+                self.spotters[i] = winner.id
+                world.send_text(winner.id, f"GAME: you spot gate {GATE_LABELS[i]}")
+                world.emit_event("spotter", f"{winner.name} is watching gate {GATE_LABELS[i]}",
+                                 student_id=winner.student_id)
+
+    def _report_spawn(self, world: WorldAPI) -> None:
+        """The gate's spotter hears what is through it now (kind counts of
+        the creeps alive that came from that gate); the room hears the
+        spotter, throttled."""
+        i = self._spawned_at
+        drone_id = self.spotters.get(i)
+        if drone_id is None or i < 0:
+            return
+        counts: dict[str, int] = {}
+        for u in self.creeps.values():
+            if u.gate == i:
+                counts[u.kind] = counts.get(u.kind, 0) + 1
+        parts = [f"{counts[k]} {k}" for k in KINDS if k in counts and k != "champion"]
+        boss = "champion" in counts
+
+        def wording(kinds: list[str], with_boss: bool) -> str:
+            return f"gate {GATE_LABELS[i]}: " + " ".join(kinds) + (" + boss" if with_boss else "")
+
+        # widest full line: "GAME: gate N: 5 grunt 6 runner 6 brute 3 sapper" = 47;
+        # with a boss behind that it would not fit — the boss goes first, then
+        # the rarest kinds, so the line always tells the truth it has room for
+        report = wording(parts, boss)
+        if len(report) + 6 > 50:
+            report = wording(parts, False)
+        while len(report) + 6 > 50 and len(parts) > 1:
+            parts = parts[:-1]
+            report = wording(parts, False)
+        world.send_text(drone_id, f"GAME: {report}")
+        if world.now - self.last_spot_feed.get(i, -math.inf) >= SPOT_FEED_EVERY:
+            self.last_spot_feed[i] = world.now
+            d = next((d for d in world.drones() if d.id == drone_id), None)
+            if d is not None:
+                self.stats.pilot(d.student_id).spots += 1
+                world.emit_event("spotted", f"{d.name} spots {report}", student_id=d.student_id)
 
     def _others(self, mine: BlueprintTracker) -> frozenset[Axial]:
         """Cells every OTHER tracker owns: a tile in one structure never
@@ -906,8 +1096,11 @@ class SiegeMission(Mission):
                 uid, DwellTracker(ZAP_RADIUS, float("inf"), HINT_SUSTAIN,
                                   radius_of=self._zap_radius))
 
-            def too_high(d: DroneView, c: float = ceiling) -> bool:
-                return d.alt > c
+            spotting = frozenset(self.spotters.values())
+
+            def too_high(d: DroneView, c: float = ceiling,
+                         posts: frozenset[str] = spotting) -> bool:
+                return d.alt > c and d.id not in posts  # a spotter parks high on purpose
 
             nag = high.update(drones, u.n, u.e, dt, eligible=too_high)
             if nag is not None and self.hints.throttle.ready(f"zap_high:{nag.id}", world.now):
@@ -945,6 +1138,11 @@ class SiegeMission(Mission):
         lured = uid in self.lured
         self._kill(world, uid, verb)
         self.pool += COINS_PER_KILL_EACH * self._seated(world)
+        if drone is not None:
+            if verb == "zap":
+                self.stats.pilot(drone.student_id).zapped += 1
+            elif verb == "squish":
+                self.stats.pilot(drone.student_id).squished += 1
         if lured and verb != "leak":  # a kill in the beacon's kill zone pays extra
             self.pool += LURE_BONUS_EACH * self._seated(world)
         who = drone.student_id if drone is not None else student_id
@@ -1098,9 +1296,12 @@ class SiegeMission(Mission):
     def _spawn_creep(self) -> None:
         self._uid += 1
         self.pending -= 1
+        self._spawned_at = -1
         kind = KINDS[self.roster.pop(0) if self.roster else "grunt"]
-        n, e = self.gates[self._lane % len(self.gates)]
+        gate = self.gates[self._lane % len(self.gates)]
+        n, e = gate
         self._lane += 1
+        self._spawned_at = GATES.index(gate)
         hp, speed = kind.hp, _wave_speed(self.wave) * kind.speed_mult
         if self.buff is not None:  # the room's penalty for an unsolved room quest
             hp += BUFF_HP if self.buff.kind == "hp" else 0
@@ -1108,7 +1309,7 @@ class SiegeMission(Mission):
         self.creeps[self._uid] = GroundUnit(
             uid=self._uid, n=n, e=e, speed=speed,
             kind=kind.name, hp=hp, max_hp=hp, bounty=kind.bounty,
-            keep_cost=kind.keep_cost, chew_rate=kind.chew_rate)
+            keep_cost=kind.keep_cost, chew_rate=kind.chew_rate, gate=self._spawned_at)
 
     def _quest_resolved(self, world: WorldAPI, done: Resolved) -> None:
         """The mission's side of a quest ending: pay, post, count."""
@@ -1245,6 +1446,12 @@ class SiegeMission(Mission):
                               data={"dir": u.heading, "chewing": u.chewing,
                                     "kind": u.kind, "hp": u.hp, "max": u.max_hp,
                                     "frozen": frozen, "lured": uid in self.lured}))
+        for cell, rep in self.repairs.items():
+            n, e = hex.axial_to_world(cell)
+            out.append(Entity(id=f"repair_{cell[0]}_{cell[1]}", kind="ghost_tile", n=n, e=e,
+                              alt=self.tm.top_alt(cell),
+                              data={"material": rep.material, "need": rep.need,
+                                    "have": self.tm.height(cell), "size": hex.HEX_SIZE}))
         for anchor, beacon in self.beacons.items():
             n, e = hex.axial_to_world(anchor)
             out.append(Entity(id=f"beacon_{anchor[0]}_{anchor[1]}", kind="beacon", n=n, e=e,

@@ -52,5 +52,10 @@ EVENT_KINDS: frozenset[str] = frozenset({
     "bell_up",
     "bell_rung",
     "bell_lost",
+    "repaired",
+    "spotter",
+    "spotted",
+    "ferried",
+    "built",
 })
 # END-EVENT-KINDS

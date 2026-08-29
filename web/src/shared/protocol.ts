@@ -105,6 +105,8 @@ export interface ScoreRow {
   student_id: string;
   name: string;
   points: number;
+  /** siege: what they did, compact ("z12 t2 f8 b6 r3 s1"); "" beyond the top 8 or elsewhere */
+  detail?: string;
 }
 
 export interface PadState {

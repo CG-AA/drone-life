@@ -155,7 +155,9 @@ tested); add a branch there when your mission publishes something new.
 **Per-pilot state goes in `pilot(student_id)`, not `hud()`.** `hud()` is
 one dict for the room; `Mission.pilot(student_id) -> dict` (default `{}`)
 rides each drone's own row as `DroneState.pilot` — siege's wallet, bought
-tiers and colours — and lights up the student page's strip. Both reach every socket at 10 Hz, so a
+tiers and colours, and a compact `detail` tally that `api/messages.py`
+copies onto the top-8 score rows for the PILOTS board — and lights up the
+student page's strip. Both reach every socket at 10 Hz, so a
 64-entry map inside `hud()` is 64× the bytes of the same data on the rows.
 
 - **`data.carried_by` is magic**: `api/messages.py` derives the drone's

@@ -32,6 +32,11 @@ export const EVENT_CLASS: Record<string, string> = {
   boss_down: "triumph",
   round_end: "triumph",
   upgrade: "score",
+  repaired: "score",
+  spotter: "",
+  spotted: "",
+  ferried: "",
+  built: "",
   quest_solved: "triumph",
   quest_room: "warn",
   quest_missed: "danger",
@@ -187,7 +192,7 @@ export class Hud {
 
   setScores(scores: ScoreRow[] | undefined): void {
     const rows = boardModel(scores);
-    const key = rows.map((r) => `${r.student_id}:${r.points}`).join("|");
+    const key = rows.map((r) => `${r.student_id}:${r.points}:${r.detail ?? ""}`).join("|");
     if (key === this.lastBoard) return;  // 10 Hz frames, but the board rarely moves
     this.lastBoard = key;
     this.board.hidden = rows.length === 0;
@@ -199,7 +204,14 @@ export class Hud {
       const pts = document.createElement("span");
       pts.className = "pts";
       pts.textContent = String(r.points);
-      li.append(name, pts);
+      li.append(name);
+      if (r.detail) {  // what they did: z12 t2 f8 b6 r3 s1
+        const detail = document.createElement("span");
+        detail.className = "detail";
+        detail.textContent = r.detail;
+        li.append(detail);
+      }
+      li.append(pts);
       return li;
     }));
   }

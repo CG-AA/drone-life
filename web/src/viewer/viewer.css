@@ -202,6 +202,7 @@ canvas { touch-action: none; }
   line-height: 1.5; white-space: nowrap;
 }
 #board-rows li .pts { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+#board-rows li .detail { color: var(--muted, #8a93a6); font-size: 0.8em; letter-spacing: 0.04em; margin: 0 0.6em; white-space: nowrap; }
 #board-rows li:first-child { font-weight: 700; }
 #board-rows li .name { overflow: hidden; text-overflow: ellipsis; max-width: 12ch; }
 
