@@ -66,6 +66,9 @@ in `server/app/game/missions/siege.py` unless noted.
   predict / compute) drawn per pilot from the live world, one room quest a
   wave whose miss buffs the next wave. `docs/QUESTS.md`; worked answers in
   `examples/answers/`. Balance the knobs with the rest in the balance session.
+- **Puzzles.** *(shipped 2026-08-29: the sealed gate S formation puzzle
+  and the chokepoint worked answer; the interceptor ladder and sapper alarm
+  were dropped in favour of quests)*
 - **Puzzles for the "this is boring" crowd.** In-game, co-op, rewarding
   without carrying: a sealed gate that opens only when 3 drones hold a
   formation over it (rewards the *lane*, not the trio); a chokepoint

@@ -49,6 +49,7 @@ gives you `"crate 3 at N 12 E -40"` (prefix stripped). Every position is
 | `steel chewed at …` / `clay chewed at …` | a creep is eating your wall — zap, rebuild (clay goes 3× faster) |
 | `repair at N 9 E -62 hover 6` | you carry the right tile and a hole is near: hover there at 6 m → `repaired! … +1` |
 | `you spot gate E` → `gate E: 3 grunt 1 sapper` | hover 10 m from a gate for 2 s and you are its scout: the room hears your reports |
+| `formation! hold 5 s to open gate S` | 3 drones in a triangle over the sealed south gate (N −63 E 5) → 6 raiders whose +6 each pays the whole room |
 | `clay pit at N 50 E -44` / `got clay, cheap walls, chewed 3x faster` | the second pile: infinite, for walls, beacons and the bell |
 | `ring tower at N 20 E -8! +25` | 6 steel around a watchtower = long range (28 m), fast reload |
 | `beacon up at N 8 E 31, creeps lured` | a clay-steel-clay line of singles: creeps within 25 m walk to it and eat it — kill them there for extra coins |

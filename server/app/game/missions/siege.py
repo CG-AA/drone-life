@@ -44,6 +44,7 @@ from ..building import (
     hover_alt_hint,
     tick_ferry,
 )
+from ..formation import triangle
 from ..hex import Axial
 from ..mission import SEV_WARNING, Entity, Mission, WorldAPI, fmt_world
 from ..path import FlowField
@@ -74,6 +75,19 @@ GATES = tuple(hex.axial_to_world(c) for c in GATE_CELLS)
 GATE_LABELS = ("N", "E", "W")  # what the projector writes on each archway
 PIT_CELL: Axial = (-14, 11)  # ~(50, -44): the quarry mirrored through the Keep
 PIT = hex.axial_to_world(PIT_CELL)
+# The sealed south gate: a co-op puzzle. Three drones holding a triangle over
+# it for FORM_HOLD_S open it for a lane of raiders whose bounty pays the
+# team and the pot — never the trio. A row north of the 64-seat pads.
+BONUS_GATE_CELL: Axial = (8, -14)  # N -63 E 5
+BONUS_GATE = hex.axial_to_world(BONUS_GATE_CELL)
+FORM_RADIUS = 12.0  # m of the gate (the pad rows are 13.5 m away)
+FORM_MIN = 6.0  # m between any two of the three
+FORM_MAX = 12.0
+FORM_MIN_ANGLE = 30.0  # degrees: a line of three is not a triangle
+FORM_HOLD_S = 5.0
+BONUS_LANE_SIZE = 6  # raiders per opening
+BONUS_PER_WAVE = 1  # openings
+RAIDER_POOL_EACH = 1  # pool += this x seats per raider killed (no personal credit)
 
 
 def _gates_for(wave: int) -> int:
@@ -356,6 +370,9 @@ KINDS: Final[dict[str, CreepKind]] = {
                         keep_cost=1, from_wave=7),
     "champion": CreepKind("champion", hp=8, speed_mult=0.6, bounty=20, chew_rate=2.0,
                           keep_cost=3, from_wave=5),
+    # the bonus lane's creep: only through gate S, only while the triangle holds
+    "raider": CreepKind("raider", hp=2, speed_mult=1.2, bounty=6, chew_rate=1.0,
+                        keep_cost=1, from_wave=1),
 }
 ROSTER_KINDS = ("grunt", "runner", "brute", "sapper")  # champions come by their own rule
 # spawn shares per wave band (from wave N: % grunt, runner, brute, sapper)
@@ -430,6 +447,12 @@ class SiegeMission(Mission):
         self.bells: dict[Axial, Bell] = {}
         self.lured: set[int] = set()  # creep uids walking to a beacon this tick
         self.freeze_s = 0.0  # the bell's gift: creeps stand still
+        self.form_acc = 0.0  # s the triangle has held over gate S
+        self.form_told: set[str] = set()  # who heard "formation! hold" this attempt
+        self.bonus_open = False
+        self.bonus_pending = 0  # raiders still to spawn while it holds
+        self.bonus_wave = 0  # the wave whose opening was used
+        self.bonus_timer = 0.0
         self.repairs: dict[Axial, Repair] = {}  # chewed cells worth rebuilding
         self.spot_dwell = [DwellTracker(SPOT_RADIUS, float("inf"), SPOT_DWELL) for _ in GATES]
         self.spotters: dict[int, str] = {}  # gate index -> drone id
@@ -497,7 +520,7 @@ class SiegeMission(Mission):
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
-        self.tm.set_keep_out([KEEP, QUARRY, PIT, *GATES])  # pads are engine-protected already
+        self.tm.set_keep_out([KEEP, QUARRY, PIT, BONUS_GATE, *GATES])  # pads: engine-protected
         self.rng = random.Random(world.rng.getrandbits(32))
         # the quest dice come AFTER siege's own draw: gate sequences per seed
         # stay what they were before quests existed (a test pins them)
@@ -660,6 +683,9 @@ class SiegeMission(Mission):
         self.lured.clear()
         self.freeze_s = 0.0
         self.repairs.clear()
+        self.form_acc, self.bonus_open, self.bonus_pending = 0.0, False, 0
+        self.bonus_wave, self.bonus_timer = 0, 0.0
+        self.form_told.clear()
         for dw in self.spot_dwell:
             dw.clear()
         self.spotters.clear()
@@ -713,6 +739,7 @@ class SiegeMission(Mission):
             "pool": self.pool,
             "quests": self.quests.hud(self.stats.quests_solved, self.stats.quests_missed),
             "frozen_s": max(0, math.ceil(self.freeze_s)),
+            "gate_s": "open" if self.bonus_open else "sealed",
         }
 
     # ------------------------------------------------------------------ tick
@@ -760,6 +787,7 @@ class SiegeMission(Mission):
                 self.spawn_timer += SPAWN_GAP
                 self._spawn_creep()
                 self._report_spawn(world)
+        self._hold_the_south(world, drones, dt)
 
         self._ring_bells(world, drones, dt)
         if self.freeze_s > 0:
@@ -847,7 +875,9 @@ class SiegeMission(Mission):
                             student_id=sid, feed=False)
             world.emit_event("tower_up", f"{name} raised a watchtower! +{TOWER_POINTS}",
                              student_id=sid, data={"points": TOWER_POINTS})
-            world.broadcast_text(f"GAME: tower up! +{TOWER_POINTS}")
+            # widest: "GAME: tower up at N -97 E -97! +15" = 36 — every script
+            # learns where towers stand (the chokepoint answer wants it)
+            world.broadcast_text(f"GAME: tower up at {fmt_cell(match.anchor)}! +{TOWER_POINTS}")
             raised = True
         ring = self.ring_bps.check(self.tm, p.cell, extra_claimed=self._others(self.ring_bps))
         if ring is not None and ring.anchor in self.towers:
@@ -886,6 +916,51 @@ class SiegeMission(Mission):
                 f"GAME: bell up at {fmt_cell(bell.anchor)}, hover {round(top + 2)} m to ring")
             raised = True
         return raised
+
+    def _hold_the_south(self, world: WorldAPI, drones: list[DroneView], dt: float) -> None:
+        """The sealed gate: three drones in a triangle over it for FORM_HOLD_S
+        open it; raiders pour while the triangle holds (one opening a wave);
+        the formation breaking seals it and drops the rest of the lane."""
+        trio = (triangle(drones, *BONUS_GATE, FORM_RADIUS, FORM_MIN, FORM_MAX, FORM_MIN_ANGLE)
+                if self.state == "active" else None)
+        if trio is None:
+            if self.bonus_open:
+                self.bonus_open, self.bonus_pending = False, 0
+                world.emit_event("gate_sealed", "the formation broke — gate S is sealed")
+                world.broadcast_text("GAME: formation broken, gate S sealed", severity=SEV_WARNING)
+            self.form_acc = 0.0
+            self.form_told.clear()
+            return
+        if self.bonus_open:
+            self.bonus_timer -= dt
+            if self.bonus_pending > 0 and self.bonus_timer <= 0:
+                self.bonus_timer += SPAWN_GAP
+                self._spawn_raider()
+            return
+        if self.bonus_wave == self.wave:
+            return  # this wave's opening is spent; hold all you like
+        for d in trio:
+            if d.id not in self.form_told:
+                self.form_told.add(d.id)
+                world.send_text(d.id,
+                                f"GAME: formation! hold {round(FORM_HOLD_S)} s to open gate S")
+        self.form_acc += dt
+        if self.form_acc >= FORM_HOLD_S - _EPS:
+            self.bonus_open, self.bonus_pending, self.bonus_wave = True, BONUS_LANE_SIZE, self.wave
+            self.bonus_timer = 0.0
+            world.emit_event("gate_open", f"gate S is open: {BONUS_LANE_SIZE} raiders pay the pool",
+                             data={"raiders": BONUS_LANE_SIZE})
+            world.broadcast_text("GAME: south gate open! raiders pay the pool")
+
+    def _spawn_raider(self) -> None:
+        self._uid += 1
+        self.bonus_pending -= 1
+        kind = KINDS["raider"]
+        n, e = BONUS_GATE
+        self.creeps[self._uid] = GroundUnit(
+            uid=self._uid, n=n, e=e, speed=_wave_speed(self.wave) * kind.speed_mult,
+            kind=kind.name, hp=kind.hp, max_hp=kind.hp, bounty=kind.bounty,
+            keep_cost=kind.keep_cost, chew_rate=kind.chew_rate, gate=-1)
 
     def _count_placement(self, world: WorldAPI, p) -> None:
         mine = self.stats.pilot(p.drone.student_id)
@@ -1150,6 +1225,9 @@ class SiegeMission(Mission):
         # 'that was me' moment for twenty people at once; tower shots stay quiet
         reason = (f"{drone.name} {_kill_reason(verb)} a {u.kind}" if drone is not None
                   else f"{u.kind} {_kill_reason(verb)}")
+        if u.kind == "raider":  # the south lane pays the room, not the pilot
+            who = None
+            self.pool += RAIDER_POOL_EACH * self._seated(world)
         world.add_score(u.bounty, reason, student_id=who,
                         feed=drone is not None and u.kind != "champion")
         if u.kind == "champion":  # the boss going down is a moment for the wall
@@ -1440,6 +1518,10 @@ class SiegeMission(Mission):
             active = self.state == "active" and gate in self.gates and self.pending > 0
             out.append(Entity(id=f"gate{i}", kind="gate", n=gate[0], e=gate[1], alt=0.0,
                               data={"label": label, "active": active}))
+        out.append(Entity(id="gate3", kind="gate", n=BONUS_GATE[0], e=BONUS_GATE[1], alt=0.0,
+                          data={"label": "S", "active": self.bonus_open and self.bonus_pending > 0,
+                                "sealed": not self.bonus_open,
+                                "hold": round(min(1.0, self.form_acc / FORM_HOLD_S), 2)}))
         frozen = self.freeze_s > 0
         for uid, u in self.creeps.items():
             out.append(Entity(id=f"creep{uid}", kind="troop", n=u.n, e=u.e, alt=u.alt,

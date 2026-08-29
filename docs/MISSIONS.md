@@ -123,7 +123,7 @@ frame **[enforced]**. Kinds in play today, and who renders them
 | `ghost_tile` | `material`, `need`, `have`, `size` | building.ts |
 | `furnace` | — | building.ts |
 | `keep` | `hp`, `max` | siege.ts |
-| `gate` | `label`, `active` | siege.ts |
+| `gate` | `label`, `active` (+ `sealed`, `hold` on gate S) | siege.ts |
 | `troop` | `dir` (deg), `chewing`, `kind`, `hp`, `max`, `frozen`, `lured` | siege.ts |
 | `tower` | `range`, `tier`, `ring` | siege.ts |
 | `beacon` | `radius`, `lured`, `chew` | siege.ts |

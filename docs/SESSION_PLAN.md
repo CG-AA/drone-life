@@ -114,6 +114,16 @@ worked answer in the repo — don't reveal that until the wrap.
    an altitude). Worked answers: `examples/answers/quest_*.py` — after the wrap.
    The per-wave **room quest** is for the whole room: nobody solving it buffs
    the next wave, so a solver is doing everyone a favour.
+6. **The sealed gate.** Gate S opens only while three drones hold a
+   triangle over it (6–12 m apart, 5 s): a lane of raiders whose bounty
+   pays the team and the pot, never the trio. Three scripts that agree on
+   three points — the first co-op puzzle that needs pilots to talk.
+7. **Chokepoint, worked.** `examples/answers/bot_chokepoint.py` builds the
+   tower at the game's suggestion and then serpentine 2-high stubs across
+   the lane inside its range — the path gets longer under the gun, never
+   blocked (a blocked lane is chewed). What it can see and cannot see is in
+   its docstring; `tower up at N .. E ..` now tells every script where
+   towers stand.
 
 ## 7. Pace-setter bots
 
@@ -194,6 +204,13 @@ per tier), speed 30/60 (+25 % caps per tier), tower 40/80 (+4 m range,
 `TOWER_COOLDOWN_MIN` 1 s), colour/outline 10 (cosmetic, repeatable). Tiers
 are personal and last the round; at ~15 coins a wave a pilot buys one tier
 by wave 2 and reaches the top rungs only in a long round.
+
+Gate S (`BONUS_GATE_CELL` (8, −14) = N −63 E 5, a row north of the 64-seat
+pads): `FORM_RADIUS` 12, `FORM_MIN`/`FORM_MAX` 6/12 m, `FORM_MIN_ANGLE`
+30°, `FORM_HOLD_S` 5; `BONUS_LANE_SIZE` 6 raiders (`KINDS["raider"]`: 2 hp,
+1.2×, +6) per opening, `BONUS_PER_WAVE` 1; raider kills pay the team total
+and `RAIDER_POOL_EACH` 1 coin per seat, no name on the board. Raider leaks
+still hit the Keep — that is the puzzle's risk.
 
 Roles: a chewed cell is a ghost and a `repair at … hover N` callout to
 carriers within `REPAIR_CALL_RADIUS` 40 m every `TARGET_EVERY`, for

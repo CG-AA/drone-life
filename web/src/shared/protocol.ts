@@ -91,8 +91,9 @@ export interface TowerData { range: number; tier: number; ring: boolean }
 export interface BeaconData { radius: number; lured: number; chew: number }
 /** the bell: hover altitude to ring it, charge 0..1 of the dwell */
 export interface BellData { hover: number; charge: number }
-/** an archway creeps pour from; active while its wave is still spawning */
-export interface GateData { label: string; active: boolean }
+/** an archway creeps pour from; active while its wave is still spawning.
+ * Gate S (the bonus lane) also carries `sealed` and the formation `hold` 0..1 */
+export interface GateData { label: string; active: boolean; sealed?: boolean; hold?: number }
 export interface BeamData { tn: number; te: number; talt: number }
 /** a drone's zap: origin is the entity pose (the drone), target rides in data */
 export interface ZapArcData { tn: number; te: number; talt: number }

@@ -71,7 +71,7 @@ def test_setup_entities_and_announcements():
     kinds = {e.kind for e in m.entities(world)}
     assert {"keep", "tile_source", "gate"} <= kinds
     gates = [e for e in m.entities(world) if e.kind == "gate"]
-    assert [g.data["label"] for g in gates] == ["N", "E", "W"]
+    assert [g.data["label"] for g in gates] == ["N", "E", "W", "S"]
     assert not any(g.data["active"] for g in gates), "quiet before the first wave"
     keep = next(e for e in m.entities(world) if e.kind == "keep")
     assert keep.data == {"hp": KEEP_HP, "max": KEEP_HP}
@@ -96,7 +96,7 @@ def test_hud_state_tracks_the_wave_machine():
     assert hud == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
                    "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0,
                    "pool": 0, "quests": {"solved": 0, "missed": 0, "room": None},
-                   "frozen_s": 0}
+                   "frozen_s": 0, "gate_s": "sealed"}
     world.views = [view("d0", n=-90.0, e=-76.0)]
     world.run(m, 10.0)
     assert m.hud()["timer_s"] == 35 and m.hud()["state"] == "grace"
@@ -105,7 +105,7 @@ def test_hud_state_tracks_the_wave_machine():
     assert h["wave"] == 1 and h["state"] == "active" and h["timer_s"] == 0
     assert h["creeps_alive"] + h["pending"] == 4
     assert all(isinstance(v, int) for k, v in h.items()
-               if k not in ("state", "stats", "last_round", "quests")), "integers only"
+               if k not in ("state", "stats", "last_round", "quests", "gate_s")), "integers only"
     assert h["stats"]["best_wave"] == 1
 
 
@@ -496,7 +496,7 @@ def test_tower_builds_fires_and_beam_expires():
     build_tower(world, m, cell)
     assert cell in m.towers
     assert world.score == before + TOWER_POINTS
-    assert any("tower up! +15" in t for t in texts(world))
+    assert any(t.startswith("GAME: tower up at N") and t.endswith("! +15") for t in texts(world))
     placed = [t for t in texts(world) if "placed! tile at" in t]
     assert len(placed) == 2, "the tower-completing tile gets the tower text"
 

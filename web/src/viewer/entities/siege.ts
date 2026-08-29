@@ -15,6 +15,7 @@ const TROOP_LOOK: Record<string, TroopLook> = {
   brute: { fill: 0x9c1f2e, edge: 0x3d0a12, tick: 0xffb0b0, r: 1.9, sides: 6 },
   sapper: { fill: 0xa25cff, edge: 0x4a1f8a, tick: 0xe6d0ff, r: 1.15, sides: 4 },
   champion: { fill: 0xd91f5a, edge: 0x5a0a24, tick: 0xffd0e0, r: 2.6, sides: 8 },
+  raider: { fill: 0xffd166, edge: 0x7a5a10, tick: 0xfff0c0, r: 1.3, sides: 5 },
 };
 
 function polyAround(cx: number, cy: number, r: number, sides: number, rot = 0): number[] {
@@ -160,15 +161,26 @@ export const gate: KindRenderer = {
   },
   draw(vis, ent, pose, _drawAlt, s, timeMs) {
     const active = Boolean(ent.data.active);
+    const sealed = Boolean(ent.data.sealed);
+    const hold = Math.max(0, Math.min(1, Number(ent.data.hold ?? 0)));
     // a dark archway on the lattice: two posts and a lintel, hex footprint
     const base = hexPoly(2.4, s);
     vis.g.poly(base).fill({ color: 0x1c1a26, alpha: 0.9 })
-      .stroke({ width: 2, color: active ? 0xff5c5c : 0x5a4a5a, alpha: 0.95 });
+      .stroke({ width: 2, color: active ? 0xff5c5c : sealed ? 0xffd166 : 0x5a4a5a, alpha: 0.95 });
     const h = 2.2 * ALT_LIFT * s;
     const w = Math.max(4, s * 1.3);
     vis.g.rect(-w - 2, -h, 3, h).fill({ color: 0x4a3a4a });
     vis.g.rect(w - 1, -h, 3, h).fill({ color: 0x4a3a4a });
     vis.g.rect(-w - 2, -h - 3, w * 2 + 4, 3).fill({ color: 0x6a5a6a });
+    if (sealed) { // a portcullis, and the formation's hold as a filling arc
+      for (let k = -1; k <= 1; k++) {
+        vis.g.rect(k * w * 0.5 - 1, -h, 2, h).fill({ color: 0xffd166, alpha: 0.7 });
+      }
+      if (hold > 0) {
+        vis.g.arc(0, -h * 0.5, w * 1.6, -Math.PI / 2, -Math.PI / 2 + hold * Math.PI * 2)
+          .stroke({ width: 3, color: 0xffd166, alpha: 0.9 });
+      }
+    }
     if (active) { // creeps are coming through: a pulsing red ring on the ground
       const glow = pulse(timeMs, 220, 0.5, 0.35);
       const ring: number[] = [];

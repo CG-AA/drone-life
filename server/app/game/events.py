@@ -57,5 +57,7 @@ EVENT_KINDS: frozenset[str] = frozenset({
     "spotted",
     "ferried",
     "built",
+    "gate_open",
+    "gate_sealed",
 })
 # END-EVENT-KINDS
