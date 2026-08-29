@@ -114,7 +114,7 @@ QUARRY_EMPTY_SAY = "GAME: quarry empty, restock next wave"
 
 def _quarry_stock(pilots: int, wave: int) -> int:
     """Steel the quarry holds for a wave: 20 pilots at wave 1 see 27 (nine
-    towers' worth), a lone rehearsal drone 7; wave 0 is the grace stock."""
+    towers' worth), a lone rehearsal drone 8 (7 during grace, wave 0)."""
     return QUARRY_STOCK_BASE + QUARRY_STOCK_PER_PILOT * pilots + QUARRY_STOCK_PER_WAVE * wave
 
 _HINTS = ("GAME: stack 3 steel = watchtower",
@@ -618,7 +618,12 @@ class SiegeMission(Mission):
         elif self.pending == 0 and not self.creeps:
             bonus = WAVE_BONUS if self.leaks == 0 else WAVE_BONUS_LEAKY
             world.add_score(bonus, f"wave {self.wave} cleared", feed=False)
-            share = self._pay_wallets(world)
+            if self.leaks == 0:
+                world.broadcast_text(f"GAME: wave {self.wave} clear! +{bonus}")
+            else:
+                world.broadcast_text(
+                    f"GAME: wave {self.wave} clear, {self.leaks} leaked +{bonus}")
+            share = self._pay_wallets(world)  # after the clear line: cause, then coins
             by_towers = (f" ({self.wave_tower_kills} by towers)"
                          if self.wave_tower_kills else "")
             coins = f", {share} coin{'s' if share != 1 else ''} each" if share else ""
@@ -629,11 +634,6 @@ class SiegeMission(Mission):
                 data={"points": bonus, "kills": self.wave_kills, "leaks": self.leaks,
                       "tower_kills": self.wave_tower_kills, "share": share,
                       "pool": self.pool})
-            if self.leaks == 0:
-                world.broadcast_text(f"GAME: wave {self.wave} clear! +{bonus}")
-            else:
-                world.broadcast_text(
-                    f"GAME: wave {self.wave} clear, {self.leaks} leaked +{bonus}")
             self.state, self.timer = "build", BUILD_S
             world.broadcast_text(f"GAME: wave {self.wave + 1} in {round(BUILD_S)}s, build!")
             self.last_build_hint = world.now

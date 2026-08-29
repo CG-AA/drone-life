@@ -50,9 +50,10 @@ Facts that bite if you don't know them:
   (`joined … orphan_rtl`). Your handler must tolerate all of them.
   **[enforced]**
 - `on_text` is the one command surface a script has: `dronelife.say(text)`
-  sends a STATUSTEXT upstream, the gateway strips and truncates it (≤ 50
-  chars, never empty, at most 8 queued per drone per tick), and the engine
-  hands it to you verbatim. Interpret it yourself, reply with `send_text`.
+  sends a STATUSTEXT upstream, the sim strips and truncates it (≤ 50 chars,
+  never empty, at most 8 per drone per 50 ms sim tick — so up to 16 per
+  mission step), and the engine hands it to you verbatim. Interpret it
+  yourself, reply with `send_text`.
   Ignored by default; must tolerate any string. **[enforced]**
 
 ## WorldAPI — everything a mission may do
