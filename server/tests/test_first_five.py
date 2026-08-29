@@ -7,7 +7,6 @@ unedited, it must take off, fly to its guard post and start hunting.
 """
 
 import asyncio
-import math
 import time
 
 import pytest
@@ -42,9 +41,15 @@ async def test_template_unedited_is_a_visible_win(tmp_path, mission):
         deadline = time.monotonic() + FLIGHT_BUDGET_S
         await wait_for(deadline, lambda: snap().armed, "armed")
         await wait_for(deadline, lambda: snap().alt > 5.0, "climbed in view")
-        await wait_for(deadline,
-                       lambda: math.hypot(snap().n - 20.0, snap().e - 20.0) < 2.5,
-                       "reached (20, 20)")
+        # the destination is random per run (so a room's landings spread out
+        # instead of stacking on one hex): the template picks north 10..40,
+        # east -30..30 — far from the pad row at N -90
+        await wait_for(deadline, lambda: snap().n > 7.5, "flew north into the arena")
+        await wait_for(deadline, lambda: snap().on_ground and snap().n > 7.5,
+                       "landed in view")
+        spot = snap()
+        assert 7.5 <= spot.n <= 42.5 and -32.5 <= spot.e <= 32.5, \
+            f"landed outside the template's spread box: ({spot.n:.1f}, {spot.e:.1f})"
         await wait_for(deadline,
                        lambda: (r := service.runner.run_for(student.id)) is not None
                        and r.state == "exited",

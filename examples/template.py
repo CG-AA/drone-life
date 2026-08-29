@@ -16,6 +16,8 @@ Whatever your instructor has running, the game tells you what to do next;
 the templates menu has a starter for each game.
 """
 
+import random
+
 from dronelife import connect
 
 drone = connect()
@@ -23,7 +25,9 @@ drone = connect()
 
 def fly():
     drone.takeoff(10)
-    drone.goto(20, 20, 10)
+    north = random.randint(10, 40)    # a spot of your own: 20 pilots landing on
+    east = random.randint(-30, 30)    # the same hex would be a pile-up
+    drone.goto(north, east, 10)
     print("I am at", drone.position())
     drone.land()
 
