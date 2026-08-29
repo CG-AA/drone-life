@@ -152,6 +152,13 @@ quest or null), `stats`; delivery returns `crates`, `delivered`.
 The strip's wording lives in `web/src/viewer/hud.ts` (`stripModel`, pure and
 tested); add a branch there when your mission publishes something new.
 
+**A round's summary is the `round_end` event.** Whatever a mission emits as
+`round_end` from its `reset()` — siege does, with `data=stats.as_dict()` plus
+`score`, `round`, `duration_s` — the service appends to
+`<state>/rounds.jsonl` (`core/rounds.py`) once the reset completes, with
+`ts`, `room`, `mission`, `seed`, `seats`, `names` in front. Keep the data
+JSON-safe and flat-ish: it is what `make balance` tabulates.
+
 **Per-pilot state goes in `pilot(student_id)`, not `hud()`.** `hud()` is
 one dict for the room; `Mission.pilot(student_id) -> dict` (default `{}`)
 rides each drone's own row as `DroneState.pilot` — siege's wallet, bought

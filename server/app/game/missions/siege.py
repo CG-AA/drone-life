@@ -288,6 +288,8 @@ class SiegeStats:
     quests_missed: int = 0  # room quests nobody solved
     ring_towers: int = 0
     bells: int = 0  # rung
+    first_tower_s: float | None = None  # seconds into the round
+    coins_spent: int = 0  # at the shop
     pilots: dict[str, PilotStats] = field(default_factory=dict)  # student_id -> theirs
 
     def pilot(self, student_id: str | None) -> PilotStats:
@@ -303,7 +305,8 @@ class SiegeStats:
                 "keep_hits": self.keep_hits, "keep_falls": self.keep_falls,
                 "best_wave": self.best_wave, "quests_solved": self.quests_solved,
                 "quests_missed": self.quests_missed, "ring_towers": self.ring_towers,
-                "bells": self.bells,
+                "bells": self.bells, "first_tower_s": self.first_tower_s,
+                "coins_spent": self.coins_spent,
                 "pilots": {sid: p.as_dict() for sid, p in self.pilots.items()}}
 
 
@@ -466,6 +469,7 @@ class SiegeMission(Mission):
         # gate sequence differs between rounds yet stays reproducible per seed
         self.rng = random.Random(0)
         self.round = 0
+        self.round_started = 0.0  # world.now at setup: rounds.jsonl's duration
         self.stats = SiegeStats()
         self.flow = path.flood(self.tm, KEEP_CELL, climb=CLIMB)
         self._flow_version = self.tm.version
@@ -521,6 +525,7 @@ class SiegeMission(Mission):
 
     def setup(self, world: WorldAPI) -> None:
         self.tm.set_keep_out([KEEP, QUARRY, PIT, BONUS_GATE, *GATES])  # pads: engine-protected
+        self.round_started = world.now
         self.rng = random.Random(world.rng.getrandbits(32))
         # the quest dice come AFTER siege's own draw: gate sequences per seed
         # stay what they were before quests existed (a test pins them)
@@ -638,6 +643,7 @@ class SiegeMission(Mission):
             if item == "speed":
                 world.set_speed(drone.id, self._speed_scale(sid))
         self.wallets[sid] = wallet - price
+        self.stats.coins_spent += price
         # widest: "GAME: bought outline #ff8800 (9999 left)" = 41
         world.send_text(drone.id, f"GAME: bought {item} {bought} ({wallet - price} left)")
         world.emit_event("upgrade", f"{drone.name} bought {item} {bought}", student_id=sid,
@@ -871,6 +877,8 @@ class SiegeMission(Mission):
             self.towers[match.anchor] = Tower(builder=sid)
             self.stats.towers += 1
             self.stats.pilot(sid).towers += 1
+            if self.stats.first_tower_s is None:
+                self.stats.first_tower_s = round(world.now - self.round_started, 1)
             world.add_score(TOWER_POINTS, f"watchtower at {fmt_cell(match.anchor)}",
                             student_id=sid, feed=False)
             world.emit_event("tower_up", f"{name} raised a watchtower! +{TOWER_POINTS}",
@@ -1458,7 +1466,9 @@ class SiegeMission(Mission):
             "round_end",
             f"round over: wave {st.best_wave}, {st.kills} kills, {st.leaks} leaked, "
             f"{world.score} points",
-            data={**st.as_dict(), "score": world.score, "round": self.round + 1})
+            data={**st.as_dict(), "score": world.score, "round": self.round + 1,
+                  "duration_s": round(world.now - self.round_started),
+                  "pool": self.pool, "wallets": sum(self.wallets.values())})
         world.broadcast_text(f"GAME: round over! wave {st.best_wave}, {st.kills} kills")
         self.last_round = {"round": self.round + 1, "wave": st.best_wave,
                            "kills": st.kills, "score": world.score}

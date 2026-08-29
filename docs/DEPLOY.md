@@ -117,7 +117,7 @@ target); the systemd unit passes `PORT` from the room's env file
 | `RUNNER_NETWORK` | `slirp4netns:allow_host_loopback=true` | podman network for sandboxes |
 | `DRONE_HOST` | `10.0.2.2` | host loopback as seen from inside a container |
 | `RUN_MAX_SECONDS` | `900` | wall-clock cap per script run |
-| `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`); the unit sets `state/<ROOM_ID>` |
+| `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`); the unit sets `state/<ROOM_ID>`; also `rounds.jsonl` there — one line per played siege round, appended at reset, survives resets and restarts, deleted by `make clean` |
 | `EXTRA_BOT_SCRIPTS` | (empty) | dev only: more scripts `/admin` may spawn as bots, by path under `examples/` without `.py`, comma-separated (`answers/quest_route,…`) — the worked answers stay out of the default allowlist so a class never meets them before the wrap |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
 | `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |

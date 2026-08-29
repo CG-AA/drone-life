@@ -128,6 +128,8 @@ optional SSH reverse tunnel in
 - `make image` then `make e2e`: one real container delivers a crate (without
   the image the suite *skips*, it does not fail).
 - `make load LOAD_BOTS=20` on the actual hardware; overruns < 1% on `/healthz`.
+- `make balance ROUNDS=2 SECONDS=180` once, so `server/state/balance/rounds.jsonl`
+  has numbers to compare the class against (SESSION_PLAN §9).
 - Rehearse one mission switch (edit `MISSION`, restart, `make reset`); time it.
 - Printed `docs/CHEATSHEET.md` per seat; projector readable from 5 m; one phone joins over the room wifi.
 

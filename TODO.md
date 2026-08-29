@@ -83,6 +83,8 @@ in `server/app/game/missions/siege.py` unless noted.
   easiest coding win of the day. Do not engineer it away server-side — keep
   starter flaws that a student can see on the projector and fix themselves,
   and list them as "easy practices" on the cheat sheet. *(decided)*
+- **Instrumentation.** *(shipped 2026-08-29: `rounds.jsonl` at every reset,
+  `make balance`, and the one projector change — pickup rows fold)*
 - **Instrumentation before balance.** `SiegeStats` per round → append a
   JSONL line at reset (pilots, waves, kills by verb, leaks, towers, steel
   ferried, time-to-first-tower); `make balance` runs N headless bot-only

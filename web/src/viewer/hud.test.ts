@@ -4,7 +4,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { EVENT_CLASS, boardModel, roomQuestText, splashFor, stripModel } from "./hud";
+import { EVENT_CLASS, boardModel, foldedText, foldsInto, roomQuestText, splashFor, stripModel }
+  from "./hud";
 
 const CLIENT_ONLY = new Set(["stale"]);
 
@@ -110,4 +111,15 @@ it("words the room quest for the wall", () => {
     .toBe("ROOM QUEST 6 · ROUTE · 32s");
   expect(roomQuestText({ room: { id: 6, family: "compute", left_s: 0, solved: true } }))
     .toBe("ROOM QUEST 6 · COMPUTE · SOLVED");
+});
+
+it("folds a burst of pickups into one row, and nothing else", () => {
+  expect(foldsInto(null, "pickup", 1000)).toBe(false);
+  expect(foldsInto({ kind: "pickup", atMs: 1000 }, "pickup", 2500)).toBe(true);
+  expect(foldsInto({ kind: "pickup", atMs: 1000 }, "pickup", 3500)).toBe(false);
+  expect(foldsInto({ kind: "pickup", atMs: 1000 }, "ferried", 1500)).toBe(false);
+  expect(foldsInto({ kind: "quest_solved", atMs: 1000 }, "quest_solved", 1500)).toBe(false);
+  expect(foldsInto({ kind: "tower_up", atMs: 1000 }, "tower_up", 1500)).toBe(false);
+  expect(foldedText("pickup", 6)).toBe("pickups ×6");
+  expect(foldedText("built", 2)).toBe("tiles placed ×2");
 });

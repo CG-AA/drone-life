@@ -6,6 +6,12 @@ import { REDUCED_MOTION } from "../shared/theme";
 
 const FEED_MAX = 8;
 const FEED_TTL_MS = 45_000;
+/** The one projector concession to a 64-seat room: the ferry loop posts a
+ * row per pickup (~70 a wave into 8 rows), which would bury a quest solve or
+ * a ring tower. Repeats of these kinds within COLLAPSE_MS fold into one row
+ * ("pickups ×6"); milestones, quests, buildings never fold. */
+const COLLAPSE_KINDS = new Set(["pickup", "ferried", "built"]);
+const COLLAPSE_MS = 2000;
 const BANNER_MS = 2800;
 const OVERLAY_MS = 2200;
 /** the round summary is the one overlay worth reading twice */
@@ -124,6 +130,20 @@ export function roomQuestText(quests: unknown): string {
   const head = `ROOM QUEST ${room.id} · ${String(room.family ?? "").toUpperCase()}`;
   if (room.solved) return `${head} · SOLVED`;
   return `${head} · ${Math.max(0, Math.round(Number(room.left_s ?? 0)))}s`;
+}
+
+/** A folded row's wording: what the kind is, how many so far. Pure. */
+export function foldedText(kind: string, count: number): string {
+  const noun = kind === "pickup" ? "pickups" : kind === "ferried" ? "ferry runs" : "tiles placed";
+  return `${noun} ×${count}`;
+}
+
+/** Whether a new event of `kind` at `nowMs` joins the previous row rather
+ * than adding one: same collapsible kind, inside the window. Pure. */
+export function foldsInto(prev: { kind: string; atMs: number } | null, kind: string,
+                          nowMs: number): boolean {
+  return prev !== null && COLLAPSE_KINDS.has(kind) && prev.kind === kind
+    && nowMs - prev.atMs <= COLLAPSE_MS;
 }
 
 /** Which events get a big moment on the wall, and where. */
@@ -267,12 +287,23 @@ export class Hud {
     this.timers[s.slot] = window.setTimeout(() => { el.hidden = true; }, ms);
   }
 
+  private lastRow: { kind: string; atMs: number; count: number; el: HTMLDivElement } | null = null;
+
   addEvent(ev: EventData): void {
     const s = splashFor(ev, this.simT);
     if (s) this.splash(s);
+    const nowMs = Date.now();
+    const prev = this.lastRow;
+    if (prev && prev.el.isConnected && foldsInto(prev, ev.kind, nowMs)) {
+      prev.count += 1;
+      prev.atMs = nowMs;
+      prev.el.textContent = foldedText(ev.kind, prev.count);
+      return;
+    }
     const div = document.createElement("div");
     div.textContent = ev.msg;
     div.className = EVENT_CLASS[ev.kind] ?? "";
+    this.lastRow = { kind: ev.kind, atMs: nowMs, count: 1, el: div };
     this.feed.prepend(div);
     while (this.feed.childElementCount > FEED_MAX) this.feed.lastElementChild?.remove();
     setTimeout(() => {

@@ -256,6 +256,21 @@ cells before the Keep beside the last lane (`BUILD_SITE_STEPS`, 8 ≈ 40 m out �
 past where gate-camping zappers already emptied it); towers reach 16 m and
 fire every 2 s; a drone zaps one creep per 1.5 s (`ZAP_DWELL`), never a clump.
 
+**Balance from numbers.** Every reset that ends a played round appends one
+line to `server/state/<room>/rounds.jsonl` (`ts`, `room`, `seed`, `seats`,
+`names`, then the round: `best_wave`, `kills`/`zapped`/`squished`/`shot`,
+`leaks`, `towers`, `ring_towers`, `bells`, `first_tower_s`,
+`quests_solved`/`missed`, `coins_spent`, `pool`, `wallets`, `score`,
+`duration_s`, and the per-pilot tally). `make balance ROUNDS=3
+BOTS="6:bot_siege 2:bot_tower 1:bot_repair 1:bot_scout" SECONDS=300` runs
+that many headless bot-only rounds on seeds 3, 4, 5 … (real time — the
+bots sleep on the wall clock) into `server/state/balance/rounds.jsonl` and
+prints them as a table, so a knob change is compared against the same
+waves. Columns to knobs: `first_tower_s` ↔ `GRACE_S`/quarry stock;
+`leaks` ↔ `WAVE_MAX`/tower stats; `coins_spent` ↔ `SHOP`/`COINS_PER_KILL_EACH`;
+`quests_missed` ↔ the quest knobs. Tune only against a run that had the
+content the class will see.
+
 Measured before the kinds landed (8 × `bot_siege` + 2 × `bot_builder`,
 ~3.5 min): grace and the wave machine ran exactly on the documented clocks
 — waves 1–3 in ~50 s per cycle, all cleared by zaps alone, keep never hit;

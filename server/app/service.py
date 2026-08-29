@@ -12,12 +12,13 @@ import logging
 import sys
 import time
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from .api import messages
 from .config import Settings
-from .core import snapshot
+from .core import rounds, snapshot
 from .core.bus import EventBus
 from .core.registry import Registry, RoomFullError, Student
 from .game import hex
@@ -32,7 +33,7 @@ from .sim.drone import SEV_INFO
 from .sim.world import World
 
 if TYPE_CHECKING:
-    from .api.ws import Hub
+    pass
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,15 @@ EXIT_PHRASE = {
     "start_failed": "could not start",
     "runner_failed": "hit a sandbox problem — instructor needed",
 }
+
+
+class WorldSink(Protocol):
+    """What the driver hands its frames to — the WS Hub in the app, a
+    NullHub headless (load test, balance tool)."""
+
+    def broadcast_world(self, data: dict) -> None: ...
+    def broadcast_tiles(self, data: dict) -> None: ...
+    def send_run_state(self, student_id: str, payload: dict) -> None: ...
 
 
 class KinematicBackend(DroneBackend):
@@ -97,7 +107,10 @@ class DroneLifeService:
         self.bot_scripts = BOT_SCRIPTS | {
             s.strip() for s in settings.extra_bot_scripts.split(",") if s.strip()}
         self.runner = RunnerManager(settings, EXAMPLES_DIR, self._on_run_event)
-        self.hub: Hub | None = None  # set by api.ws when the app wires up
+        self.hub: WorldSink | None = None  # set by api.ws when the app wires up
+        self._rounds_path = settings.abs_state_dir / "rounds.jsonl"
+        self._last_round: dict | None = None  # the round_end event, until reset writes it
+        self.bus.subscribe(self._on_bus_event)
 
         self.ticks = 0
         self.overruns = 0
@@ -111,6 +124,28 @@ class DroneLifeService:
         self._last_driver_error = float("-inf")
         self._driver_errors_quiet = 0  # since the last full traceback
         self._driver_error_seen: set[str] = set()  # distinct bugs in this window
+
+    def _on_bus_event(self, event: dict) -> None:
+        """The mission's round summary (emitted inside reset) is what
+        rounds.jsonl records; keep the latest until reset_world writes it."""
+        try:
+            if event.get("kind") == "round_end":
+                self._last_round = event
+        except Exception:  # a listener must never reach emit()
+            log.exception("bus listener failed")
+
+    def _round_record(self, event: dict, names: list[str]) -> dict:
+        """One rounds.jsonl line: where and when, who was seated (taken
+        before the reset removes the bots), then the mission's data."""
+        return {
+            "ts": datetime.now(UTC).isoformat(timespec="seconds"),
+            "room": self.settings.room_id,
+            "mission": self.engine.mission.name,
+            "seed": self.settings.sim_seed,
+            "seats": len(names),
+            "names": names,
+            **event.get("data", {}),
+        }
 
     def _bind_mission(self, settings: Settings) -> None:
         """Instantiate the mission and wire it to the sim and broadcast state.
@@ -312,6 +347,7 @@ class DroneLifeService:
         # the reset itself is the news; twenty "X's script was stopped" rows
         # would bury the round summary the mission just posted
         self._resetting = True
+        seated = sorted(s.name for s in self.registry.students.values())
         try:
             await self.runner.stop_all()
         finally:
@@ -323,8 +359,11 @@ class DroneLifeService:
                 self.registry.remove(student.id)
                 await self.backend.remove(self.drone_id_for(student))
         self.world.reset()
-        self.engine.reset(self.world.t)
+        self.engine.reset(self.world.t)  # the mission posts round_end here
         self._save_snapshot()
+        if self._last_round is not None:
+            record, self._last_round = self._round_record(self._last_round, seated), None
+            await asyncio.to_thread(rounds.append, self._rounds_path, record)
 
     # ------------------------------------------------------------------ bots
 
