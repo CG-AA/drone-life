@@ -232,6 +232,11 @@ than keying the limiter on anything else a client can set.
 
 ## Workshop-day runbook
 
+`bash docs/deploy/pre-workshop.sh` (as your admin account, `sudo -v` first)
+is steps 0–2 below plus a bot smoke and a reset, in order, stopping at the
+first failure; `ONLY=preflight` (or `deploy|build|image|restart|smoke|checklist`)
+runs one step. The manual version:
+
 ```bash
 # 0. before anything else: does this box have what a submit needs?
 sudo -iu dronelife

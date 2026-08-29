@@ -387,16 +387,23 @@ SHARES: tuple[tuple[int, tuple[int, int, int, int]], ...] = (
     (10, (25, 30, 30, 15)),
 )
 
-WAVE_MAX = 20
+WAVE_MAX = 20  # the cap for a small room…
+WAVE_MAX_PER_PILOT = 0.5  # …and how it grows: 20 pilots cap at 30, 64 at 52
 PILOTS_PER_CREEP = 4  # +1 creep per this many connected pilots
 BOSS_EVERY = 5  # a champion walks in behind every 5th wave
+
+
+def _wave_cap(pilots: int) -> int:
+    """The 64-seat playtest met a flat cap of 20 on wave 1 and never felt a
+    siege; the cap scales with the room so a big class meets pressure too."""
+    return WAVE_MAX + int(pilots * WAVE_MAX_PER_PILOT)
 
 
 def _wave_size(wave: int, pilots: int = 0) -> int:
     """Waves grow with the wave number and with the room: eight optimal
     zappers trivialised the first waves in rehearsal, so a full class meets
     the cap sooner; a lone rehearsal drone still sees four."""
-    return min(WAVE_MAX, 4 + 2 * (wave - 1) + pilots // PILOTS_PER_CREEP)
+    return min(_wave_cap(pilots), 4 + 2 * (wave - 1) + pilots // PILOTS_PER_CREEP)
 
 
 def _wave_speed(wave: int) -> float:

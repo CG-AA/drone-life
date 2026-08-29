@@ -93,6 +93,11 @@ in `server/app/game/missions/siege.py` unless noted.
 - **Projector at scale.** Hide pad-row labels past ~20 seats, throttle
   per-kind feed rows at 60 pilots, keep the PILOTS board as the readable
   surface. *(proposed)*
+- **Balance.** *(2026-08-29: the wave cap scales with the room —
+  `WAVE_MAX 20 + 0.5/pilot`; room quests and their penalty need one
+  enrolled pilot; numbers from `make balance` in SESSION_PLAN §9. Still
+  open, needs a human room: shop prices, ring/beacon/bell value, whether
+  60 s room quests are the right length.)*
 - **Balance session — last.** Scale `WAVE_MAX` with pilots (60 pilots met
   the cap on wave 1), then tune bounties/tower stats/quarry stock against
   the JSONL, with the reward rule as the constraint. Not before the content

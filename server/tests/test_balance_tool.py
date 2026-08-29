@@ -15,8 +15,8 @@ def test_bot_spec_parses_and_rejects_nonsense():
 
 
 def test_table_lines_up_and_marks_missing_numbers():
-    recs = [{"round": 1, "seed": 3, "best_wave": 7, "kills": 41, "first_tower_s": None},
-            {"round": 2, "seed": 4, "best_wave": 12, "kills": 130, "first_tower_s": 38.5}]
+    recs = [{"run": 1, "seed": 3, "best_wave": 7, "kills": 41, "first_tower_s": None},
+            {"run": 2, "seed": 4, "best_wave": 12, "kills": 130, "first_tower_s": 38.5}]
     out = table(recs).splitlines()
     assert out[0].split() == list(COLUMNS)
     assert len({len(line) for line in out}) == 1, "every line the same width"

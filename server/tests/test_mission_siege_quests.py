@@ -202,8 +202,20 @@ def test_compute_expires_quietly_wrong():
 
 # ------------------------------------------------------------- room quest
 
+def test_no_room_quest_until_somebody_opts_in():
+    world, m = make(seats=("d0", "d1"))
+    m._start_wave(world, 3)
+    assert m.quests.room is None and not any("room quest" in t for t in texts(world))
+    m.quests.enrol(drone(world))
+    m.creeps.clear(), m.roster.clear()
+    m.pending = 0
+    m._start_wave(world, 4)
+    assert m.quests.room is not None and m.quests.room.qid == 4
+
+
 def test_a_room_quest_opens_with_the_wave_and_a_miss_buffs_the_next():
     world, m = make(seats=("d0", "d1"))
+    m.quests.enrol(drone(world))
     m.quests.rng = random.Random(5)
     m._start_wave(world, 3)
     room = m.quests.room
@@ -238,6 +250,7 @@ def test_a_room_quest_opens_with_the_wave_and_a_miss_buffs_the_next():
 
 def test_room_quest_expiry_mid_wave_alternates_the_buff():
     world, m = make()
+    m.quests.enrol(drone(world))
     hold_creep(m)
     m._start_wave(world, 3)
     hold_creep(m)
@@ -263,6 +276,7 @@ def test_room_quest_expiry_mid_wave_alternates_the_buff():
 
 def test_the_first_pilot_to_solve_a_room_quest_pays_the_pool():
     world, m = make(seats=("d0", "d1", "d2"))
+    m.quests.enrol(drone(world, "d2"))
     m.quests.rng = random.Random(1)
     m._start_wave(world, 3)
     while m.quests.room is None or m.quests.room.family != "compute":

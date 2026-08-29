@@ -184,8 +184,11 @@ if a slow one starves, lower `CRATE_MAX` won't help — lower
 Siege (all in `server/app/game/missions/siege.py`): `GRACE_S` (45 — raise to
 60 for a first-timer room, or when the intro runs long), `BUILD_S` (20,
 between waves), `SPAWN_GAP` (1.5 s/creep), wave size
-`min(20, 4 + 2·(wave−1) + pilots//4)` (roster-scaled: 20 pilots meet the
-cap at wave 6, one rehearsal drone still sees 4), base speed
+`min(cap, 4 + 2·(wave−1) + pilots//4)` with `cap = WAVE_MAX 20 +
+WAVE_MAX_PER_PILOT 0.5 × pilots` (roster-scaled both ways: 20 pilots meet a
+cap of 30 at wave 12, 64 pilots one of 52 at wave 20, one rehearsal drone
+still sees 4 and caps at 20 — the flat cap of 20 was what made the 64-seat
+playtest a shooting gallery), base speed
 `min(2.5, 1.5 + 0.1·(wave−1))` × the kind's multiplier. Scoring: bounty per
 kind (grunt/runner 2, sapper 3, brute 5, champion 20), `WAVE_BONUS` 10 for
 a clean wave / `WAVE_BONUS_LEAKY` 5, `TOWER_POINTS` 15, `KEEP_HIT_POINTS`
@@ -271,6 +274,23 @@ waves. Columns to knobs: `first_tower_s` ↔ `GRACE_S`/quarry stock;
 `quests_missed` ↔ the quest knobs. Tune only against a run that had the
 content the class will see.
 
+Measured with the enrichment stack (2026-08-29, `make balance ROUNDS=2
+SECONDS=240`, three bot mixes in parallel on the lab box, seeds 3 and 4):
+8 seats (6 zappers + 2 tower bots) reached wave 4 in 240 s with 28–34
+kills, 0 leaks, 2 towers, the first at 79–119 s; 19 seats (14 zappers, 3
+tower bots, a repair and a scout bot) wave 4, 43 kills, 0 leaks, 3 towers,
+first at 52 s, the scout relaying 3–4 reports; 11 seats with the three
+worked-answer bots enrolled: 5 and 4 quests solved, 0 missed. Income is
+room-size-invariant as designed: 192 / 8, 570 / 19 and 319 / 11 coins in
+wallets after three clears ≈ 8–10 coins per pilot per wave, so the first
+zap tier (20) comes after wave 2–3, not wave 2. One zapper bot takes ~75 %
+of the kills (all bots chase the same callout and the first to arrive
+wins): the blob, as intended. Four-minute rounds never reach the cap;
+`SECONDS=600` does (wave 8+), which is where `WAVE_MAX_PER_PILOT` should be
+judged with a human room. Bots never buy, ring or ring the bell, so shop
+prices, ring/beacon/bell value and `PLACE`/`REPAIR` points are still
+human-only calls — the class is the measurement.
+
 Measured before the kinds landed (8 × `bot_siege` + 2 × `bot_builder`,
 ~3.5 min): grace and the wave machine ran exactly on the documented clocks
 — waves 1–3 in ~50 s per cycle, all cleared by zaps alone, keep never hit;
@@ -288,6 +308,10 @@ before the day and watch the round summary on reset.
   stops being "the main event" and becomes the finale; consider `GRACE_S=60`.
 
 ## Day −1 checklist (cannot be verified off the lab server)
+
+`sudo -v && bash docs/deploy/pre-workshop.sh` runs the mechanical half of
+this list (deploy → build → image → restart → preflight → smoke) and prints
+the rest; the boxes below are the whole list.
 
 - [ ] `set -a && . /etc/drone-life.env && set +a && make preflight` (the env
       file is not read by `make` on its own) / podman path: `make image`,

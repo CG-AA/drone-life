@@ -23,7 +23,7 @@ from app.core import rounds
 from app.headless import NullHub, find_port_base
 from app.service import DroneLifeService
 
-COLUMNS = ("round", "seed", "seats", "best_wave", "kills", "zapped", "squished", "shot",
+COLUMNS = ("run", "seed", "seats", "best_wave", "kills", "zapped", "squished", "shot",
            "leaks", "towers", "ring_towers", "bells", "first_tower_s", "quests_solved",
            "quests_missed", "coins_spent", "score", "duration_s")
 
@@ -85,6 +85,8 @@ async def main_async(args: argparse.Namespace, state_dir: Path) -> int:
     for i in range(args.rounds):
         await run_round(i, args, bots, state_dir)
     records = rounds.read(path)[before:]
+    for i, rec in enumerate(records):  # every run is a fresh service, so the
+        rec["run"] = i + 1  # mission's own round number is always 1
     print()
     print(table(records))
     print(f"\n{len(records)} round(s) appended to {path}")

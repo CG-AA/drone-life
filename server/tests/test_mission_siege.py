@@ -22,6 +22,7 @@ from app.game.missions.siege import (
     ZAP_ARC_S,
     ZAP_DWELL,
     SiegeMission,
+    _wave_cap,
     _wave_size,
 )
 from app.game.units import GroundUnit
@@ -405,8 +406,10 @@ def test_wave_composition_follows_the_bands():
 def test_wave_size_scales_with_pilots_and_clamps():
     assert _wave_size(1, 1) == 4 and _wave_size(1, 3) == 4
     assert _wave_size(1, 8) == 6 and _wave_size(1, 20) == 9
-    assert _wave_size(7, 1) == 16 and _wave_size(9, 20) == WAVE_MAX
-    assert _wave_size(40, 40) == WAVE_MAX
+    assert _wave_size(7, 1) == 16 and _wave_size(9, 20) == 25, "20 pilots: cap 30, not yet"
+    assert _wave_size(12, 20) == 30 == _wave_cap(20), "…met at wave 12"
+    assert _wave_size(40, 1) == WAVE_MAX, "a lone drone keeps the small-room cap"
+    assert _wave_cap(64) == 52 and _wave_size(20, 64) == 52, "a full class meets a real siege"
 
 
 def test_a_full_room_gets_a_bigger_first_wave():

@@ -440,7 +440,10 @@ class QuestBoard:
         buff, self.pending_buff = self.pending_buff, None
         if self.room is not None and self.room.solved_by is not None:
             self.room = None  # solved: the wall has seen it; make room for the next
-        if self.room is None and ctx.wave >= ROOM_QUEST_FROM_WAVE:
+        # a room where nobody has opted in gets no room quest and no penalty:
+        # the balance runs showed a bot-only room buffed every wave from 4 on
+        # for a feature nobody was playing
+        if self.room is None and ctx.wave >= ROOM_QUEST_FROM_WAVE and self.enrolled:
             self.issue_room(world, ctx)
         return buff
 
