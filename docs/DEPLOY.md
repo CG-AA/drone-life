@@ -107,6 +107,8 @@ target and the systemd unit).
 | `STATE_DIR` | `state` | roster/score snapshot dir (relative to `server/`) |
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
 | `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |
+| `JOIN_STRIKES` | `3` | wrong room codes from one IP before it is locked out of `/join`, `/world` and the viewer (right code or not); `0` disables |
+| `JOIN_LOCKOUT_S` | `900` | how long that lockout lasts; `0` = until restart. `POST /api/v1/admin/unlock` (admin token) lifts all lockouts now |
 | `SUBMIT_RATE_LIMIT_PER_MINUTE` | `10` | per-student script submissions, guards container churn |
 | `ALLOW_DEFAULT_SECRETS` | `false` | dev only: boot on the placeholder `ROOM_CODE`/`ADMIN_TOKEN` |
 

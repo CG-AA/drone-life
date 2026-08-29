@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from app.api.auth import RateLimiter, constant_time_eq
+from app.api.auth import RateLimiter, StrikeGuard, constant_time_eq
 from app.core.registry import Registry
 from tests.conftest import make_settings, running_app
 
@@ -124,7 +124,7 @@ async def transport_client(app, ip):
 
 async def test_join_limit_is_per_ip(tmp_path):
     """One student burning their budget must not lock out the rest of the class."""
-    settings = make_settings(tmp_path, join_rate_limit_per_minute=3)
+    settings = make_settings(tmp_path, join_rate_limit_per_minute=3, join_strikes=0)
     async with running_app(settings) as app:
         alice = await transport_client(app, "10.0.0.7")
         bob = await transport_client(app, "10.0.0.8")
@@ -213,3 +213,74 @@ async def test_admin_rejects_wrong_token(tmp_path):
         async with client:
             r = await client.get("/api/v1/admin/students", headers={"X-Admin-Token": "nope"})
             assert r.status_code == 403
+
+
+# ---------------------------------------------------------------- strikes
+
+def test_strikes_lock_after_the_ceiling_and_expire():
+    clock = FakeClock()
+    guard = StrikeGuard(3, lockout_s=600, clock=clock)
+    guard.strike("a")
+    guard.strike("a")
+    assert not guard.blocked("a")
+    guard.strike("a")
+    assert guard.blocked("a") and not guard.blocked("b")
+    clock.advance(601)
+    assert not guard.blocked("a")  # lockout served, slate clean
+
+
+def test_strikes_zero_lockout_holds_until_restart():
+    clock = FakeClock()
+    guard = StrikeGuard(1, lockout_s=0, clock=clock)
+    guard.strike("a")
+    clock.advance(10 ** 6)
+    assert guard.blocked("a")
+    assert guard.unlock_all() == 1 and not guard.blocked("a")
+
+
+def test_a_correct_code_clears_earlier_typos():
+    guard = StrikeGuard(3, lockout_s=600, clock=FakeClock())
+    guard.strike("a")
+    guard.strike("a")
+    guard.clear("a")
+    guard.strike("a")
+    guard.strike("a")
+    assert not guard.blocked("a")
+
+
+async def test_three_wrong_codes_lock_the_address_out_everywhere(tmp_path):
+    """After the third wrong code the address is refused on /join, /world and
+    the viewer socket alike — with the correct code too (no oracle) — while
+    another address is unaffected, and the admin can lift it."""
+    settings = make_settings(tmp_path, join_strikes=3)
+    async with running_app(settings) as app:
+        mallory = await transport_client(app, "10.0.0.66")
+        alice = await transport_client(app, "10.0.0.7")
+        async with mallory, alice:
+            guess = {"room_code": "wrong", "name": "M"}
+            for _ in range(3):
+                assert (await mallory.post("/api/v1/join", json=guess)).status_code == 403
+            right = {"room_code": "test-room", "name": "M"}
+            locked = await mallory.post("/api/v1/join", json=right)
+            assert locked.status_code == 429 and locked.json()["error"]["code"] == "locked"
+            assert (await mallory.get("/api/v1/world?code=test-room")).status_code == 429
+            ok = await alice.post("/api/v1/join", json={"room_code": "test-room", "name": "Ann"})
+            assert ok.status_code == 200
+            headers = {"X-Admin-Token": settings.admin_token}
+            lifted = await alice.post("/api/v1/admin/unlock", headers=headers)
+            assert lifted.json() == {"unlocked": 1}
+            assert (await mallory.get("/api/v1/world?code=test-room")).status_code == 200
+
+
+async def test_two_typos_then_the_right_code_is_not_a_lockout(tmp_path):
+    settings = make_settings(tmp_path, join_strikes=3)
+    async with running_app(settings) as app:
+        client = await transport_client(app, "10.0.0.8")
+        async with client:
+            async def join(code: str) -> int:
+                return (await client.post("/api/v1/join",
+                                          json={"room_code": code, "name": "K"})).status_code
+            assert [await join(c) for c in ("990045a", "99004a6")] == [403, 403]
+            assert await join("test-room") == 200
+            assert [await join(c) for c in ("x", "y")] == [403, 403]
+            assert await join("test-room") == 200

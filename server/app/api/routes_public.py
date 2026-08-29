@@ -14,7 +14,7 @@ from ..core.registry import RoomFullError, Student
 from ..runner.manager import RunnerError
 from ..service import EXAMPLES_DIR, DroneLifeService
 from ..sim.backend import DroneView
-from .auth import constant_time_eq, err, get_service, require_student
+from .auth import err, gate_room_code, get_service, refuse, require_student
 
 router = APIRouter(prefix="/api/v1")
 
@@ -23,6 +23,7 @@ MAX_CODE_BYTES = 64 * 1024
 # spawns) — a worked example is the fastest way past a blank page
 TEMPLATES = {
     "beginner": "template.py",
+    "delivery": "template_delivery.py",
     "siege": "template_siege.py",
     "pymavlink": "template_pymavlink.py",
     "bot_courier": "bot_courier.py",
@@ -46,10 +47,10 @@ class SubmitBody(BaseModel):
 async def join(body: JoinBody, request: Request,
                service: DroneLifeService = Depends(get_service)) -> dict:
     ip = request.client.host if request.client else "?"
-    if not request.app.state.join_limiter.allow(ip):
-        raise err(429, "rate", "too many join attempts; wait a minute")
-    if not constant_time_eq(body.room_code.strip(), service.settings.room_code):
-        raise err(403, "room_code", "wrong room code — ask your instructor")
+    verdict = gate_room_code(request.app.state, ip, body.room_code)
+    if verdict != "ok":
+        raise refuse(verdict)
+    request.app.state.join_limiter.allow(ip)  # correct joins spend budget too: no join spam
     name = body.name.strip()
     if not (1 <= len(name) <= 24):
         raise err(400, "name", "pick a name between 1 and 24 characters")
@@ -68,9 +69,10 @@ async def join(body: JoinBody, request: Request,
 
 
 def default_variant(mission: str) -> str:
-    """The starter a fresh editor loads: the main event gets its own, so a
-    student joining mid-siege is not handed a delivery script."""
-    return "siege" if mission == "siege" else "beginner"
+    """The starter a fresh editor loads: the teaching game and the main event
+    get their own, so a student joining mid-siege is not handed a first-flight
+    script."""
+    return mission if mission in ("delivery", "siege") else "beginner"
 
 
 @router.get("/template")
@@ -136,16 +138,11 @@ async def status(student: Student = Depends(require_student),
 @router.get("/world")
 async def world(request: Request, code: str = "",
                 service: DroneLifeService = Depends(get_service)) -> dict:
-    # a wrong code here is a room-code guess like any other, so it spends the
-    # join budget. Once that budget is gone every answer is 429, right code or
-    # wrong — answering the correct one while refusing to charge for guesses
-    # would leave an oracle with no ceiling at all.
+    # a wrong code here is a room-code guess like any other: it spends the
+    # join budget and earns a strike (auth.gate_room_code has the reasoning)
     ip = request.client.host if request.client else "?"
-    limiter = request.app.state.join_limiter
-    if limiter.blocked(ip):
-        raise err(429, "rate", "too many attempts; wait a minute")
-    if not constant_time_eq(code.strip(), service.settings.room_code):
-        limiter.allow(ip)
-        raise err(403, "room_code", "wrong room code")
+    verdict = gate_room_code(request.app.state, ip, code)
+    if verdict != "ok":
+        raise refuse(verdict)
     return {"world": service.world_message(), "feed": list(service.bus.feed)[-30:],
             "hello": service.hello_message()}

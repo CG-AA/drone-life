@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     static_dir: Path = Path("../web/dist")
 
     join_rate_limit_per_minute: int = 30  # per IP, guards room-code guessing
+    join_strikes: int = 3  # wrong room codes per IP before a lockout (0 = off)
+    join_lockout_s: int = 900  # how long the lockout lasts (0 = until restart)
     submit_rate_limit_per_minute: int = 10  # per student, guards container churn
 
     @field_validator("room_code", "admin_token")

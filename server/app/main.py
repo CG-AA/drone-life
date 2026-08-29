@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .api import routes_admin, routes_public
 from .api import ws as ws_module
-from .api.auth import RateLimiter
+from .api.auth import RateLimiter, StrikeGuard
 from .api.ws import Hub
 from .config import Settings, check_secrets
 from .service import DroneLifeService
@@ -47,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.service = service
     app.state.hub = hub
     app.state.join_limiter = RateLimiter(settings.join_rate_limit_per_minute)
+    app.state.join_strikes = StrikeGuard(settings.join_strikes, settings.join_lockout_s)
     app.state.submit_limiter = RateLimiter(settings.submit_rate_limit_per_minute)
 
     @app.exception_handler(StarletteHTTPException)

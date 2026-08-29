@@ -97,3 +97,25 @@ async def test_siege_starter_unedited_hunts(tmp_path):
         assert "Traceback" not in log_text(), log_text()[-800:]
     finally:
         await service.stop()
+
+
+async def test_delivery_starter_unedited_delivers(tmp_path):
+    """The delivery starter is the cheat-sheet loop verbatim: unedited it must
+    hear a callout, pick a crate up and put +10 on the board."""
+    settings = make_settings(tmp_path, mission="delivery")
+    service = DroneLifeService(settings)
+    await service.start()
+    try:
+        student, _ = await service.join("Courier-Kid")
+        await service.runner.submit_local(student, EXAMPLES_DIR / "template_delivery.py")
+
+        def log_text() -> str:
+            return "\n".join(line["line"] for line in
+                             service.runner.log_for(student.id).tail(200))
+
+        deadline = time.monotonic() + FLIGHT_BUDGET_S
+        await wait_for(deadline, lambda: "got crate" in log_text(), "picked a crate up")
+        await wait_for(deadline, lambda: service.engine.score >= 10, "delivered one")
+        assert "Traceback" not in log_text(), log_text()[-800:]
+    finally:
+        await service.stop()

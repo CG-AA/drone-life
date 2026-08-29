@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from ..runner.manager import RunnerError
@@ -72,3 +72,9 @@ async def bots(body: BotsBody, service: DroneLifeService = Depends(get_service))
     if result["room_full"] and not result["started"]:
         raise err(409, "room_full", "no free slots for bots")
     return result
+
+
+@router.post("/unlock")
+async def unlock(request: Request, _: None = Depends(require_admin)) -> dict:
+    """Lift every room-code lockout (a student who typoed three times)."""
+    return {"unlocked": request.app.state.join_strikes.unlock_all()}
