@@ -5,7 +5,7 @@
  * the sessionStorage token. */
 
 import type { AdminInfo, BanList, BotsResult, RestartResult, RosterStudent } from "../shared/protocol";
-import { $, actionButton, banner, guarded, runPill, typedConfirm } from "../shared/ui";
+import { $, actionButton, armedConfirm, banner, guarded, runPill, typedConfirm } from "../shared/ui";
 import { ApiFailure, addBan, banStudent, clearBans, clearOverride, clearToken, fetchBans,
   fetchHealth, fetchInfo, fetchRoster, getToken, kickStudent, killScript, removeBan,
   resetWorld, restartServer, setToken, spawnBots, tokenProblem, unlock } from "./api";
@@ -282,11 +282,13 @@ function requestRestart(btn: HTMLButtonElement, mission: string | null): void {
     banner(restartNotice(result, mission !== null), { info: true });
   });
 }
+// two presses, not a typed word: the instructor does this at every block
+// boundary with the class waiting, and the drop-down already names the target
 const switchBtn = $("switch-btn") as HTMLButtonElement;
-typedConfirm(switchBtn, "switch", () =>
+armedConfirm(switchBtn, "really switch?", () =>
   requestRestart(switchBtn, ($("mission-select") as HTMLSelectElement).value));
 const restartBtn = $("restart-btn") as HTMLButtonElement;
-typedConfirm(restartBtn, "restart", () => requestRestart(restartBtn, null));
+armedConfirm(restartBtn, "really restart?", () => requestRestart(restartBtn, null));
 $("mission-form").addEventListener("submit", (ev) => ev.preventDefault());
 const clearOverrideBtn = $("clear-override-btn") as HTMLButtonElement;
 clearOverrideBtn.addEventListener("click", () => {

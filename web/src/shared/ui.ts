@@ -94,9 +94,10 @@ export function armedConfirm(btn: HTMLButtonElement, armedLabel: string,
 }
 
 /** A destructive press that a stray click cannot reach: the button is
- * replaced by "type <word>", and only that word fires it. For the actions
- * whose blast radius is the whole class, where armedConfirm's two clicks are
- * two clicks in the same place. */
+ * replaced by "type <word>", and only that word fires it. For reset world,
+ * whose blast radius is the whole class and which nobody does in a hurry;
+ * the process row (switch/restart) is armedConfirm, pressed at every block
+ * boundary with the class waiting. */
 export function typedConfirm(btn: HTMLButtonElement, word: string,
                              fire: () => void): void {
   const box = document.createElement("span");

@@ -67,10 +67,10 @@ under one minute; the rest is students pressing Run again.
 **Box A — fresh start** (used at every switch in the default plan):
 
 1. In the console: pick `<name>` in the mission dropdown, leave *keep score*
-   unticked, **switch & restart**, type `switch`. (Shell: `make switch
-   MISSION=<name>` with the env file sourced.) The feed says `switching to
-   <name> — back in a few seconds`; the console banner says whether systemd
-   will bring it back.
+   unticked, press **switch & restart** twice (the second press confirms).
+   (Shell: `make switch MISSION=<name>` with the env file sourced.) The feed
+   says `switching to <name> — back in a few seconds`; the console banner
+   says whether systemd will bring it back.
 2. Before leaving, the server stops every script, drops every `Bot-*` and
    **zeroes the score** — there is no `make reset` step any more. Prod: back
    in ~5 s, roster and tokens restored, fresh mission state. Dev: the process

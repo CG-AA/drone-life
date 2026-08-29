@@ -173,7 +173,7 @@ They need only a browser — no installs. The longer handout is
 
 ### Switching missions
 
-From the console: pick the mission, **switch & restart** (type `switch`). The
+From the console: pick the mission, **switch & restart** (press it twice). The
 server writes `server/state/<room>/mission`, stops every script, drops the
 bots, zeroes the score (untick *keep score* to carry it) and restarts itself;
 under systemd it is back in ~5 s and every page reconnects on its own. Under

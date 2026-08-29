@@ -345,7 +345,8 @@ waves) or running scripts: the mission runs `setup()` again and every
 container is swept. Students do not need to re-join — their page reconnects
 with the token it already has.
 
-Both are console buttons, typed confirms like *reset world*:
+Both are console buttons, pressed twice (the first press arms it for 3 s;
+*reset world* stays a typed confirm):
 
 - **restart server** — the process saves its snapshot, says so on the feed
   (`server restarting — back in a few seconds`) and leaves; systemd brings it

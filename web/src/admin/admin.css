@@ -71,7 +71,7 @@
 #ban-input { width: 12rem; }
 #ban-form .spacer { margin-left: auto; }
 
-/* the process row: switch (a dropdown + typed confirm) and a plain restart */
+/* the process row: switch (a dropdown + press-twice button) and a plain restart */
 #server-controls {
   display: flex;
   align-items: center;
@@ -82,7 +82,6 @@
   border-radius: var(--radius);
   background: var(--bg-panel);
 }
-#server-controls > .typed-confirm:last-child { margin-left: auto; }
 
 /* the confirm input takes the button's place, so it inherits its position */
 #reset-world-btn, #controls .typed-confirm, #restart-btn { margin-left: auto; }
