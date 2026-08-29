@@ -39,6 +39,7 @@ class Ctx:
         self.flow = path.flood(self.tm, KEEP, climb=1)
         self.flow0 = self.flow
         self.creeps = creeps or {}
+        self.beacons = {}
         self.gates = ((86.0, 3.0), (0.0, 83.0))[:gates]
         self.wave_size = wave_size
         self.heard_wave = {"d0"}
@@ -114,14 +115,12 @@ def test_generators_are_deterministic_per_seed():
 def test_every_line_fits_at_the_widest():
     """Two-digit ids, the far corner cell, the longest kind and variant."""
     ctx = Ctx(wave=9, gates=2)
-    far = hex.world_to_axial(-95.0, -95.0)
     for seed in range(30):
         q = make_route(random.Random(seed), ctx, 99, 3, True, (0.0, 0.0))
         assert q is not None
-        q.stops[0] = far  # the widest position a cell can print
         for line in q.lines:
             check_text(line)
-        check_text(f"GAME: {q.tag} stop 5 at {hex.axial_to_world(far) and 'N -97 E -97'}")
+    check_text("GAME: room quest 99 stop 5 at N -97 E -97")  # the widest a cell prints
     for variant_room in (True, False):
         for seed in range(40):
             q = make_compute(random.Random(seed), ctx, 99, 3, variant_room,
@@ -190,3 +189,13 @@ def test_compute_answers_are_what_the_text_says():
             else:
                 assert q.answer == hex.distance(hex.world_to_axial(*origin), cell)
     assert seen == {"dist", "dist pad", "hexes", "hexes pad", "gates", "creeps"}
+
+
+def test_predict_waits_while_a_beacon_stands_and_room_routes_fit_their_clock():
+    ctx = Ctx(creeps={1: creep((0, 10), speed=2.0)})
+    ctx.beacons = {(6, 0): object()}
+    assert make_predict(random.Random(1), ctx, 1, 1, (0.0, 0.0)) is None
+    ctx = Ctx(wave=9)
+    for seed in range(20):
+        q = make_route(random.Random(seed), ctx, 9, 3, True, (0.0, 0.0))
+        assert q is not None and q.left_s <= 60 and f", {round(q.left_s)} s" in q.lines[0]

@@ -54,11 +54,11 @@ under one minute; the rest is students pressing Run again.
 | 1:15 | lull check | if the feed stalls: `make bots N=2 SCRIPT=bot_courier` as pace-setters; kick them from `/admin` once humans overtake | bots demonstrate the loop | copy what the bots do |
 | 1:20 | delivery II (15′) | call out names from the feed ("Alice delivered!"); tease the optimizations (nearest crate, `wait=False`) | milestones | optimize |
 | 1:35 | break (15′) | write the delivery total on the whiteboard; run **Box A** with `MISSION=siege` during the break | restart banner → keep + quarry | break |
-| 1:50 | siege intro (15′) | rules on screen: creeps → Keep, zap / squish / towers; "45 s grace — get a tower up"; assign nothing yet | keep, gates, quarry | read the siege block of the cheat sheet |
+| 1:50 | siege intro (15′) | rules on screen: creeps → Keep, zap / squish / towers, and the three words — `say("wallet")`, `say("shop")`, `say("quest")`; "45 s grace — get a tower up"; assign nothing yet | keep, gates, quarry, clay pit, gate S sealed | read the siege block of the cheat sheet |
 | 2:05 | siege round 1 — learn (30′) | let it be chaos; narrate the first tower, first zap, first chewed wall; end round: `make reset`, record score + wave on the whiteboard | waves, towers, keep hp | fight however they like |
-| 2:35 | siege round 2 — coordinate (35′) | before Run: assign roles out loud — quarry ferries, tower builders, zappers; mid-round, point at the gate that's leaking | fewer leaks, higher waves | play a role |
-| 3:10 | siege round 3 — the record (35′) | "beat round 2." Engineers: hand out the §6 challenges; everyone else defends | record attempt | defend / automate |
-| 3:45 | wrap (15′) | scores ladder on the whiteboard; the pymavlink reveal (STUDENT_GUIDE table); "this exact code flies a real drone" | final feed | — |
+| 2:35 | siege round 2 — coordinate (35′) | before Run: assign the roles the game now scores — ferries (steel and clay), builders (towers, a ring, a beacon, the bell), repair, a scout per gate, zappers; mid-round, point at the leaking gate and at the PILOTS board's tally column; a lull: `bot_repair` / `bot_scout` | fewer leaks, higher waves, coins spent | play a role, spend your coins |
+| 3:10 | siege round 3 — the record (35′) | "beat round 2." Engineers: hand out the §6 challenges (quests, gate S, the chokepoint); everyone else defends | record attempt, room quests on the wall | defend / automate |
+| 3:45 | wrap (15′) | scores ladder on the whiteboard and `rounds.jsonl`'s three lines; hand out `examples/answers/` now, not before; the pymavlink reveal (STUDENT_GUIDE table); "this exact code flies a real drone" | final feed | — |
 
 ## 5. Transition procedures
 
@@ -186,7 +186,7 @@ Siege (all in `server/app/game/missions/siege.py`): `GRACE_S` (45 — raise to
 between waves), `SPAWN_GAP` (1.5 s/creep), wave size
 `min(cap, 4 + 2·(wave−1) + pilots//4)` with `cap = WAVE_MAX 20 +
 WAVE_MAX_PER_PILOT 0.5 × pilots` (roster-scaled both ways: 20 pilots meet a
-cap of 30 at wave 12, 64 pilots one of 52 at wave 20, one rehearsal drone
+cap of 30 at wave 12, 64 pilots one of 52 at wave 17, one rehearsal drone
 still sees 4 and caps at 20 — the flat cap of 20 was what made the 64-seat
 playtest a shooting gallery), base speed
 `min(2.5, 1.5 + 0.1·(wave−1))` × the kind's multiplier. Scoring: bounty per
@@ -234,7 +234,7 @@ around a watchtower): `RING_RANGE` 28, `RING_COOLDOWN` 1.5, `RING_POINTS`
 singles): `BEACON_RADIUS` 25, `BEACON_MAX` 2, `LURE_BONUS_EACH` 1 coin per
 seat per lured kill; arrivals chew the steel in `CHEW_S`. Bell (6-clay ring
 + 3 clay): `BELL_DWELL_S` 3 at `BELL_ALT_ABOVE` 3 m over the top, `FREEZE_S`
-15, one shot. Costs in ferry time (quarry ~45 m, pit ~65 m from the Keep,
+15, one shot. Costs in ferry time (both piles are ~67 m from the Keep,
 ~30 s a tile): a watchtower ≈ 1.5 min solo, the ring +3 min solo (1 min
 with three ferries), a bell ≈ 3 min solo.
 

@@ -14,7 +14,7 @@ import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from .api import messages
 from .config import Settings
@@ -31,9 +31,6 @@ from .sim import params as P
 from .sim.backend import DroneBackend, DroneView
 from .sim.drone import SEV_INFO
 from .sim.world import World
-
-if TYPE_CHECKING:
-    pass
 
 log = logging.getLogger(__name__)
 

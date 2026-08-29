@@ -23,7 +23,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: server/uv.lock
       - run: uv sync --frozen
-      - run: uv run ruff check app tests
+      - run: uv run ruff check app tests tools
       - run: uv run mypy app
       - run: uv run pytest -q
 

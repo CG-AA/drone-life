@@ -85,7 +85,7 @@ lint:
 	cd web && npm run lint
 
 lint-fix:
-	cd server && uv run ruff check --fix app tests
+	cd server && uv run ruff check --fix app tests tools
 
 # workshop morning: can this box actually run a class? (--no-smoke skips the test container)
 # make preflight ROOM=r2 checks room 2 as its unit sees it (docs/ROOMS.md)

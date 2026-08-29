@@ -7,9 +7,16 @@ somebody's head. Tick them top to bottom.
 ## 1. Land the code (GitHub, ~10 minutes)
 
 The stack is eight branches, each on the previous, on GitHub as stacked
-PRs #16–#23 (`siege/1-say-economy` … `siege/8-balance`). Merge them **in order**,
-each into the one before it (or squash the whole stack into `main` at once
-— it is one linear history), then confirm CI is green on `main`.
+PRs #16–#23 (`siege/1-say-economy` … `siege/8-balance`); every PR's base is
+the previous branch. Two ways to land it — pick one:
+
+- **one merge**: retarget #23 to `main` (Edit → base) and merge it; it is one
+  linear history, so `main` gets all eight commits. Close #16–#22.
+- **in order**: merge #16 into `main` and delete its branch — GitHub then
+  retargets #17 to `main` — and repeat down to #23.
+
+Then confirm CI is green on `main`. Until that is done, the deploy script
+needs `BRANCH=siege/8-balance` (it deploys `origin/main` by default).
 
 - [ ] #16 `siege/1-say-economy` → `main` (say() channel, pot → wallets, finite quarry)
 - [ ] #17 `siege/2-upgrades` (the shop) — after 1
@@ -32,30 +39,43 @@ runner image as the service user, restarts `drone-life@main` and every
 `drone-life@rN`, runs `make preflight --all-rooms`, flies three bots, resets,
 and prints the checklist below. It stops at the first failure and says why;
 fix and re-run (`ONLY=preflight bash docs/deploy/pre-workshop.sh` reruns one
-step). It never edits `/etc/drone-life.env` and never prints secrets.
+step; by hand it is `PREFLIGHT_ARGS=--all-rooms make preflight`). It never
+edits `/etc/drone-life.env` and never prints secrets. **For a new class add
+`FRESH=1`**: the box still holds the 2026-08-29 playtest roster and score in
+`server/state/main/`, and the smoke would otherwise pass on ghost seats.
 
 ## 3. Hand checks the script prints (do them at the box, then from outside)
 
-- [ ] `/etc/drone-life.env`: `MISSION=freefly` (siege comes at the break via
-      SESSION_PLAN §5's SWITCH box), real `ROOM_CODE` and `ADMIN_TOKEN`,
-      `FORWARDED_ALLOW_IPS=127.0.0.1`, `PUBLIC_URL=` the address on the
-      projector card, `ROOMS=r1,…` (or empty), and **no** `EXTRA_BOT_SCRIPTS`
-      (the worked answers must stay hidden until the wrap).
+- [ ] `/etc/drone-life.env`, by hand — preflight only warns when a value is
+      *unset*, a wrong one passes: `MISSION=freefly` (the box is on `siege`
+      from the playtest; siege comes back at the break via SESSION_PLAN §5's
+      SWITCH box), real `ROOM_CODE` and `ADMIN_TOKEN`,
+      `FORWARDED_ALLOW_IPS=127.0.0.1` (it was wrong on 2026-08-29),
+      `PUBLIC_URL=` the address on the projector card, `ROOMS=r1,…` for the
+      small missions and empty for the big siege, and **no**
+      `EXTRA_BOT_SCRIPTS` (the worked answers must stay hidden until the wrap).
 - [ ] `/etc/drone-life.d/*.env` for every room (docs/ROOMS.md;
-      `sh docs/deploy/rooms/mkrooms.sh N | sudo sh`).
+      `sh docs/deploy/rooms/mkrooms.sh N | sudo sh`), plus the proxy's
+      `location /rN/` blocks and `TUNNEL_ROOM_FORWARDS` on the gateway
+      (ROOMS.md) — rooms are a proxy change too.
+- [ ] After the deploy, **reload** the projector, `/admin` and any `/submit`
+      tab left open from the last class: an old tab runs the old bundle (no
+      pot, no quest strip, buildings as grey dots).
 - [ ] From a phone on mobile data: `PUBLIC_URL/` (projector), `/submit`,
       `/r1/submit`. The gateway tunnel and the OCI firewall rule are the two
       things that rot silently (docs/deploy/gateway-tunnel/README.md).
 - [ ] Projector machine: open `PUBLIC_URL/`, type the room code, read names
       from the back row; install a CJK font if any names need one.
-- [ ] Print `docs/CHEATSHEET.md` one per seat (it is the one-pager; the siege
-      block now covers coins, the shop, quests and the buildings). Whiteboard:
-      URL + room code.
+- [ ] Print `docs/CHEATSHEET.md` one per seat — check the print preview: the
+      siege block grew (coins, shop, quests, buildings, roles), so it is one
+      A4 at 9 pt / landscape, or two pages. Whiteboard: URL + room code.
 - [ ] Instructor laptop: `PUBLIC_URL/admin` + token; the SWITCH boxes
       (SESSION_PLAN §5) rehearsed once and timed; `make bots N=2
       SCRIPT=bot_siege|bot_tower|bot_repair|bot_scout` ready for a lull.
-- [ ] `make load LOAD_BOTS=20` green on the lab box since the last pull
-      (passed 2026-08-29 with the full stack: 0 driver errors).
+- [ ] `make e2e` once (one real container submit end to end), and
+      `make load LOAD_BOTS=20` green on the lab box since the last pull
+      (passed 2026-08-29 with the full stack: 0 driver errors). Both take
+      real minutes; the script only reminds.
 - [ ] One `make balance ROUNDS=1 SECONDS=240` on the lab box so
       `server/state/balance/rounds.jsonl` exists to compare the class against
       (SESSION_PLAN §9 has the 2026-08-29 numbers).
@@ -77,4 +97,14 @@ SESSION_PLAN.md §3–§5 as before, plus what is new:
 
 Merging PRs, editing `/etc/drone-life.env`, anything on the gateway VM, and
 prod restarts outside the script are deliberate human steps — the script
-does not sudo into anything it was not told to.
+does not sudo into anything it was not told to. The script itself needs
+`sudo` (the service user owns `/opt/drone-life` and the runner image), so it
+is yours to run, not an agent's.
+
+## 6. Known open balance questions (need a human room)
+
+Shop prices, the value of a ring tower / beacon / bell against their ferry
+cost, whether 60 s is right for a room quest, and the `WAVE_MAX_PER_PILOT`
+slope past wave 8 — bots never buy or build rings. After round 1, look at
+`rounds.jsonl` and SESSION_PLAN §9's 2026-08-29 baseline; the knobs are all
+named there.

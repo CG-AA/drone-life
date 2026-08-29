@@ -364,3 +364,17 @@ def test_tick_ferry_flavours_texts_by_material_and_returns_pickups():
     tick_ferry(world, world.views, carry, [steel, clay], 0.1, texts["steel"],
                texts_by_material=texts)
     assert ("*", "GAME: clay lost") in world.texts
+
+
+def test_dwell_tracker_takes_per_drone_reach_and_dwell():
+    tracker = DwellTracker(radius=2.0, max_alt=3.0, dwell_s=1.0,
+                           radius_of=lambda d: 5.0 if d.id == "far" else 2.0,
+                           dwell_of=lambda d: 0.5 if d.id == "far" else 1.0)
+    near = view("near", n=1.5, e=0.0, alt=2.0)
+    far = view("far", n=4.0, e=0.0, alt=2.0)
+    winners = []
+    for _ in range(10):
+        w = tracker.update([near, far], 0.0, 0.0, 0.1)
+        winners.append(w.id if w else None)
+    assert winners[4] == "far", "5 m reach, 0.5 s dwell: first"
+    assert winners[9] == "near", "2 m reach, 1.0 s dwell: second"

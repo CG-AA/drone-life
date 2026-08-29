@@ -150,7 +150,7 @@ def test_say_wallet_answers_with_the_balance():
 def test_say_anything_else_gets_the_menu():
     world, m = make(seated=("d0",))
     world.text(m, world.views[0], "hello?")
-    assert world.texts[-1] == ("d0", "GAME: say shop, wallet or buy <item>")
+    assert world.texts[-1] == ("d0", "GAME: say shop, wallet, quest or buy <item>")
     assert_grammar(world)
 
 

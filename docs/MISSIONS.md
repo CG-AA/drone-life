@@ -55,10 +55,11 @@ Facts that bite if you don't know them:
   mission step), and the engine hands it to you verbatim. Interpret it
   yourself, reply with `send_text`.
   Ignored by default; must tolerate any string. **[enforced]**
-- `set_speed` is the one physics knob a mission has, and it is per drone
-  and stateless on the sim side: a respawned or rejoined drone is stock
-  again, so re-apply what a pilot bought on every `connected` event (siege
-  does), and put everyone back to 1.0 in `reset()`.
+- `set_speed` is the one physics knob a mission has, and it is per drone:
+  the sim keeps it across a crash/respawn but a rejoined (re-spawned) drone
+  is stock again, so re-apply what a pilot bought on every `connected`
+  event (siege does — it is idempotent), and put everyone back to 1.0 in
+  `reset()`.
 
 ## WorldAPI — everything a mission may do
 
@@ -148,7 +149,9 @@ JSON-safe, integers and short strings, rebuilt from live state (it is called
 on WS connect, possibly before the first tick, and after `reset()`). Siege
 returns `wave`, `state`, `timer_s`, `keep_hp`, `keep_max`, `creeps_alive`,
 `pending`, `towers`, `pool`, `quests` (`solved`, `missed`, and the live `room`
-quest or null), `stats`; delivery returns `crates`, `delivered`.
+quest or null), `frozen_s`, `gate_s`, `stats` (the round tally without its
+per-pilot map — that rides the drone rows); delivery returns `crates`,
+`delivered`.
 The strip's wording lives in `web/src/viewer/hud.ts` (`stripModel`, pure and
 tested); add a branch there when your mission publishes something new.
 

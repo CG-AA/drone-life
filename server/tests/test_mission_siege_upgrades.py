@@ -62,8 +62,8 @@ def test_buying_climbs_the_tiers_and_debits_the_wallet():
 def test_unknown_items_and_menus():
     world, m = make()
     assert say(world, m, "buy jetpack") == "GAME: no such item, say shop"
-    assert say(world, m, "buy") == "GAME: say shop, wallet or buy <item>"
-    assert say(world, m, "dance") == "GAME: say shop, wallet or buy <item>"
+    assert say(world, m, "buy") == "GAME: say shop, wallet, quest or buy <item>"
+    assert say(world, m, "dance") == "GAME: say shop, wallet, quest or buy <item>"
     assert say(world, m, "BUY   Speed") == "GAME: bought speed I (70 left)"
     assert_grammar(world)
 

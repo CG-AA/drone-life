@@ -360,3 +360,13 @@ def test_quest_dice_do_not_move_the_gate_dice():
     _world2, m2 = make()
     assert [m.rng.random() for _ in range(3)] == [m2.rng.random() for _ in range(3)]
     assert m.quests.rng.random() == m2.quests.rng.random() != m.rng.random()
+
+
+def test_the_bell_pushes_open_predicts_back_by_the_freeze():
+    from app.game.missions.siege import FREEZE_S
+    world, m = make()
+    add_creep(m, (0, 10), speed=2.0)
+    q = m.quests.issue(world, m, drone(world), family="predict", tier=1)
+    before = q.left_s
+    m.quests.freeze(FREEZE_S)
+    assert q.left_s == before + FREEZE_S

@@ -108,6 +108,7 @@ def test_hud_state_tracks_the_wave_machine():
     assert all(isinstance(v, int) for k, v in h.items()
                if k not in ("state", "stats", "last_round", "quests", "gate_s")), "integers only"
     assert h["stats"]["best_wave"] == 1
+    assert "pilots" not in h["stats"], "per-pilot data rides drone rows, not mission_state"
 
 
 def test_empty_room_freezes_the_clock():

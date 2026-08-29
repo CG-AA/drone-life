@@ -272,7 +272,8 @@ export const beacon: KindRenderer = {
     vis.addLabel("BEACON", 0xffb86b, 10, 10);
   },
   draw(vis, ent, pose, _drawAlt, s, timeMs) {
-    const chew = Math.max(0, Math.min(1, Number(ent.data.chew ?? 0)));
+    const chewRaw = Number(ent.data.chew ?? 0);
+    const chew = Number.isFinite(chewRaw) ? Math.max(0, Math.min(1, chewRaw)) : 0;
     const r = Math.max(4, s * 1.2);
     const glow = pulse(timeMs, 500, 0.7, 0.3) * (1 - chew * 0.7);
     vis.g.circle(0, -r * 0.8, r * 1.6).fill({ color: 0xffb86b, alpha: glow * 0.25 });
@@ -300,7 +301,8 @@ export const bell: KindRenderer = {
     vis.addLabel(`BELL · hover ${Number(ent.data.hover ?? 8)} m`, 0xbfe9ff, 10, 10);
   },
   draw(vis, ent, _pose, _drawAlt, s, timeMs) {
-    const charge = Math.max(0, Math.min(1, Number(ent.data.charge ?? 0)));
+    const chargeRaw = Number(ent.data.charge ?? 0);
+    const charge = Number.isFinite(chargeRaw) ? Math.max(0, Math.min(1, chargeRaw)) : 0;
     const r = Math.max(5, s * 1.4);
     vis.g.circle(0, -r * 0.6, r * (1.6 + charge)).fill({ color: 0xbfe9ff, alpha: 0.08 + charge * 0.25 });
     vis.g.ellipse(0, 0, r * 1.1, r * 0.5).fill({ color: 0x3a3a4a });

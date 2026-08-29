@@ -265,3 +265,26 @@ def test_reset_clears_every_structure():
     assert not m.towers and not m.beacons and not m.bells and m.freeze_s == 0
     assert not m.ring_bps.claimed and not m.beacon_bps.claimed and not m.bell_bps.claimed
     assert m.hud()["frozen_s"] == 0
+
+
+def test_every_building_and_role_line_fits_at_the_widest():
+    """The inline 'widest:' comments in siege.py, pinned (cells print at most
+    N -97 E -97; a hover hint is at most two digits)."""
+    from tests.support.harness import check_text
+    for text in ("GAME: steel chewed at N -97 E -97", "GAME: clay chewed at N -97 E -97",
+                 "GAME: ring tower at N -97 E -97! +25",
+                 "GAME: ring lost at N -97 E -97, watchtower again",
+                 "GAME: beacon up at N -97 E -97, creeps lured",
+                 "GAME: beacon chewed at N -97 E -97",
+                 "GAME: bell up at N -97 E -97, hover 8 m to ring",
+                 "GAME: bell chewed at N -97 E -97", "GAME: bell rung! creeps frozen 15 s",
+                 "GAME: repair at N -97 E -97 hover 10",
+                 "GAME: repaired! N -97 E -97 whole again +1",
+                 "GAME: gate N: 5 grunt 6 runner 6 brute 3 sapper",
+                 "GAME: you spot gate W", "GAME: gate W unwatched",
+                 "GAME: formation! hold 5 s to open gate S",
+                 "GAME: south gate open! raiders pay the pool",
+                 "GAME: formation broken, gate S sealed",
+                 "GAME: tower up at N -97 E -97! +15", "GAME: clay pit at N 50 E -44",
+                 "GAME: got clay, cheap walls, chewed 3x faster"):
+        check_text(text)

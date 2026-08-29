@@ -60,8 +60,9 @@ def scan() -> None:
             tower = position_in(ev)
         elif "got steel" in ev:
             carrying = True
-        elif "placed!" in ev or "tower up" in ev or "ring tower" in ev:
-            carrying, placed_here = False, placed_here + 1
+        elif "placed!" in ev or (("tower up" in ev or "ring tower" in ev) and plan
+                                 and position_in(ev) == plan[min(placed_here, len(plan) - 1)]):
+            carrying, placed_here = False, placed_here + 1  # mine, not a stranger's tower
         elif "steel lost" in ev or "can't build" in ev:
             carrying = False
         m = HOVER.search(ev)

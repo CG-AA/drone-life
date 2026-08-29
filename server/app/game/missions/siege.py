@@ -212,7 +212,7 @@ TOWER_COOLDOWN_PER_TIER = 0.5  # 2.0 -> 1.5 -> 1.0 s
 TOWER_COOLDOWN_MIN = 1.0  # the floor, so stacking bonuses never makes a turret
 _ROMAN = ("0", "I", "II", "III")
 _HEX_RE = re.compile(r"#[0-9a-f]{6}")
-SAY_MENU = "GAME: say shop, wallet or buy <item>"
+SAY_MENU = "GAME: say shop, wallet, quest or buy <item>"
 
 
 @dataclass
@@ -738,8 +738,10 @@ class SiegeMission(Mission):
 
     def hud(self) -> dict:
         # integers only: the strip's countdown ticks in whole seconds
+        stats = self.stats.as_dict()
+        stats.pop("pilots")  # per-pilot data rides the drone rows, never the room dict
         return {
-            "stats": self.stats.as_dict(),
+            "stats": stats,
             "last_round": self.last_round,
             "wave": self.wave,
             "state": self.state,
@@ -1066,7 +1068,7 @@ class SiegeMission(Mission):
         boss = "champion" in counts
 
         def wording(kinds: list[str], with_boss: bool) -> str:
-            return f"gate {GATE_LABELS[i]}: " + " ".join(kinds) + (" + boss" if with_boss else "")
+            return f"gate {GATE_LABELS[i]}: " + " ".join([*kinds, "+ boss"] if with_boss else kinds)
 
         # widest full line: "GAME: gate N: 5 grunt 6 runner 6 brute 3 sapper" = 47;
         # with a boss behind that it would not fit — the boss goes first, then
@@ -1139,6 +1141,7 @@ class SiegeMission(Mission):
                     pass
                 self.bell_bps.claimed.discard(cell)
             self.freeze_s = FREEZE_S
+            self.quests.freeze(FREEZE_S)  # open predicts: the creeps are that much later
             self.stats.bells += 1
             self._fx(world, "bell_ring", n, e, top, BELL_RING_S)
             world.emit_event("bell_rung",

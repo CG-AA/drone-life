@@ -103,6 +103,7 @@ class QuestCtx(Protocol):
     flow: FlowField  # the live field (walls and all)
     flow0: FlowField  # the empty-map field: what a pilot can model
     creeps: dict[int, GroundUnit]
+    beacons: dict  # standing beacons: a lured creep walks another field
     gates: tuple[tuple[float, float], ...]
     wave_size: int  # creeps announced for this wave (the boss aside)
     heard_wave: set[str]  # drone ids that heard this wave's gate lines
@@ -149,7 +150,7 @@ class Quest:
 @dataclass
 class Resolved:
     quest: Quest
-    kind: Literal["solved", "expired", "dropped"]
+    kind: Literal["solved", "expired"]
     drone: DroneView | None = None
 
 
@@ -213,8 +214,10 @@ def draw_stops(rng: random.Random, tm: TileMap, keep: Axial, count: int,
     return stops
 
 
-def route_limit(length_m: float, stops: int) -> float:
+def route_limit(length_m: float, stops: int, cap: float | None = None) -> float:
     lo, hi = ROUTE_LIMIT
+    if cap is not None:
+        hi = min(hi, cap)
     return float(min(hi, max(lo, math.ceil(length_m / ROUTE_MPS) + ROUTE_SLACK_S * stops)))
 
 
@@ -245,9 +248,10 @@ def make_route(rng: random.Random, ctx: QuestCtx, qid: int, tier: int, room: boo
             best = optimal_order(start, pts)
             if _path_len(start, pts) < ROUTE_ANY_ORDER_RATIO * best:
                 continue  # the listed order must not be the answer
-            limit, order = route_limit(best, count), []
+            limit, order = route_limit(best, count, ROOM_QUEST_S if room else None), []
         else:
-            limit = route_limit(_path_len(start, [pts[i] for i in order]), count)
+            limit = route_limit(_path_len(start, [pts[i] for i in order]), count,
+                                ROOM_QUEST_S if room else None)
         head = {"": "route", "back": "route back", "at": f"route at {round(alt or 0)} m,",
                 "any": "route any order"}[variant]
         # widest: "GAME: room quest 99: route any order 5 stops, 90 s" = 50
@@ -264,6 +268,8 @@ def make_predict(rng: random.Random, ctx: QuestCtx, qid: int, tier: int,
     on the empty map as on the real one, and going somewhere."""
     seconds = PREDICT_T[tier]
     kinds = PREDICT_KINDS[tier]
+    if ctx.beacons:  # a lure rewrites the march for any creep within its reach
+        return None
     uids = sorted(uid for uid, u in ctx.creeps.items()
                   if u.kind in kinds and not u.chewing)
     rng.shuffle(uids)
@@ -367,6 +373,13 @@ class QuestBoard:
         self.next_at.pop(drone.id, None)
         return self.personal.pop(drone.id, None)
 
+    def freeze(self, seconds: float) -> None:
+        """The bell: every creep stands still for `seconds`, so every open
+        predict's answer is simply that much later."""
+        for q in self.personal.values():
+            if q.family == "predict":
+                q.left_s += seconds
+
     def drop(self, drone_id: str) -> Quest | None:
         """A crash or a lost link ends the quest; the pilot keeps their
         enrolment and gets the next one after the usual gap."""
@@ -423,7 +436,8 @@ class QuestBoard:
              else make_compute(self.rng, ctx, qid, tier, True, None, None))
         if q is None:
             return None
-        q.left_s = min(q.left_s, ROOM_QUEST_S) if fam == "route" else ROOM_QUEST_S
+        if fam == "compute":
+            q.left_s = ROOM_QUEST_S  # a route's limit is capped at issue: text == clock
         self.room = q
         for line in q.lines:
             world.broadcast_text(line)

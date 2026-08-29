@@ -36,7 +36,7 @@ def scan() -> None:
             carrying = True
         elif "placed!" in ev:
             carrying, stacked = False, stacked + 1
-        elif "tower up" in ev:
+        elif "tower up" in ev and position_in(ev) == site:  # everyone hears every tower
             carrying, site, stacked = False, None, 0  # done here: wait for the next site
         elif "steel lost" in ev or "can't build" in ev:
             carrying = False
