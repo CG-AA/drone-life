@@ -31,7 +31,14 @@ export interface DroneState {
   crashed: boolean;
   connected: boolean;
   carrying: string | null;
+  /** Mission.pilot(student_id) — per-pilot mission state on the drone's own
+   * row (siege: the wallet, later upgrades); {} for missions without any.
+   * Coerce field by field like mission_state. */
+  pilot: Record<string, unknown>;
 }
+
+/** siege's DroneState.pilot */
+export interface SiegePilotState { wallet: number }
 
 /** Every kind the missions emit today; the viewer renders unknown kinds with a
  * neutral fallback marker, so this list is documentation, not a gate. */
@@ -110,6 +117,7 @@ export interface SiegeHudState {
   creeps_alive: number;
   pending: number; // creeps of this wave still to spawn
   towers: number;
+  pool: number; // team coins not yet split into wallets
 }
 
 /** delivery's mission_state */

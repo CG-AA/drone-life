@@ -5,25 +5,38 @@ import { ALT_LIFT, project } from "../iso";
 import { MATERIAL_COLORS, UNKNOWN_MATERIAL } from "../terrain";
 import { hexPoly, pulse, type KindRenderer } from "./base";
 
+/** The pile's label: "STEEL" for an infinite source, "STEEL · 12" for a
+ * stock (siege's quarry is finite per wave), "STEEL · EMPTY" at zero. Pure so
+ * the wording is testable. */
+export function sourceLabel(data: Record<string, unknown>): string {
+  const name = String(data.material ?? "?").toUpperCase();
+  const left = data.remaining;
+  if (typeof left !== "number") return name;
+  return left <= 0 ? `${name} · EMPTY` : `${name} · ${Math.round(left)}`;
+}
+
 export const tileSource: KindRenderer = {
   init(vis, ent) {
-    const name = String(ent.data.material ?? "?").toUpperCase();
     const mat = MATERIAL_COLORS[String(ent.data.material)] ?? UNKNOWN_MATERIAL;
-    vis.addLabel(name, mat.top, 11, 12);
+    vis.addLabel(sourceLabel(ent.data), mat.top, 11, 12);
   },
   draw(vis, ent, _pose, _drawAlt, s) {
     const mat = MATERIAL_COLORS[String(ent.data.material)] ?? UNKNOWN_MATERIAL;
-    // a little pile: three flat hex slabs, one perched on top
-    const slabs: Array<[number, number, number]> = [ // (dn, de, liftM)
-      [0.9, -1.0, 0], [-0.6, 1.1, 0], [0.1, 0.1, 0.9],
-    ];
+    const left = ent.data.remaining;
+    const empty = typeof left === "number" && left <= 0;
+    if (vis.label) vis.label.text = sourceLabel(ent.data);
+    // a little pile: three flat hex slabs, one perched on top — one greyed
+    // slab when the stock is spent, so the room sees an empty quarry
+    const slabs: Array<[number, number, number]> = empty
+      ? [[0.1, 0.1, 0]]
+      : [[0.9, -1.0, 0], [-0.6, 1.1, 0], [0.1, 0.1, 0.9]]; // (dn, de, liftM)
     for (const [dn, de, lift] of slabs) {
       const at = project(dn, de, lift, s);
       const poly = hexPoly(1.5, s);
       const out: number[] = [];
       for (let i = 0; i < poly.length; i += 2) out.push(poly[i] + at.x, poly[i + 1] + at.y);
-      vis.g.poly(out).fill({ color: mat.side })
-        .stroke({ width: 1.5, color: mat.top, alpha: 0.9 });
+      vis.g.poly(out).fill({ color: mat.side, alpha: empty ? 0.35 : 1 })
+        .stroke({ width: 1.5, color: mat.top, alpha: empty ? 0.4 : 0.9 });
     }
   },
 };

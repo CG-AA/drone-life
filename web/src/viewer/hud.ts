@@ -57,6 +57,9 @@ export interface StripModel {
   keepText: string;
   keepLow: boolean;
   towers: string;
+  /** the team pot: coins kills earned, split into wallets on wave clear ("" when the
+   * mission publishes none) */
+  pot: string;
   /** the record to beat, shown until the next wave 1 ("" when none) */
   record: string;
 }
@@ -78,8 +81,10 @@ export function stripModel(ms: Record<string, unknown>): StripModel | null {
   const record = last && typeof last.wave === "number"
     ? `LAST ROUND · WAVE ${last.wave} · ${Number(last.score ?? 0)} PTS`
     : "";
+  const pot = typeof ms.pool === "number" ? `POT ${Math.max(0, Math.round(ms.pool))}` : "";
   return {
     record,
+    pot,
     wave: wave === 0 ? "GET READY" : `WAVE ${wave}`,
     phase,
     keepPct: Math.max(0, Math.min(100, (hp / max) * 100)),
@@ -190,6 +195,9 @@ export class Hud {
     fill.style.width = `${m.keepPct}%`;
     fill.classList.toggle("low", m.keepLow);
     document.getElementById("ms-towers")!.textContent = m.towers;
+    const pot = document.getElementById("ms-pool")!;
+    pot.textContent = m.pot;
+    pot.hidden = m.pot === "";
     const rec = document.getElementById("ms-record")!;
     rec.textContent = m.record;
     rec.hidden = m.record === "";

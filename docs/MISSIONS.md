@@ -22,9 +22,11 @@ service.start() → engine.start()
     setup(world)               # world.drones() is already valid
 each driver step (10 Hz):
     on_drone_event(world, drone, kind)   # all queued events, BEFORE tick
+    on_text(world, drone, text)          # what scripts said (dronelife.say), after events
     tick(world, dt)                      # dt = 0.1 s
     entities(world)                      # serialized to every viewer
     hud()                                # mission_state on every frame → the status strip
+    pilot(student_id)                    # per-drone row on every frame (DroneState.pilot)
 admin reset:
     reset(world)               # rebuild to post-setup state
 ```
@@ -47,6 +49,11 @@ Facts that bite if you don't know them:
 - `on_drone_event` kinds are `DRONE_EVENT_KINDS` in `mission.py`
   (`joined … orphan_rtl`). Your handler must tolerate all of them.
   **[enforced]**
+- `on_text` is the one command surface a script has: `dronelife.say(text)`
+  sends a STATUSTEXT upstream, the gateway strips and truncates it (≤ 50
+  chars, never empty, at most 8 queued per drone per tick), and the engine
+  hands it to you verbatim. Interpret it yourself, reply with `send_text`.
+  Ignored by default; must tolerate any string. **[enforced]**
 
 ## WorldAPI — everything a mission may do
 
@@ -130,9 +137,15 @@ come from a monotonic counter so a burst never collides.
 JSON-safe, integers and short strings, rebuilt from live state (it is called
 on WS connect, possibly before the first tick, and after `reset()`). Siege
 returns `wave`, `state`, `timer_s`, `keep_hp`, `keep_max`, `creeps_alive`,
-`pending`, `towers`, `stats`; delivery returns `crates`, `delivered`. The
-strip's wording lives in `web/src/viewer/hud.ts` (`stripModel`, pure and
+`pending`, `towers`, `pool`, `stats`; delivery returns `crates`, `delivered`.
+The strip's wording lives in `web/src/viewer/hud.ts` (`stripModel`, pure and
 tested); add a branch there when your mission publishes something new.
+
+**Per-pilot state goes in `pilot(student_id)`, not `hud()`.** `hud()` is
+one dict for the room; `Mission.pilot(student_id) -> dict` (default `{}`)
+rides each drone's own row as `DroneState.pilot` — siege's wallet — and
+lights up the student page's strip. Both reach every socket at 10 Hz, so a
+64-entry map inside `hud()` is 64× the bytes of the same data on the rows.
 
 - **`data.carried_by` is magic**: `api/messages.py` derives the drone's
   `carrying` field from it, which lights up the student page.
@@ -182,6 +195,7 @@ world.start(mission)              # engine order: pads protected, then setup
 world.views = [view("d0", n=10, e=-55, alt=4.0)]   # place a fake drone
 world.run(mission, 5.0)           # ticks at 10 Hz, entities() every tick
 world.drone_event(mission, world.views[0], "crashed")
+world.text(mission, world.views[0], "wallet")      # what drone.say() delivers
 assert world.score == ...         # world.scores, world.events, world.texts
 assert_grammar(world)
 ```

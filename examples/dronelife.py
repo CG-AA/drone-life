@@ -14,6 +14,7 @@ The arena spans -100..100 on both axes; max altitude is 60 m.
 
 GAME messages ("crate 3 at N 40 E -12", "creep at N 10 E 55") arrive through
 drone.events(); position_in(msg) pulls the (north, east) pair out of one.
+drone.say("wallet") talks back to the game (siege: coins and the shop).
 """
 
 from __future__ import annotations
@@ -119,6 +120,14 @@ class Drone:
         RTL (fly home), LAND, STABILIZE — the module constants at the top."""
         self._cmd(mavutil.mavlink.MAV_CMD_DO_SET_MODE,
                   mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, p2=mode)
+
+    def say(self, text: str) -> None:
+        """Tell the game something — "wallet", "shop", "buy zap" (the siege
+        cheat sheet lists what it understands). The reply comes back as a
+        GAME event. Underneath: a STATUSTEXT, the same message the game uses
+        to talk to you, sent upstream; 50 characters max, like every one."""
+        self.conn.mav.statustext_send(
+            mavutil.mavlink.MAV_SEVERITY_INFO, text[:50].encode("ascii", "replace"))
 
     # ------------------------------------------------------------ sensing
 

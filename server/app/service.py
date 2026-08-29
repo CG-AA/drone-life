@@ -95,6 +95,7 @@ class DroneLifeService:
         self.overruns = 0
         self.driver_errors = 0
         self._pending_events: list[tuple[DroneView, str]] = []
+        self._pending_texts: list[tuple[DroneView, str]] = []  # what scripts said
         self._tasks: list[asyncio.Task] = []
         self._snapshot_path = settings.abs_state_dir / "snapshot.json"
         self._started_at = time.monotonic()
@@ -158,10 +159,12 @@ class DroneLifeService:
     async def _tick_once(self, tick: int) -> None:
         events = self.world.step(P.DT)
         self._pending_events.extend((DroneView.of(d), kind) for d, kind in events)
+        self._pending_texts.extend((DroneView.of(d), text) for d, text in self.world.drain_texts())
         await self.gateway.telemetry_tick(tick)
         if tick % MISSION_EVERY == 0:  # MISSION_HZ: mission + WS
             pending, self._pending_events = self._pending_events, []
-            self.engine.tick(self.world.t, MISSION_EVERY * P.DT, pending)
+            texts, self._pending_texts = self._pending_texts, []
+            self.engine.tick(self.world.t, MISSION_EVERY * P.DT, pending, texts)
             if self.hub is not None:
                 self.hub.broadcast_world(self.world_message())
                 if self.tilemap is not None and self.tilemap.version != self._tiles_sent:

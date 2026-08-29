@@ -16,6 +16,7 @@ from .terrain import FLAT, Terrain
 
 SEV_INFO = 6  # MAV_SEVERITY_INFO
 SEV_WARNING = 4  # MAV_SEVERITY_WARNING
+INBOX_MAX = 8  # texts a script may queue between mission ticks; the rest drop
 
 
 class Flight(Enum):
@@ -69,6 +70,7 @@ class DroneSim:
 
     outbox: list[tuple[int, str]] = field(default_factory=list)  # (severity, text)
     events: list[str] = field(default_factory=list)  # lifecycle events for the engine
+    inbox: list[str] = field(default_factory=list)  # what the script said (STATUSTEXT upstream)
 
     def __post_init__(self) -> None:
         self.n = self.spawn_n
@@ -96,6 +98,13 @@ class DroneSim:
 
     def say(self, text: str, severity: int = SEV_INFO) -> None:
         self.outbox.append((severity, text[:50]))
+
+    def hear(self, text: str) -> None:
+        """A line the script sent upstream, for the mission's on_text hook.
+        Bounded: a script shouting in a loop cannot grow the queue."""
+        text = text.replace("\x00", "").strip()[:50]
+        if text and len(self.inbox) < INBOX_MAX:
+            self.inbox.append(text)
 
     def _hold_here(self) -> None:
         self.tn, self.te, self.td = self.n, self.e, self.d

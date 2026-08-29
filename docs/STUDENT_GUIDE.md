@@ -106,6 +106,7 @@ drone.rtl()                      # fly home to your pad and land
 drone.wait(2)                    # plain sleep
 drone.armed                      # True while the motors are armed
 drone.set_mode(5)                # raw mode switch (4=GUIDED 5=LOITER 6=RTL 9=LAND)
+drone.say("wallet")              # talk to the game; it answers with a GAME message
 drone.close()                    # hang up cleanly (scripts may also just end)
 ```
 
@@ -173,6 +174,9 @@ Every message names your next action. Positions are always `N <int> E <int>`
 | `wall chewed at N 9 E -62` | a blocked creep is eating through → rebuild, zap it |
 | `wave 3 clear! +10` / `wave 3 clear, 2 leaked +5` | breathe — a clean wave pays double |
 | `wave 4 in 20s, build!` | 20 s of peace: ferry steel, stack a tower |
+| `+8 coins, wallet 23` | every kill pays the team pot one coin per pilot; each wave clear splits the pot evenly into wallets — `drone.say("wallet")` to ask your balance |
+| `quarry restocked, 27 steel` | the quarry is a stock per wave (more pilots, more steel), refilled — not topped up — when a wave starts |
+| `quarry empty, restock next wave` | the pile is spent → zap until the next wave |
 | `keep hit! hp 7, -1` / `keep fell! -25, rebuilt` | leaks cost points; it never game-overs |
 | `round over! wave 7, 63 kills` | the instructor reset — that's the score to beat |
 
@@ -192,6 +196,7 @@ helper sends:
 | `land()` / `rtl()` | `COMMAND_LONG: NAV_LAND` / `NAV_RETURN_TO_LAUNCH` |
 | `position()` | reads the `LOCAL_POSITION_NED` telemetry stream |
 | `events()` | reads `STATUSTEXT` messages starting with `GAME:` |
+| `say("wallet")` | sends a `STATUSTEXT` *upstream* — the same message type, the other direction |
 
 Everything you learn here transfers: point the same code at a real drone's
 connection string and the messages are identical.

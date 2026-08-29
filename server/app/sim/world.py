@@ -47,6 +47,15 @@ class World:
             drone.events.clear()
         return events
 
+    def drain_texts(self) -> list[tuple[DroneSim, str]]:
+        """Everything the scripts said since the last drain, for the engine."""
+        out: list[tuple[DroneSim, str]] = []
+        for drone in self.drones.values():
+            if drone.inbox:
+                out.extend((drone, text) for text in drone.inbox)
+                drone.inbox.clear()
+        return out
+
     def reset(self) -> None:
         self.epoch += 1
         for drone in self.drones.values():

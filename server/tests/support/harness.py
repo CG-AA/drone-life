@@ -110,6 +110,11 @@ class FakeWorld:
         """Within a driver step, events are delivered before tick()."""
         mission.on_drone_event(self, drone, kind)
 
+    def text(self, mission: Mission, drone: DroneView, text: str) -> None:
+        """What the engine hands on_text after a `dronelife.say(text)`: the
+        gateway strips and truncates, so the mission never sees more."""
+        mission.on_text(self, drone, text.strip()[:50])
+
     def run(self, mission, seconds, dt=0.1):
         for _ in range(int(seconds / dt)):
             self.now += dt

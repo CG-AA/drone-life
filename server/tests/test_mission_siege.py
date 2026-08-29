@@ -94,7 +94,8 @@ def test_hud_state_tracks_the_wave_machine():
     world, m = make()
     hud = {k: v for k, v in m.hud().items() if k not in ("stats", "last_round")}
     assert hud == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
-                   "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0}
+                   "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0,
+                   "pool": 0}
     world.views = [view("d0", n=-90.0, e=-76.0)]
     world.run(m, 10.0)
     assert m.hud()["timer_s"] == 35 and m.hud()["state"] == "grace"
@@ -170,7 +171,8 @@ def test_leaky_wave_pays_the_reduced_bonus():
     assert any("wave 3 clear, 2 leaked +5" in t for t in texts(world))
     ev = next(ev for ev in world.events if ev["kind"] == "wave_clear")
     assert ev["msg"] == "wave 3 beaten! 6 kills, 2 leaked, +5"
-    assert ev["data"] == {"points": 5, "kills": 6, "leaks": 2, "tower_kills": 0}
+    assert ev["data"] == {"points": 5, "kills": 6, "leaks": 2, "tower_kills": 0,
+                          "share": 0, "pool": 0}
     assert_grammar(world)
 
 
@@ -798,8 +800,8 @@ def test_wave_clear_credits_the_towers_share():
     m.state, m.wave, m.pending = "active", 2, 0
     world.run(m, 0.3)
     ev = next(ev for ev in world.events if ev["kind"] == "wave_clear")
-    assert ev["msg"] == "wave 2 beaten! 1 kills (1 by towers), 0 leaked, +10"
-    assert ev["data"]["tower_kills"] == 1
+    assert ev["msg"] == "wave 2 beaten! 1 kills (1 by towers), 0 leaked, +10, 1 coin each"
+    assert ev["data"]["tower_kills"] == 1 and ev["data"]["share"] == 1
 
 
 def test_hands_full_at_the_quarry_hints():

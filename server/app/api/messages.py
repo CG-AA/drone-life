@@ -39,6 +39,9 @@ def world_message(service: DroneLifeService) -> dict:
             "mode": view.mode, "armed": view.armed, "on_ground": view.on_ground,
             "crashed": view.crashed, "connected": view.connected,
             "carrying": carrying.get(view.id),
+            # per-pilot mission state (siege: wallet, upgrades) — the second
+            # mission-derived field on a drone row, next to `carrying`
+            "pilot": service.engine.pilot(view.student_id),
         })
     pads = [
         {"slot": s.slot, "n": _f(World.pad_position(s.slot)[0]),

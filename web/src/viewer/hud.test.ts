@@ -48,11 +48,13 @@ it("words each siege phase for the wall", () => {
   expect(grace.keepPct).toBe(100);
   expect(grace.keepLow).toBe(false);
   expect(grace.towers).toBe("0 TOWERS");
+  expect(grace.pot).toBe("");  // an older server: no pot to show
   const active = stripModel({ ...base, wave: 3, state: "active", timer_s: 0,
-                              creeps_alive: 2, pending: 5, towers: 1 })!;
+                              creeps_alive: 2, pending: 5, towers: 1, pool: 45 })!;
   expect(active.wave).toBe("WAVE 3");
   expect(active.phase).toBe("7 CREEPS LEFT");
   expect(active.towers).toBe("1 TOWER");
+  expect(active.pot).toBe("POT 45");
   const build = stripModel({ ...base, wave: 3, state: "build", timer_s: 12, keep_hp: 2 })!;
   expect(build.phase).toBe("WAVE 4 IN 12s");
   expect(build.keepLow).toBe(true);

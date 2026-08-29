@@ -27,9 +27,12 @@ from ..blueprints import Blueprint, BlueprintTracker, Requirement
 from ..building import (
     _EPS,
     HINT_SUSTAIN,
+    PICKUP_ALT,
+    PICKUP_RADIUS,
     CarrySlots,
     DwellTracker,
     FerryTexts,
+    HoverHint,
     PlaceHints,
     PlaceTracker,
     SourceHints,
@@ -93,6 +96,26 @@ BUILD_SITE_STEPS = 8  # cells before the Keep along the lane: ~40 m out, where t
 FERRY = FerryTexts("steel", "GAME: steel lost, grab another",
                    "GAME: got steel, wall or tower it",
                    "GAME: hands full, wall or tower it")
+
+# ------------------------------------------------------------------ economy
+# Kills feed a team pool; every wave clear splits the pool evenly into the
+# pilots' wallets (personal upgrades spend from there). The pool earns per
+# kill *per seated pilot*, so a pilot's income is about the wave's kill count
+# whether 6 or 64 people are in the room — the wave cap does not scale with
+# the roster, a flat pool split 64 ways would never open the shop.
+COINS_PER_KILL_EACH = 1  # pool += this x seated pilots, per kill (leaks pay nothing)
+# The quarry is finite: a stock per wave, restocked (not topped up) as each
+# wave starts, so a ferry economy exists and hoarded steel is steel unbuilt.
+QUARRY_STOCK_BASE = 6
+QUARRY_STOCK_PER_PILOT = 1
+QUARRY_STOCK_PER_WAVE = 1
+QUARRY_EMPTY_SAY = "GAME: quarry empty, restock next wave"
+
+
+def _quarry_stock(pilots: int, wave: int) -> int:
+    """Steel the quarry holds for a wave: 20 pilots at wave 1 see 27 (nine
+    towers' worth), a lone rehearsal drone 7; wave 0 is the grace stock."""
+    return QUARRY_STOCK_BASE + QUARRY_STOCK_PER_PILOT * pilots + QUARRY_STOCK_PER_WAVE * wave
 
 _HINTS = ("GAME: stack 3 steel = watchtower",
           "GAME: hover low on a creep to zap it",
@@ -220,7 +243,8 @@ class SiegeMission(Mission):
     def __init__(self) -> None:
         self.tm = TileMap()
         self.carry = CarrySlots()
-        self.quarry = TileSource("quarry", *QUARRY, material="steel")
+        self.quarry = TileSource("quarry", *QUARRY, material="steel",
+                                 remaining=_quarry_stock(0, 0))
         self.tracker = PlaceTracker(self.tm, self.carry)
         self.blueprints = BlueprintTracker([TOWER_BP])
         self.towers: dict[Axial, Tower] = {}
@@ -263,13 +287,31 @@ class SiegeMission(Mission):
         self.site: Axial | None = None  # the suggested tower cell (drawn as a ghost)
         self.hints = SourceHints(self.carry, FERRY.full_say)
         self.place_hints = PlaceHints(self.tm, self.carry, self.hints.throttle)
+        # tick_sources skips a spent pile silently: without this, a pilot
+        # hovers an empty quarry forever wondering why nothing happens
+        self.empty_hint = HoverHint(
+            PICKUP_RADIUS,
+            lambda d: (self.carry.item(d.id) is None and d.alt <= PICKUP_ALT
+                       and self.quarry.remaining == 0),
+            QUARRY_EMPTY_SAY, "empty", self.hints.throttle)
+        self.pool = 0  # team coins not yet paid out
+        self.wallets: dict[str, int] = {}  # student_id -> coins to spend
 
     # ------------------------------------------------------------- lifecycle
 
     def setup(self, world: WorldAPI) -> None:
         self.tm.set_keep_out([KEEP, QUARRY, *GATES])  # pads are engine-protected already
         self.rng = random.Random(world.rng.getrandbits(32))
+        self.quarry.remaining = _quarry_stock(self._seated(world), 0)
         self._announce(world)
+
+    @staticmethod
+    def _seated(world: WorldAPI) -> int:
+        """Everyone with a drone — connected or between runs. The economy
+        counts seats, not live links, so a pilot whose script just ended
+        still gets the wave's coins and the quarry stock does not shrink
+        because half the room is editing."""
+        return len(world.drones())
 
     def tile_map(self) -> TileMap:
         return self.tm
@@ -277,6 +319,18 @@ class SiegeMission(Mission):
     def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:
         if kind == "connected":
             self._brief(world, drone)
+
+    def on_text(self, world: WorldAPI, drone: DroneView, text: str) -> None:
+        """The command surface: what `drone.say(...)` understands."""
+        cmd = " ".join(text.lower().split())
+        if cmd == "wallet":
+            coins = self.wallets.get(drone.student_id, 0)
+            world.send_text(drone.id, f"GAME: wallet {coins} coins")
+        else:
+            world.send_text(drone.id, "GAME: say wallet")
+
+    def pilot(self, student_id: str) -> dict:
+        return {"wallet": self.wallets.get(student_id, 0)}
 
     def _brief(self, world: WorldAPI, drone: DroneView) -> None:
         """What a newcomer needs, and nothing that already happened: the
@@ -324,6 +378,9 @@ class SiegeMission(Mission):
         self.site = None
         self.hints.clear()
         self.place_hints.clear()
+        self.empty_hint.clear()
+        self.pool = 0
+        self.wallets.clear()
         self.setup(world)
 
     def hud(self) -> dict:
@@ -339,6 +396,7 @@ class SiegeMission(Mission):
             "creeps_alive": len(self.creeps),
             "pending": self.pending,
             "towers": len(self.towers),
+            "pool": self.pool,
         }
 
     # ------------------------------------------------------------------ tick
@@ -348,6 +406,7 @@ class SiegeMission(Mission):
 
         tick_ferry(world, drones, self.carry, [self.quarry], dt, FERRY)
         self.hints.tick(world, drones, *QUARRY, dt)
+        self.empty_hint.tick(world, drones, *QUARRY, dt)
         placed, refused = self.tracker.tick(drones, dt)
         self.place_hints.tick(world, drones, dt)
         for p in placed:
@@ -486,6 +545,7 @@ class SiegeMission(Mission):
                 world.send_text(drone.id, f"GAME: zap! {u.kind} hp {u.hp}")
             return False
         self._kill(world, uid, verb)
+        self.pool += COINS_PER_KILL_EACH * self._seated(world)
         who = drone.student_id if drone is not None else student_id
         # the feed row names the pilot: "+2: Alice zapped a grunt" is the
         # 'that was me' moment for twenty people at once; tower shots stay quiet
@@ -558,14 +618,17 @@ class SiegeMission(Mission):
         elif self.pending == 0 and not self.creeps:
             bonus = WAVE_BONUS if self.leaks == 0 else WAVE_BONUS_LEAKY
             world.add_score(bonus, f"wave {self.wave} cleared", feed=False)
+            share = self._pay_wallets(world)
             by_towers = (f" ({self.wave_tower_kills} by towers)"
                          if self.wave_tower_kills else "")
+            coins = f", {share} coin{'s' if share != 1 else ''} each" if share else ""
             world.emit_event(
                 "wave_clear",
                 f"wave {self.wave} beaten! {self.wave_kills} kills{by_towers}, "
-                f"{self.leaks} leaked, +{bonus}",
+                f"{self.leaks} leaked, +{bonus}{coins}",
                 data={"points": bonus, "kills": self.wave_kills, "leaks": self.leaks,
-                      "tower_kills": self.wave_tower_kills})
+                      "tower_kills": self.wave_tower_kills, "share": share,
+                      "pool": self.pool})
             if self.leaks == 0:
                 world.broadcast_text(f"GAME: wave {self.wave} clear! +{bonus}")
             else:
@@ -576,9 +639,25 @@ class SiegeMission(Mission):
             self.last_build_hint = world.now
             self._call_build_site(world)
 
+    def _pay_wallets(self, world: WorldAPI) -> int:
+        """Split the pool evenly among the seats; the remainder carries.
+        Returns the share each pilot got (0: nothing to split yet)."""
+        seated = list(world.drones())
+        share = self.pool // len(seated) if seated else 0
+        if share <= 0:
+            return 0
+        self.pool -= share * len(seated)
+        for d in seated:
+            self.wallets[d.student_id] = self.wallets.get(d.student_id, 0) + share
+            # widest: "GAME: +999 coins, wallet 9999" = 30
+            world.send_text(d.id, f"GAME: +{share} coins, wallet {self.wallets[d.student_id]}")
+        return share
+
     def _start_wave(self, world: WorldAPI, wave: int) -> None:
         self.state, self.wave = "active", wave
         self.stats.best_wave = max(self.stats.best_wave, wave)
+        self.quarry.remaining = _quarry_stock(self._seated(world), wave)
+        world.broadcast_text(f"GAME: quarry restocked, {self.quarry.remaining} steel")
         k = _gates_for(wave)
         self.gates = tuple(self.rng.sample(GATES, k))
         self.gate, self._lane = self.gates[0], 0

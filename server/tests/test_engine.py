@@ -32,6 +32,12 @@ class BrokenMission(Mission):
     def on_drone_event(self, world, drone, kind):
         raise ValueError("event boom")
 
+    def on_text(self, world, drone, text):
+        raise ValueError("text boom")
+
+    def pilot(self, student_id):
+        raise LookupError("pilot boom")
+
     def entities(self, world):
         raise IndexError("entities boom")
 
@@ -48,11 +54,18 @@ def errors(engine: GameEngine) -> list[dict]:
     return [ev for ev in engine.bus.feed if ev["kind"] == "mission_error"]
 
 
+def a_view(drone_id="d0") -> DroneView:
+    return DroneView(id=drone_id, student_id=f"s-{drone_id}", name=drone_id, sysid=1,
+                     n=0, e=0, alt=0, vn=0, ve=0, valt=0, yaw=0, mode="GUIDED",
+                     armed=False, on_ground=True, crashed=False, connected=True)
+
+
 def test_every_hook_is_guarded():
     engine = make_engine(BrokenMission())
     engine.start(0.0)
-    engine.tick(0.1, 0.1, [])
+    engine.tick(0.1, 0.1, [(a_view(), "connected")], [(a_view(), "wallet")])
     assert engine.entities() == []
+    assert engine.pilot("s-d0") == {}
     engine.reset(0.2)
     # the sim survived all four raising hooks; reset still announced itself
     assert [ev["kind"] for ev in engine.bus.feed if ev["kind"] == "reset"] == ["reset"]
@@ -66,6 +79,31 @@ def test_mission_errors_reach_the_feed_throttled():
     assert len(errors(engine)) == 1  # throttled, not flooding the 200-deep ring
     engine.tick(ERROR_EMIT_EVERY + 1.0, 0.1, [])
     assert len(errors(engine)) == 2  # but a persistent bug re-surfaces
+
+
+def test_texts_arrive_after_events_and_before_tick():
+    seen = []
+
+    class Listener(Mission):
+        name = "listener"
+
+        def on_drone_event(self, world, drone, kind):
+            seen.append(("event", drone.id, kind))
+
+        def on_text(self, world, drone, text):
+            seen.append(("text", drone.id, text))
+
+        def tick(self, world, dt):
+            seen.append(("tick",))
+
+    engine = make_engine(Listener())
+    engine.start(0.0)
+    engine.tick(0.1, 0.1, [(a_view("d1"), "armed")],
+                [(a_view("d1"), "wallet"), (a_view("d2"), "buy zap")])
+    assert seen == [("event", "d1", "armed"), ("text", "d1", "wallet"),
+                    ("text", "d2", "buy zap"), ("tick",)]
+    engine.tick(0.2, 0.1, [])  # texts default to none
+    assert seen[-1] == ("tick",) and len(seen) == 5
 
 
 def test_healthy_mission_scores_through_the_api():

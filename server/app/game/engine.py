@@ -118,7 +118,11 @@ class GameEngine:
         except Exception:
             self._mission_error("setup")
 
-    def tick(self, now: float, dt: float, drone_events: list[tuple[DroneView, str]]) -> None:
+    def tick(self, now: float, dt: float, drone_events: list[tuple[DroneView, str]],
+             texts: Sequence[tuple[DroneView, str]] = ()) -> None:
+        """One mission step: lifecycle events, then what the scripts said,
+        then tick — each hook guarded on its own, so one bad text cannot
+        cost the room its tick."""
         self.api.now = now
         self.api._views = self.backend.drones()
         for view, kind in drone_events:
@@ -129,6 +133,11 @@ class GameEngine:
                 self.mission.on_drone_event(self.api, view, kind)
             except Exception:
                 self._mission_error("on_drone_event")
+        for view, text in texts:
+            try:
+                self.mission.on_text(self.api, view, text)
+            except Exception:
+                self._mission_error("on_text")
         try:
             self.mission.tick(self.api, dt)
         except Exception:
@@ -146,6 +155,13 @@ class GameEngine:
             return self.mission.hud()
         except Exception:
             self._mission_error("hud")
+            return {}
+
+    def pilot(self, student_id: str) -> dict:
+        try:
+            return self.mission.pilot(student_id)
+        except Exception:
+            self._mission_error("pilot")
             return {}
 
     def reset(self, now: float) -> None:

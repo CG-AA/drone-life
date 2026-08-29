@@ -103,6 +103,13 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
     def on_drone_event(self, world: WorldAPI, drone: DroneView, kind: str) -> None:  # noqa: B027
         """kind is one of DRONE_EVENT_KINDS; delivered before tick() each step."""
 
+    def on_text(self, world: WorldAPI, drone: DroneView, text: str) -> None:  # noqa: B027
+        """A line the pilot's script said (`dronelife.say`, a STATUSTEXT
+        upstream): stripped, non-empty, at most 50 chars, otherwise verbatim —
+        interpret it yourself and reply with send_text(drone.id, ...).
+        Delivered after on_drone_event and before tick() each step. Ignored
+        by default: a mission without a command surface needs no handler."""
+
     def entities(self, world: WorldAPI) -> list[Entity]:
         """Called at 10 Hz after tick() — and on WS connect, possibly before
         the first tick — so read live state from `world`, don't stash it."""
@@ -114,6 +121,14 @@ class Mission(ABC):  # noqa: B024 — every hook is optional by design
         state on every frame and on WS connect, possibly before the first
         tick. Empty by default: missions with nothing to count show nothing.
         Siege: wave, state, countdown, keep hp; delivery: crates, delivered."""
+        return {}
+
+    def pilot(self, student_id: str) -> dict:
+        """Per-pilot state for that pilot's drone row in every world frame
+        (`DroneState.pilot`): a small JSON-serializable dict — siege's wallet
+        and upgrades. Per-pilot data belongs here, not in hud(): hud() is one
+        dict for the room, this is one per drone, and both reach every
+        socket at 10 Hz. Empty by default."""
         return {}
 
     def tile_map(self) -> TileMap | None:

@@ -91,6 +91,8 @@ canvas { touch-action: none; }
 #keep-fill.low { background: var(--danger); }
 #ms-keep-hp { color: var(--text-muted); font-size: 0.85em; }
 #ms-towers { color: #9fd8ff; }
+#ms-pool { color: var(--gold); }
+#ms-pool[hidden] { display: none; }
 #ms-record { color: var(--gold); font-size: 0.85em; letter-spacing: 0.12em; }
 #ms-record[hidden] { display: none; }
 

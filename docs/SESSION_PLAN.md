@@ -166,6 +166,15 @@ kind (grunt/runner 2, sapper 3, brute 5, champion 20), `WAVE_BONUS` 10 for
 a clean wave / `WAVE_BONUS_LEAKY` 5, `TOWER_POINTS` 15, `KEEP_HIT_POINTS`
 −1 per leak, `KEEP_FALL_POINTS` −25 (the falling hit charges only that).
 
+Economy: every kill adds `COINS_PER_KILL_EACH` (1) × seated pilots to the
+team pot; each wave clear splits the pot evenly into per-pilot wallets
+(remainder carries), so a pilot's income is about the wave's kill count
+whatever the room size. The quarry is finite: `QUARRY_STOCK_BASE` 6 +
+`QUARRY_STOCK_PER_PILOT` 1 × seats + `QUARRY_STOCK_PER_WAVE` 1 × wave, set
+(not added) at every wave start and at reset — 20 pilots at wave 1 see 27
+steel, nine towers' worth; a lone rehearsal drone 7. Wallets are what the
+upgrade shop spends (see the siege block of the cheat sheet).
+
 The roster (`KINDS` / `SHARES`): grunts 1 hp from wave 1; runners (1.5×
 speed) from 3; brutes (3 hp, 0.65× speed, chew 2×) from 5; sappers (2 hp,
 chew 3×) from 7; a champion (8 hp, 0.6×, three Keep hits) behind every 5th
