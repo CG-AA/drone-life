@@ -207,7 +207,7 @@ def test_a_hover_on_the_bell_freezes_every_creep_and_spends_the_bell():
     assert hint.endswith("hover 8 m to ring")
     bell = next(e for e in m.entities(world) if e.kind == "bell")
     assert bell.data["hover"] == 8 and 0 <= bell.data["charge"] < 0.5
-    creep = add_creep(m, (0, 6), uid=1, speed=2.0)
+    creep = add_creep(m, (0, 6), uid=1, speed=0.5)  # slow: the wave must stay open
     n0 = creep.n
     cn, ce = hex.axial_to_world(centre)
     world.views = [view("d0", n=cn, e=ce, alt=8.0)]  # the builder still hovering: no
