@@ -62,6 +62,7 @@ export const EVENT_CLASS: Record<string, string> = {
   orphan_rtl: "warn",
   script_exit: "warn",
   reset: "warn",
+  restarting: "warn",
   joined: "",
   kicked: "",
   respawned: "",

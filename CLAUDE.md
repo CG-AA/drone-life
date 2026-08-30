@@ -14,7 +14,7 @@ make build         # tsc + vite build
 make e2e           # needs podman + `make image` — silently SKIPS (not fails) without them
 make load          # timing-sensitive, local only
 make preflight     # workshop-morning box check (podman, image, secrets, XDG_RUNTIME_DIR…)
-make dev-server    # http://localhost:8000  (MISSION=<name> selects content)
+make dev-server    # http://localhost:8000  (MISSION=<name> selects content); console on 127.0.0.1:8121/admin
 make dev-web       # hot-reload frontend on :5173, proxies /api and /ws to :8000
 ```
 
@@ -35,6 +35,12 @@ Setup from a fresh box, deploys, and the workshop-day flow: `README.md`.
   HUD table is test-pinned to that file (marker block — keep its format).
 - **Wire shapes**: `server/app/api/messages.py` ↔ `web/src/shared/protocol.ts`
   mirror each other; update both sides together.
+- **The console is loopback-only**: `/admin` and `/api/v1/admin/*` answer
+  only on `ADMIN_PORT` (127.0.0.1:8121, rooms 8121+N; a second uvicorn
+  listener started in the lifespan) and are 404 on the public port
+  (`AdminPortGate` in `api/auth.py`). Tests run with `admin_port=0`.
+  Mission switches write `<STATE_DIR>/mission` (`app/mission_choice.py`,
+  wins over `MISSION=`) and restart the process — the unit is `Restart=always`.
 - **The page may live under a prefix** (`/rN/` rooms, `docs/ROOMS.md`):
   frontend REST/WS go through `web/src/shared/http.ts` / `ws.ts`, which add
   `shared/prefix.ts`; never `fetch("/api/…")` or root-absolute hrefs/assets

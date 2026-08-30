@@ -3,7 +3,9 @@
 One machine runs everything. One HTTP port (8000) is the only thing the proxy
 needs to reach. MAVLink stays on 127.0.0.1 — unreachable from outside by
 construction; student containers reach it through slirp4netns host-loopback
-(10.0.2.2).
+(10.0.2.2). So does the instructor console: `/admin` and `/api/v1/admin/*`
+answer only on `ADMIN_PORT` (127.0.0.1:8121) and are 404 on :8000 — reach it
+with `ssh -L 8121:127.0.0.1:8121 <lab>` and `http://localhost:8121/admin`.
 
 This is the proxied deploy. The simpler one — one box on the classroom wifi,
 no proxy, `make run` — is in the [README](../README.md#run-a-workshop); the
@@ -103,8 +105,10 @@ target); the systemd unit passes `PORT` from the room's env file
 |---|---|---|
 | `ROOM_CODE` | `classroom` | what students type to join — override for any reachable deploy |
 | `ADMIN_TOKEN` | `change-me` | instructor console + admin API token — override likewise |
-| `MISSION` | `delivery` | which mission plugin runs (`canyon`, `delivery`, `forge`, `freefly`, `rampart`, `siege`) |
+| `MISSION` | `delivery` | which mission plugin boots (`canyon`, `delivery`, `forge`, `freefly`, `rampart`, `siege`) — unless the console has written `<STATE_DIR>/mission`, which wins (see "Restarts and mission switches") |
 | `MAX_STUDENTS` | `20` | roster cap = drone slots = MAVLink ports (64 for the siege room) |
+| `ADMIN_HOST` | `127.0.0.1` | where the instructor console listens — keep on loopback |
+| `ADMIN_PORT` | `8121` | the console's own port (`/admin`, `/api/v1/admin/*`); 404 on the public port. Rooms take `8121+N` ([ROOMS.md](ROOMS.md)); `0` = console on the public port (hotspot day, no ssh) |
 | `ROOM_ID` | `main` | this process's name: the systemd instance, its podman label, its state dir. Lowercase letters, digits, `-`, `_` |
 | `ROOM_LABEL` | *(empty)* | what the student page's room list calls this room; empty = "Room N" from the id |
 | `ROOMS` | *(empty)* | `r1,r2,…` — the small rooms behind the proxy that the student page lists with live counts; empty = no list ([ROOMS.md](ROOMS.md)) |
@@ -122,7 +126,7 @@ target); the systemd unit passes `PORT` from the room's env file
 | `STATIC_DIR` | `../web/dist` | built frontend served at `/` |
 | `JOIN_RATE_LIMIT_PER_MINUTE` | `30` | per-IP join attempts; wrong codes on `/world` and `/ws/viewer` spend it too |
 | `JOIN_STRIKES` | `3` | wrong room codes from one IP before it is locked out of `/join`, `/world` and the viewer (right code or not); `0` disables |
-| `JOIN_LOCKOUT_S` | `900` | how long that lockout lasts; `0` = until restart. `POST /api/v1/admin/unlock` (admin token) lifts all lockouts and bans now |
+| `JOIN_LOCKOUT_S` | `900` | how long that lockout lasts; `0` = until restart. `POST /api/v1/admin/unlock` (admin token) lifts the lockouts; bans are the console's own list (`/api/v1/admin/bans`) and survive restarts |
 | `SUBMIT_RATE_LIMIT_PER_MINUTE` | `10` | per-student script submissions, guards container churn |
 | `ALLOW_DEFAULT_SECRETS` | `false` | dev only: boot on the placeholder `ROOM_CODE`/`ADMIN_TOKEN` |
 
@@ -179,7 +183,14 @@ Notes on the unit ([docs/deploy/drone-life@.service](deploy/drone-life@.service)
   *failed* — read `journalctl -u drone-life@main -n 50`, fix the file, then
   `sudo systemctl reset-failed drone-life@main && sudo systemctl start drone-life@main`.
 - `MISSION` is read from `/etc/drone-life.env` (or a room's own file) only;
-  without it the deploy runs `delivery`.
+  without it the deploy runs `delivery`. A switch made from the console
+  overrides it (`state/<room>/mission`).
+- **`Restart=always`**, not `on-failure`: the console's *restart server* and
+  *switch & restart* make the process leave on SIGTERM, which systemd counts
+  as a clean exit — with `on-failure` the room would stay down. A box with an
+  older copy of the unit installed: `sudo cp docs/deploy/drone-life@.service
+  /etc/systemd/system/` (re-apply the `XDG_RUNTIME_DIR` sed), `sudo systemctl
+  daemon-reload`. `systemctl stop` is still a stop.
 
 ## OCI VM reverse proxy
 
@@ -269,10 +280,14 @@ for that, compare `systemctl show drone-life@main -p Environment` with
 
 - Projector: open `https://drones.example.org/`, enter the room code once.
 - Students: `https://drones.example.org/submit` + the room code.
-- Instructor console: `https://drones.example.org/admin` + the admin token —
-  live roster, kill a stuck script, kick a student, reset the world, spawn bots.
+- Instructor console: **not** on the public URL (`/admin` is 404 there, by
+  design). From your laptop `ssh -L 8121:127.0.0.1:8121 <lab>`, then
+  `http://localhost:8121/admin` + the admin token — live roster, kill a stuck
+  script, kick / ban a student, the keep-out list, reset the world, spawn
+  bots, switch the mission, restart the server. Rooms: `8121+N`
+  ([ROOMS.md](ROOMS.md)).
 - A student stuck? Their **reset drone** button, the console's **kill script**, or:
-  `curl -X POST .../api/v1/admin/kill -H "X-Admin-Token: ..." -d '{"student_id":"s3"}'`
+  `curl -X POST http://127.0.0.1:8121/api/v1/admin/kill -H "X-Admin-Token: ..." -d '{"student_id":"s3"}'`
 - Between class sessions: `make reset` (kills all scripts, respawns drones,
   fresh crates + score). `server/state/main/` keeps the roster across restarts —
   delete it for a completely fresh class.
@@ -297,6 +312,9 @@ line is the fastest read on whether the sim itself is alive.
 | joins return 500 | `ss -ltnp` over 5760–5779 | something squats a MAVLink port — kill it, restart |
 | students can reach the page but not join | the room code they were given vs `ROOM_CODE` in `/etc/drone-life.env` | tell them the right one — a wrong code is a clear message on their page, not a hang |
 | console says **server unreachable** while `curl localhost:8000/healthz` is 200 | the reason in parentheses on that line; F12 shows no `/api/v1/admin/students` request at all | the browser refused the request before sending it: `…value 9679…` / "masked dots" = the token was pasted from a masked field (`●●●`) — copy the plain text; `Failed to fetch` = an extension blocking `/admin` URLs — incognito window or whitelist |
+| `/admin` is 404 on the public URL (or on `:8000`) | `curl -s 127.0.0.1:8121/healthz` on the lab box | by design: the console answers only on `ADMIN_PORT` — `ssh -L 8121:127.0.0.1:8121` and open `http://localhost:8121/admin` |
+| the unit fails at once with `ADMIN_PORT 8121 … could not be bound` | `ss -ltnp 'sport = :8121'` | something squats the console port (another room without its own `ADMIN_PORT`?) — `make preflight ROOM=…` names the plan; rooms are `8121+N` |
+| console says **restarting — waiting for the server…** and never comes back | `systemctl status drone-life@main`; `grep Restart= /etc/systemd/system/drone-life@.service` | the unit still says `Restart=on-failure` (see the systemd section), or the server was a `make run` — start it again by hand |
 | a script won't die | console **kill script** | `podman ps --filter label=drone-life=1` (one room: `label=drone-life-room=r2`) then `podman rm -f -t 0 <id>` |
 | server boots but serves no page | `ls /opt/drone-life/web/dist` | `make build`, then `systemctl restart drone-life@main` — the static mount is decided at boot, so a server that started without `web/dist` keeps serving nothing until restarted |
 | every submit 503s "runner image … is not built" under systemd, but `make preflight` passes in a `sudo -iu dronelife` shell | `systemctl show drone-life@main -p Environment` vs `id -u dronelife` | the unit's `XDG_RUNTIME_DIR` uid is wrong (the `%U` trap) — fix it in `/etc/systemd/system/drone-life@.service`, `daemon-reload`, restart |
@@ -326,22 +344,32 @@ belong to `make preflight`, not to a poll that runs every few seconds.
 
 ## Restarts and mission switches
 
-A restart keeps the **roster, student tokens and the team score** (from
-`server/state/main/snapshot.json`, written every 30 s and on exit). It does **not**
-keep drone positions, mission entities (crates, tiles, waves) or running
-scripts: the mission runs `setup()` again and every container is swept. Students
-do not need to re-join — their page reconnects with the token it already has.
+A restart keeps the **roster, student tokens, the ban list and the team
+score** (from `server/state/main/snapshot.json`, written every 30 s and on
+exit). It does **not** keep drone positions, mission entities (crates, tiles,
+waves) or running scripts: the mission runs `setup()` again and every
+container is swept. Students do not need to re-join — their page reconnects
+with the token it already has.
 
-Switching missions is a restart, since `MISSION` is read at boot:
+Both are console buttons, pressed twice (the first press arms it for 3 s;
+*reset world* stays a typed confirm):
 
-```bash
-sudo sed -i 's/^MISSION=.*/MISSION=siege/' /etc/drone-life.env
-sudo systemctl restart drone-life@main   # ~5 s
-set -a && . /etc/drone-life.env && set +a && make reset   # fresh score for the new mission
-```
+- **restart server** — the process saves its snapshot, says so on the feed
+  (`server restarting — back in a few seconds`) and leaves; systemd brings it
+  back in ~5 s (`Restart=always`, see the systemd section). Scripts are
+  stopped first and the bots dropped; tick *keep score* to carry the score.
+- **switch & restart** — the same, into the mission picked in the dropdown.
+  The server writes `state/<room>/mission` first; at boot that file wins over
+  `MISSION=` in the env file (the boot log says so). *clear override* deletes
+  it, and the next boot follows `MISSION=` again. Untick *keep score* (the
+  default) and the new mission starts at 0 — the old `make reset` step is
+  built in.
 
-(The first two lines need your admin account; `make reset` works from any
-account that can read the env file — root or `dronelife`.)
+The same from a shell, once the env file is sourced (any account that can read
+it): `make switch MISSION=siege`, `make restart`. No `sudo`, no env edit, no
+`systemctl` — the room line in the console (`restart: systemd brings it back`
+/ `by hand`) says whether anyone will restart the process; under `make run`
+nobody does.
 
 Footguns:
 
@@ -349,7 +377,9 @@ Footguns:
   Students would have to re-join. It is not part of any deploy step.
 - The systemd unit never reads the Makefile. `MISSION=` on a `make` command
   line only affects a server you start with `make dev-server` / `make run`;
-  under systemd only `/etc/drone-life.env` (and the room's own file) counts.
+  under systemd only `/etc/drone-life.env` (and the room's own file) counts —
+  and `state/<room>/mission`, if the console ever switched that room, beats
+  both. `make preflight`'s `mission` line names which one the boot will use.
 - Moving the class from the small rooms into the big one is a merge, not a
   restart: [ROOMS.md](ROOMS.md), "The day".
 - Rehearse the real class size on the real hardware before the day:
@@ -410,7 +440,9 @@ student, and each run's log output is capped at ~50 lines/s to keep a runaway
 `print` loop from drowning the hub. Admin auth is deliberately *not* limited:
 the token is long and random and compared in constant time, and a limiter there
 would mostly hand a prankster behind the shared NAT a way to lock the
-instructor out mid-class.
+instructor out mid-class. And since 8121, the console is not reachable through
+the proxy at all: `/admin` and `/api/v1/admin/*` answer only on the loopback
+`ADMIN_PORT` listener — the token is the second lock, ssh is the first.
 
 **WebSocket credentials travel in the URL.** `/ws/viewer?code=` and
 `/ws/student?token=` put the room code and student tokens in query strings,

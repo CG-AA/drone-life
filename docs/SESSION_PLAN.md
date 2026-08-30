@@ -16,8 +16,9 @@ student-facing rules in `STUDENT_GUIDE.md`, the printed one-pager in
 | teach | `delivery` | introduces `drone.events()`, goto loops, co-op scoring |
 | main | `siege` ×3 rounds | spends every skill under pressure; rounds give a "beat our record" ladder |
 
-Missions are boot-time (`MISSION=` env var): every arrow above is an env edit
-plus a restart — see the transition boxes in §5. Rehearse both boxes before
+Missions are boot-time: every arrow above is the console's **switch &
+restart** (an override file plus a restart) — see the transition boxes in
+§5. Rehearse both boxes before
 the day; the failure modes (ghost bots, carried-over score) are surprising the
 first time.
 
@@ -35,10 +36,12 @@ under one minute; the rest is students pressing Run again.
   Pulled new code since the last class? `make image` too — cheap, and the
   sandbox then matches the server (the live `dronelife.py` is mounted into
   every run regardless, so a stale image cannot break imports).
-- Projector on `/` with the room code entered; admin console (`/admin`) open
-  on the instructor laptop.
-- Smoke: `make bots N=3 HOST=localhost:8000 ADMIN_TOKEN=...` → three drones
-  move on the projector → `make reset HOST=... ADMIN_TOKEN=...`.
+- Projector on `/` with the room code entered; the console open on the
+  instructor laptop (`ssh -L 8121:127.0.0.1:8121 <box>` →
+  `http://localhost:8121/admin`; it is not on the public URL). Its room line
+  should read `restart: systemd brings it back`.
+- Smoke: `make bots N=3 ADMIN_TOKEN=...` → three drones move on the
+  projector → `make reset ADMIN_TOKEN=...`.
 - A printed `CHEATSHEET.md` on every seat; STUDENT_GUIDE link visible.
 
 ## 4. Minute-by-minute
@@ -51,7 +54,7 @@ under one minute; the rest is students pressing Run again.
 | 0:25 | freefly play (20′) | tour `goto` / `move` / `position` / `events` from the cheat sheet; invite crashes — arena walls are soft | drones everywhere | change the numbers, break things safely |
 | 0:45 | SWITCH → delivery (5′) | **Box A** (§5) | restart, then crates appear | wait, then press Run again |
 | 0:50 | delivery I (25′) | narrate the first pickup and delivery; read the GAME hints aloud as they land in someone's log | score climbing, feed names | write the courier loop |
-| 1:15 | lull check | if the feed stalls: `make bots N=2 SCRIPT=bot_courier` as pace-setters; kick them from `/admin` once humans overtake | bots demonstrate the loop | copy what the bots do |
+| 1:15 | lull check | if the feed stalls: `make bots N=2 SCRIPT=bot_courier` as pace-setters; kick them from the console once humans overtake | bots demonstrate the loop | copy what the bots do |
 | 1:20 | delivery II (15′) | call out names from the feed ("Alice delivered!"); tease the optimizations (nearest crate, `wait=False`) | milestones | optimize |
 | 1:35 | break (15′) | write the delivery total on the whiteboard; run **Box A** with `MISSION=siege` during the break | restart banner → keep + quarry | break |
 | 1:50 | siege intro (15′) | rules on screen: creeps → Keep, zap / squish / towers, and the three words — `say("wallet")`, `say("shop")`, `say("quest")`; "45 s grace — get a tower up"; assign nothing yet | keep, gates, quarry, clay pit, gate S sealed | read the siege block of the cheat sheet |
@@ -64,25 +67,26 @@ under one minute; the rest is students pressing Run again.
 
 **Box A — fresh start** (used at every switch in the default plan):
 
-1. Edit the mission and restart. Prod:
-   `sudo sed -i 's/^MISSION=.*/MISSION=<name>/' /etc/drone-life.env && sudo systemctl restart drone-life@main`.
-   Dev: Ctrl-C the server, `MISSION=<name> make dev-server`.
-2. The restart restores roster **and score** from the snapshot — including any
-   `Bot-*` entries, which come back as ghost drones parked on pads (their
-   scripts died with the server).
-3. `make reset HOST=... ADMIN_TOKEN=...` — kills scripts, removes every
-   `Bot-*`, respawns drones, **zeroes the score**, fresh mission state.
-4. Announce: "press Run again" (the restart severed every script's MAVLink
+1. In the console: pick `<name>` in the mission dropdown, leave *keep score*
+   unticked, press **switch & restart** twice (the second press confirms).
+   (Shell: `make switch MISSION=<name>` with the env file sourced.) The feed
+   says `switching to <name> — back in a few seconds`; the console banner
+   says whether systemd will bring it back.
+2. Before leaving, the server stops every script, drops every `Bot-*` and
+   **zeroes the score** — there is no `make reset` step any more. Prod: back
+   in ~5 s, roster and tokens restored, fresh mission state. Dev: the process
+   exits — `make dev-server` again (the override file makes it boot `<name>`).
+3. Announce: "press Run again" (the restart severed every script's MAVLink
    connection; nothing resumes by itself).
 
 **Box B — carry the score across a switch** (alternative, for a cumulative
 day-total narrative):
 
-1. While still on the old mission, kick every `Bot-*` from `/admin` (a kick
-   snapshots immediately; bots left in the roster would ghost through).
-2. Env edit + restart as in Box A. Score carries over via the snapshot;
-   mission state does not (siege boots into its 45 s grace — correct).
-3. Do **not** `make reset`. Students press Run again.
+1. Same as Box A with *keep score* ticked. Bots are dropped either way (they
+   would otherwise come back as ghost drones parked on pads); the score rides
+   the snapshot; mission state does not (siege boots into its 45 s grace —
+   correct).
+2. Do **not** reset the world afterwards. Students press Run again.
 
 The default plan uses Box A everywhere and keeps the day's narrative on the
 whiteboard (per-block scores stay comparable). Use Box B only if you want one
@@ -128,7 +132,7 @@ worked answer in the repo — don't reveal that until the wrap.
 ## 7. Pace-setter bots
 
 - Delivery lull: `make bots N=2 SCRIPT=bot_courier` — two bots quietly show
-  the full loop on the projector. Kick them from `/admin` once real deliveries
+  the full loop on the projector. Kick them from the console once real deliveries
   resume (they hold roster slots, and the cap is `MAX_STUDENTS`).
 - Siege lull: `make bots N=2 SCRIPT=bot_siege` for zappers, and
   `make bots N=1 SCRIPT=bot_tower` to demo building — it ferries steel to
@@ -158,7 +162,9 @@ worked answer in the repo — don't reveal that until the wrap.
 - **Every submit 503s**: the runner image is missing/broken — preflight
   problem (see DEPLOY runbook), not a gameplay fix. Bots in `MODE=local`
   still work for demos while it's fixed.
-- **A griefer**: `/admin` kill script, then kick if it continues.
+- **A griefer**: console **kill script**, then **kick** if it continues, then
+  **ban** — name and address, listed under *kept out* until you unban them,
+  and kept across restarts.
 - **Whole class stalling in siege**: let the Keep fall once — it's −25 and it
   rebuilds; narrate it as drama, then point at the leaking gate.
 - **Room joins slower than planned**: stretch freefly, shrink delivery II;
@@ -319,8 +325,9 @@ the rest; the boxes below are the whole list.
       `make e2e`, one container-mode submit end-to-end from a real browser.
 - [ ] `make load LOAD_BOTS=20` on the lab hardware; overruns < 1% on
       `/healthz`.
-- [ ] Both transition boxes on the real box (`/etc/drone-life.env` edit +
-      `systemctl restart` — time them; they're the 5′ SWITCH blocks).
+- [ ] Both transition boxes on the real box (the console's **switch &
+      restart** — time them; they're the 5′ SWITCH blocks — and check the
+      unit says `Restart=always`, or the room stays down).
 - [ ] Projector readability from 5 m; printed CHEATSHEET legible at desk.
 - [ ] Full dry run of §4 with 3 bots + one real phone/laptop as a fake
       student.

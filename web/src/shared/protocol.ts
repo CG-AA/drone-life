@@ -277,6 +277,45 @@ export interface BotsResult {
   room_full: boolean;
 }
 
+/** GET /api/v1/admin/info — what this process is, and the console's dropdowns. */
+export interface AdminInfo {
+  room: string;
+  label: string;
+  /** the mission running now */
+  mission: string;
+  /** MISSION= in the environment: what boots when there is no override */
+  mission_env: string;
+  /** <STATE_DIR>/mission, written by a switch; wins over mission_env at boot */
+  mission_override: string | null;
+  missions: string[];
+  bot_scripts: string[];
+  /** systemd started this process, so a restart comes back on its own */
+  supervised: boolean;
+  /** 0 = the console is on the public port */
+  admin_port: number;
+  uptime_s: number;
+}
+
+/** POST /api/v1/admin/restart — the process leaves right after answering. */
+export interface RestartResult {
+  restarting: boolean;
+  /** what the next boot runs */
+  mission: string;
+  supervised: boolean;
+}
+
+/** GET /api/v1/admin/bans — the keep-out list plus the strike guard's lockouts. */
+export interface Lockout {
+  ip: string;
+  /** null = until restart (JOIN_LOCKOUT_S=0) */
+  remaining_s: number | null;
+}
+export interface BanList {
+  names: string[];
+  ips: string[];
+  lockouts: Lockout[];
+}
+
 export function parseEnvelope(raw: string, onSkew?: () => void): Envelope | null {
   try {
     const msg = JSON.parse(raw) as Envelope;
