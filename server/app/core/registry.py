@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hmac
 import logging
-import re
 import secrets
 from dataclasses import asdict, dataclass
+
+from .bans import _norm
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +35,6 @@ class Registry:
         self.max_students = max_students
         self.base_port = base_port
         self.students: dict[str, Student] = {}  # by id
-        self.banned_names: set[str] = set()  # normalized; until restart or unlock
 
     def by_token(self, token: str) -> Student | None:
         # constant-time per candidate; the scan itself only leaks the roster size.
@@ -49,17 +49,6 @@ class Registry:
     def by_name(self, name: str) -> Student | None:
         key = _norm(name)
         return next((s for s in self.students.values() if _norm(s.name) == key), None)
-
-    def is_banned(self, name: str) -> bool:
-        return _norm(name) in self.banned_names
-
-    def ban_name(self, name: str) -> None:
-        self.banned_names.add(_norm(name))
-
-    def unban_all(self) -> int:
-        n = len(self.banned_names)
-        self.banned_names.clear()
-        return n
 
     def join(self, name: str, ip: str = "") -> tuple[Student, bool]:
         """Returns (student, is_new). Rejoining with the same name rotates the
@@ -95,5 +84,4 @@ class Registry:
                 log.warning("snapshot row skipped (old schema): %r", row)
 
 
-def _norm(name: str) -> str:
-    return re.sub(r"\s+", " ", name).strip().lower()
+__all__ = ["NAME_MAX", "Registry", "RoomFullError", "Student", "_norm"]

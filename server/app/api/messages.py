@@ -53,10 +53,11 @@ def world_message(service: DroneLifeService) -> dict:
                      for sid, pts in service.engine.scores.items()
                      if sid in students and pts),
                     key=lambda r: (-r[0], r[1]))
-    # the board shows the top 8: only they carry the what-did-you-do column
+    # every ranked pilot carries the what-did-you-do column: the wall lists
+    # them all, and the submit page finds its own row here
     scores = [{"student_id": sid, "name": name, "points": pts,
-               "detail": str(service.engine.pilot(sid).get("detail", "")) if i < 8 else ""}
-              for i, (pts, name, sid) in enumerate(ranked)]
+               "detail": str(service.engine.pilot(sid).get("detail", ""))}
+              for pts, name, sid in ranked]
     return {"epoch": service.world.epoch, "t": round(service.world.t, 2),
             "score": service.engine.score, "scores": scores, "drones": drones,
             "entities": entities, "pads": pads, "mission_state": service.engine.hud()}

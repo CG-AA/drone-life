@@ -10,9 +10,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .api import routes_admin, routes_public
+from .api import admin_listener, routes_admin, routes_public
 from .api import ws as ws_module
-from .api.auth import RateLimiter, StrikeGuard
+from .api.auth import AdminPortGate, RateLimiter, StrikeGuard
 from .api.ws import Hub
 from .config import Settings, check_secrets
 from .service import DroneLifeService
@@ -38,9 +38,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("ALLOW_DEFAULT_SECRETS=1 — placeholder secrets permitted, dev only")
         await service.start()
         hub.start()
-        yield
-        await hub.stop()
-        await service.stop()
+        try:
+            # the console's own loopback listener; 404 on the public port (AdminPortGate)
+            admin = await admin_listener.start(app, settings)
+        except Exception:
+            await hub.stop()
+            await service.stop()
+            raise
+        try:
+            yield
+        finally:
+            await admin_listener.stop(admin)
+            await hub.stop()
+            await service.stop()
 
     app = FastAPI(title="drone-life", lifespan=lifespan)
     app.state.settings = settings
@@ -59,6 +69,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_public.router)
     app.include_router(routes_admin.router)
     app.include_router(ws_module.router)
+    # outermost, so a console path on the public listener never reaches a route
+    app.add_middleware(AdminPortGate, admin_port=settings.admin_port)
 
     @app.get("/healthz")
     async def healthz() -> dict:

@@ -13,6 +13,7 @@ import type { ErrorView } from "./errors";
 import { codeTooBig, describeError, tooBigText } from "./errors";
 import type { LogCursor } from "./logmerge";
 import { freshLines } from "./logmerge";
+import { myScoreText } from "./score";
 import { upgradesText, walletText } from "./wallet";
 
 const editor = new Editor($("editor"));
@@ -197,6 +198,8 @@ function connectWs(): void {
   });
   ws.on<WorldData>("world", (d) => {
     $("score-pill").textContent = `team ${d.score}`;
+    const mine = myScoreText(d.scores, studentId);
+    if (mine !== mePill.textContent) mePill.textContent = mine;
     const me = d.drones.find((drone) => drone.student_id === studentId);
     if (me) updateStrip(me);
   });
@@ -331,6 +334,7 @@ function appendLogs(batch: LogLine[]): void {
 const linkEl = $("d-link");
 const carryingEl = $("d-carrying");
 const walletEl = $("d-wallet");
+const mePill = $("me-pill");
 let lastCarrying = false;
 
 function updateStrip(me: DroneState): void {

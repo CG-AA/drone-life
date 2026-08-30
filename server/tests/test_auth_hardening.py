@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from app.api.auth import RateLimiter, StrikeGuard, constant_time_eq
+from app.core.bans import BanList
 from app.core.registry import Registry
 from tests.conftest import make_settings, running_app
 
@@ -268,7 +269,7 @@ async def test_three_wrong_codes_lock_the_address_out_everywhere(tmp_path):
             assert ok.status_code == 200
             headers = {"X-Admin-Token": settings.admin_token}
             lifted = await alice.post("/api/v1/admin/unlock", headers=headers)
-            assert lifted.json() == {"unlocked": 1, "unbanned": 0}
+            assert lifted.json() == {"unlocked": 1}
             assert (await mallory.get("/api/v1/world?code=test-room")).status_code == 200
 
 
@@ -286,7 +287,9 @@ async def test_two_typos_then_the_right_code_is_not_a_lockout(tmp_path):
             assert await join("test-room") == 200
 
 
-async def test_ban_keeps_the_name_and_the_address_out_until_unlock(tmp_path):
+async def test_ban_keeps_the_name_and_the_address_out_until_unbanned(tmp_path):
+    """A ban is the instructor's list: unlock (the typo lockouts) leaves it
+    alone, and each entry comes off on its own."""
     settings = make_settings(tmp_path)
     async with running_app(settings) as app:
         mallory = await transport_client(app, "10.0.0.66")
@@ -308,18 +311,56 @@ async def test_ban_keeps_the_name_and_the_address_out_until_unlock(tmp_path):
             alias = await mallory.post("/api/v1/join",
                                        json={"room_code": "test-room", "name": "Zed"})
             assert alias.status_code == 429 and alias.json()["error"]["code"] == "locked"
+            listed = await elsewhere.get("/api/v1/admin/bans", headers=headers)
+            assert listed.json() == {"names": ["mal"], "ips": ["10.0.0.66"], "lockouts": []}
+            # unlock is for lockouts; the ban stands
             lifted = await elsewhere.post("/api/v1/admin/unlock", headers=headers)
-            assert lifted.json() == {"unlocked": 1, "unbanned": 1}
+            assert lifted.json() == {"unlocked": 0}
+            alias = await mallory.post("/api/v1/join",
+                                       json={"room_code": "test-room", "name": "Zed"})
+            assert alias.status_code == 429
+            # the address comes off, the name stays out
+            freed = await elsewhere.post("/api/v1/admin/unban", json={"ip": "10.0.0.66"},
+                                         headers=headers)
+            assert freed.json() == {"removed": True}
+            alias = await mallory.post("/api/v1/join",
+                                       json={"room_code": "test-room", "name": "Zed"})
+            assert alias.status_code == 200
+            back = await mallory.post("/api/v1/join",
+                                      json={"room_code": "test-room", "name": "Mal"})
+            assert back.status_code == 403
+            freed = await elsewhere.post("/api/v1/admin/unban", json={"name": "MAL"},
+                                         headers=headers)
+            assert freed.json() == {"removed": True}
             back = await mallory.post("/api/v1/join",
                                       json={"room_code": "test-room", "name": "Mal"})
             assert back.status_code == 200
+            nothing = await elsewhere.post("/api/v1/admin/unban", json={"name": "Mal"},
+                                           headers=headers)
+            assert nothing.json() == {"removed": False}
 
 
-def test_ban_has_no_expiry_but_unlock_lifts_it():
+def test_ban_list_has_no_expiry_matches_names_loosely_and_ignores_empty_keys():
+    bans = BanList()
+    assert bans.ban_ip("") is False and not bans.ip_banned("")  # a bot has no address
+    assert bans.ban_name("  Mal  Lory ") and not bans.ban_name("mal lory")
+    assert bans.name_banned("MAL LORY") and bans.ban_ip("10.0.0.66")
+    assert bans.to_dict() == {"names": ["mal lory"], "ips": ["10.0.0.66"]}
+    restored = BanList()
+    restored.restore(bans.to_dict())
+    assert restored.name_banned("mal lory") and restored.ip_banned("10.0.0.66")
+    assert bans.unban_name("nobody") is False and bans.unban_name("Mal Lory")
+    assert not bans.name_banned("mal lory") and bans.clear() == 1 and bans.to_dict() == {
+        "names": [], "ips": []}
+
+
+def test_locked_lists_addresses_with_the_time_left():
     clock = FakeClock()
-    guard = StrikeGuard(3, lockout_s=60, clock=clock)
-    guard.ban("10.0.0.66")
-    guard.ban("")  # a bot has no address: nothing to ban
-    clock.advance(10 ** 6)
-    assert guard.blocked("10.0.0.66") and not guard.blocked("")
-    assert guard.unlock_all() == 1 and not guard.blocked("10.0.0.66")
+    guard = StrikeGuard(1, lockout_s=60, clock=clock)
+    guard.strike("10.0.0.1")
+    assert guard.locked() == [{"ip": "10.0.0.1", "remaining_s": 60.0}]
+    clock.advance(70)
+    assert guard.locked() == [] and not guard.blocked("10.0.0.1")
+    forever = StrikeGuard(1, lockout_s=0, clock=clock)
+    forever.strike("10.0.0.2")
+    assert forever.locked() == [{"ip": "10.0.0.2", "remaining_s": None}]

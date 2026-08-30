@@ -9,7 +9,9 @@ STATE_DIR, MAVLINK_BASE_PORT, MAX_STUDENTS) and writes the destination
 snapshot with the score zeroed. Tokens are kept, so a page that joined a small
 room reconnects to the big one without re-joining — the same origin serves
 every room, and the page already re-reads its id and name from /status
-(docs/ROOMS.md). Bans are not in the snapshot and do not carry.
+(docs/ROOMS.md). Bans carry too: the merged room keeps out everyone any small
+room kept out. `--mission siege` also writes the big room's mission override
+(mission_choice.py), so the merge *is* the switch — no env edit.
 
 Run it with every room *stopped*: a stop flushes the small rooms' snapshots,
 and a running destination would overwrite the merged file within 30 s.
@@ -23,9 +25,12 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from . import mission_choice
 from .config import Settings
 from .core import snapshot
+from .core.bans import BanList
 from .core.registry import NAME_MAX, Student, _norm
+from .game.missions import MISSIONS
 
 
 class RosterError(Exception):
@@ -72,9 +77,10 @@ def merge_rosters(sources: list[tuple[str, list[dict]]], base_port: int,
     return rows, notes
 
 
-def load_room(path: Path) -> tuple[str, list[dict]]:
-    """A room's state dir (or its snapshot.json) → (label, rows). Missing is an
-    error: a typo must not silently merge four rooms instead of five."""
+def load_room(path: Path) -> tuple[str, list[dict], dict]:
+    """A room's state dir (or its snapshot.json) → (label, rows, bans).
+    Missing is an error: a typo must not silently merge four rooms instead
+    of five."""
     file = path / "snapshot.json" if path.is_dir() else path
     if not file.is_file():
         raise RosterError(f"{file}: no snapshot — is that the room's STATE_DIR?")
@@ -82,7 +88,7 @@ def load_room(path: Path) -> tuple[str, list[dict]]:
     if data is None:
         raise RosterError(f"{file}: unreadable snapshot")
     label = file.parent.name
-    return label, list(data.get("students", []))
+    return label, list(data.get("students", [])), dict(data.get("bans") or {})
 
 
 def destination_running(port: int) -> bool:
@@ -98,12 +104,17 @@ def merge(args: argparse.Namespace, settings: Settings) -> int:
               "— stop it first (or --force if that port is not this room)", file=sys.stderr)
         return 1
     sources: list[tuple[str, list[dict]]] = []
+    bans = BanList()
     if not args.fresh:
         existing = snapshot.load(dest) if dest.is_file() else None
         if existing:
             sources.append((f"{settings.room_id} (already here)",
                             list(existing.get("students", []))))
-    sources.extend(load_room(Path(p)) for p in args.rooms)
+            bans.restore(existing.get("bans"))
+    for p in args.rooms:
+        label, rows, room_bans = load_room(Path(p))
+        sources.append((label, rows))
+        bans.restore(room_bans)
     rows, notes = merge_rosters(sources, settings.mavlink_base_port, settings.max_students)
     for note in notes:
         print(f"note: {note}")
@@ -112,10 +123,17 @@ def merge(args: argparse.Namespace, settings: Settings) -> int:
     last = settings.mavlink_base_port + settings.max_students - 1
     print(f"{len(rows)} pilots seated of {settings.max_students} "
           f"(MAVLink {settings.mavlink_base_port}-{last})")
+    kept_out = len(bans.names) + len(bans.ips)
+    if kept_out:
+        print(f"{kept_out} ban(s) carried: {', '.join(sorted(bans.names) + sorted(bans.ips))}")
+    if args.mission:
+        print(f"mission: {args.mission} (written to {mission_choice.override_path(settings)})")
     if args.dry_run:
         print(f"dry run — {dest} untouched")
         return 0
-    snapshot.save(dest, {"students": rows, "score": 0, "scores": {}})
+    snapshot.save(dest, {"students": rows, "score": 0, "scores": {}, "bans": bans.to_dict()})
+    if args.mission:
+        mission_choice.write_override(settings, args.mission)
     print(f"wrote {dest} — start the big room; pages reconnect on their stored tokens")
     return 0
 
@@ -131,6 +149,8 @@ def main(argv: list[str] | None = None, settings: Settings | None = None) -> int
                    help="drop whoever is already in this room's snapshot")
     m.add_argument("--force", action="store_true",
                    help="write even if a server answers on this room's PORT")
+    m.add_argument("--mission", choices=sorted(MISSIONS),
+                   help="also make this room boot that mission (its override file)")
     args = parser.parse_args(argv)
     try:
         return merge(args, settings or Settings())

@@ -100,8 +100,9 @@ it("boards the top pilots best first, hides zeros, breaks ties by name", () => {
   ]);
   expect(rows.map((r) => r.name)).toEqual(["bob", "amy", "zed"]);
   expect(boardModel(undefined)).toEqual([]);
-  expect(boardModel(Array.from({ length: 12 }, (_, i) =>
-    ({ student_id: `s${i}`, name: `p${i}`, points: 100 - i }))).length).toBe(8);
+  // the whole room, not a top-N: a 64-seat siege lists 64 rows
+  expect(boardModel(Array.from({ length: 64 }, (_, i) =>
+    ({ student_id: `s${i}`, name: `p${i}`, points: 100 - i }))).length).toBe(64);
 });
 
 it("words the room quest for the wall", () => {

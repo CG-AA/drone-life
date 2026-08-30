@@ -20,6 +20,9 @@ class NullHub:
     def send_run_state(self, student_id: str, payload: dict) -> None:
         pass
 
+    async def drop_student(self, student_id: str, code: int = 4401) -> int:
+        return 0
+
 
 def find_port_base(count: int = 8) -> int:
     """A base with `count` consecutive free TCP ports on loopback."""

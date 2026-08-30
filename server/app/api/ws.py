@@ -162,6 +162,20 @@ class Hub:
         if client.student_id:
             self.by_student.get(client.student_id, set()).discard(client)
 
+    async def drop_student(self, student_id: str, code: int = 4401) -> int:
+        """Close every socket a student's pages hold — a kick or ban should
+        land on their screen now, not at the next reload. The page's reconnect
+        is then refused (4401: the token is gone), which ws.ts turns into the
+        join form. Returns how many sockets were closed."""
+        targets = list(self.by_student.get(student_id, ()))
+        for client in targets:
+            self.unregister(client)
+            try:
+                await client.ws.close(code=code)
+            except Exception as exc:  # already gone: the receive loop cleans up
+                log.debug("drop_student close failed: %r", exc)
+        return len(targets)
+
 
 async def _serve(ws: WebSocket, client: Client) -> None:
     hub: Hub = ws.app.state.hub

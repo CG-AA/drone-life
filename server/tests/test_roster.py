@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from app import roster
+from app.core import snapshot
 from app.core.registry import NAME_MAX
 from app.roster import RosterError, merge_rosters
 
@@ -83,6 +84,33 @@ def test_cli_merges_rooms_into_this_rooms_snapshot(tmp_path, monkeypatch, capsys
     assert roster.main(["merge", "--fresh", str(tmp_path / "r2")], settings=dest) == 0
     data = json.loads((dest.abs_state_dir / "snapshot.json").read_text())
     assert [r["name"] for r in data["students"]] == ["Cy"]
+
+
+def test_cli_carries_every_rooms_bans_and_can_set_the_mission(tmp_path, monkeypatch, capsys):
+    """The big room keeps out whoever any small room kept out, and
+    `--mission siege` writes its override so the merge is the switch."""
+    monkeypatch.setattr(roster, "destination_running", lambda port: False)
+    dest = make_settings(tmp_path, max_students=8, mavlink_base_port=6100)
+    snapshot.save(dest.abs_state_dir / "snapshot.json",
+                  {"students": [row("Host")], "score": 0, "scores": {},
+                   "bans": {"names": ["mal"], "ips": []}})
+    snapshot.save(tmp_path / "r1" / "snapshot.json",
+                  {"students": [row("Ann")], "score": 0, "scores": {},
+                   "bans": {"names": ["zed"], "ips": ["10.0.0.66"]}})
+    snapshot_of(tmp_path / "r2", [row("Cy")])  # an older snapshot: no bans key at all
+
+    args = ["merge", "--mission", "siege", str(tmp_path / "r1"), str(tmp_path / "r2")]
+    assert roster.main(["merge", "--dry-run", *args[1:]], settings=dest) == 0
+    out = capsys.readouterr().out
+    assert "3 ban(s) carried: mal, zed, 10.0.0.66" in out and "mission: siege" in out
+    assert not (dest.abs_state_dir / "mission").exists()
+
+    assert roster.main(args, settings=dest) == 0
+    data = json.loads((dest.abs_state_dir / "snapshot.json").read_text())
+    assert data["bans"] == {"names": ["mal", "zed"], "ips": ["10.0.0.66"]}
+    assert (dest.abs_state_dir / "mission").read_text().strip() == "siege"
+    with pytest.raises(SystemExit):  # argparse: not a mission
+        roster.main(["merge", "--mission", "seige", str(tmp_path / "r1")], settings=dest)
 
 
 def test_cli_refuses_a_missing_room_and_a_running_destination(tmp_path, monkeypatch, capsys):

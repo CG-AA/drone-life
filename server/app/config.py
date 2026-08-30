@@ -25,7 +25,15 @@ class Settings(BaseSettings):
     admin_token: str = DEFAULT_ADMIN_TOKEN
     allow_default_secrets: bool = False  # dev only: boot anyway on the placeholders
 
-    # (the HTTP bind address/port are uvicorn CLI flags — see the Makefile)
+    # (the public HTTP bind address/port are uvicorn CLI flags — see the Makefile)
+
+    # the instructor console (/admin and /api/v1/admin) answers on a second,
+    # loopback-only listener and is 404 on the public port: reach it over
+    # `ssh -L 8121:127.0.0.1:8121`. Rooms take 8121+N (docs/ROOMS.md).
+    # ADMIN_PORT=0 serves the console on the public port instead (tests, and the
+    # hotspot day when there is no proxy and no ssh).
+    admin_host: str = "127.0.0.1"
+    admin_port: int = 8121
 
     # MAVLink endpoints stay on loopback; containers reach them via slirp host-loopback
     mavlink_host: str = "127.0.0.1"
