@@ -2,7 +2,7 @@
 
 A multiplayer co-op drone programming game for educational workshops. Students write Python scripts in an in-browser IDE to control simulated drones inside a shared 200×200m arena, rendered live on a central projector view.
 
-The platform uses pymavlink communication protocols against ArduPilot GUIDED-mode conventions over network loopback. Code written in the browser sandbox directly transfers to real autonomous drone hardware.
+The platform uses pymavlink communication protocols against ArduPilot GUIDED-mode conventions over network loopback. Code syntaxes reflect real autonomous drone hardware code.
 
 ## Web IDE Features:
 
@@ -18,6 +18,9 @@ The student interface requires zero local installation and provides:
 ```python
 import dronelife
 
+# Create object
+drone = connect()
+
 drone.takeoff(alt)               # Commands the drone to climb to the target altitude (meters)
 drone.goto(north, east, alt)     # Navigates to absolute coordinates (Arena coordinates range from -100 to 100)
 drone.move(vn, ve, vup, secs)    # Direct velocity control vectors (m/s) for a set duration
@@ -25,6 +28,7 @@ drone.position()                 # Returns the current telemetry data tuple: (no
 drone.events()                   # Fetches sequential game engine event strings
 drone.land()                     # Triggers an immediate landing at the current coordinate position
 drone.rtl()                      # Return-to-Launch: Forces the drone to fly back to its starting base
+drone.say()                      # Output a game message
 ```
 *Note: Use `position_in(msg)` to parse string event notifications into raw numeric coordinates.*
 
@@ -51,7 +55,7 @@ Change the game mode using the `MISSION=<name>` environment variable. Students c
 
 ---
 
-## How to Self-Host
+# Installation
 
 You can host a workshop on a single Ubuntu 24.04 machine. Students only need a web browser and internet connection.
 
@@ -59,14 +63,14 @@ You can host a workshop on a single Ubuntu 24.04 machine. Students only need a w
 
 ```mermaid
 graph LR
-    Browser["Students' Browsers"] ──> Submit["Submit Page"]
-    Submit ──> Sandbox["Podman Sandbox (0.5 CPU, 256MB RAM)"]
-    Sandbox ──> MAVLink["MAVLink / TCP"]
-    MAVLink ──> Sim["20 Hz Kinematic Sim Engine"]
-    Sim ──> Engine["Game Engine & Missions"]
-    Engine ──> FastAPI["FastAPI Backend"]
-    FastAPI ──> WS["WebSocket Feed"]
-    WS ──> Projector["Projector Scoreboard & Viewer"]
+    Browser["Students' Browsers"] --> Submit["Submit Page"]
+    Submit --> Sandbox["Podman Sandbox (0.5 CPU, 256MB RAM)"]
+    Sandbox --> MAVLink["MAVLink / TCP"]
+    MAVLink --> Sim["20 Hz Kinematic Sim Engine"]
+    Sim --> Engine["Game Engine & Missions"]
+    Engine --> FastAPI["FastAPI Backend"]
+    FastAPI --> WS["WebSocket Feed"]
+    WS --> Projector["Projector Scoreboard & Viewer"]
 ```
 
 1. Write & Run: Students write and execute Python code in the browser IDE.
@@ -77,13 +81,13 @@ graph LR
 ### 1. Install Dependencies
 Run the setup command for Podman, Node.js, and Python tools:
 ```bash
-sudo apt update && sudo apt install -y git make curl openssl podman uidmap slirp4netns && curl -LsSf https://astral.sh | sh && . ~/.local/bin/env && curl -fsSL https://nodesource.com | sudo -E bash - && sudo apt install -y nodejs
+sudo apt update && sudo apt install -y git make curl openssl podman uidmap slirp4netns && curl -LsSf https://astral.sh/uv/install.sh | sh && . ~/.local/bin/env && curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
 ```
 
 ### 2. Clone and Build
 Download the repository and prepare the backend and frontend:
 ```bash
-git clone https://github.com && cd drone-life
+git clone https://github.com/CG-AA/drone-life.git && cd drone-life
 cd server && uv sync && cd ..
 cd web && npm ci && npm run build && cd ..
 ```
