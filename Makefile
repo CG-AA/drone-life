@@ -6,10 +6,13 @@
 ROOM_CODE ?= classroom
 ADMIN_TOKEN ?= change-me
 MISSION ?= delivery
-# PORT follows a sourced room env file (docs/ROOMS.md): `. /etc/drone-life.d/r2.env`
+# PORT/ADMIN_PORT follow a sourced room env file (docs/ROOMS.md): `. /etc/drone-life.d/r2.env`
 # then `make reset` talks to room 2. ROOM= scopes preflight and kill-prod the same way.
+# The admin API answers only on ADMIN_PORT (loopback; 8121, rooms 8121+N) — never on PORT.
 PORT ?= 8000
+ADMIN_PORT ?= 8121
 HOST ?= 127.0.0.1:$(PORT)
+ADMIN_HOST ?= 127.0.0.1:$(ADMIN_PORT)
 ROOM ?=
 N ?= 5
 MODE ?= local
@@ -20,12 +23,14 @@ ROUNDS ?= 3
 BOTS ?= 6:bot_siege 2:bot_tower
 SECONDS ?= 300
 
-.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load balance lint lint-fix preflight bots reset clean
+.PHONY: dev-server dev-web build typecheck image run kill-dev kill-prod test test-server test-web e2e load balance lint lint-fix preflight bots reset restart switch clean
 
 # ALLOW_DEFAULT_SECRETS: dev boots on the placeholder room code/admin token above.
 # `make run` deliberately does not set it — production refuses the defaults.
+# the console is at http://127.0.0.1:$(ADMIN_PORT)/admin — /admin is 404 on :8000
 dev-server:
 	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
+		ADMIN_PORT=$(ADMIN_PORT) \
 		ALLOW_DEFAULT_SECRETS=1 uv run uvicorn app.main:app --reload --port 8000
 
 dev-web:
@@ -39,6 +44,7 @@ image:
 
 run:
 	cd server && ROOM_CODE=$(ROOM_CODE) ADMIN_TOKEN=$(ADMIN_TOKEN) MISSION=$(MISSION) \
+		ADMIN_PORT=$(ADMIN_PORT) \
 		uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
 
 # kill every dev instance: uvicorn --reload servers and vite dev servers
@@ -94,12 +100,23 @@ preflight:
 
 # spawn demo bots: make bots N=10 MODE=container SCRIPT=bot_courier
 bots:
-	curl -s -X POST http://$(HOST)/api/v1/admin/bots \
+	curl -s -X POST http://$(ADMIN_HOST)/api/v1/admin/bots \
 		-H "X-Admin-Token: $(ADMIN_TOKEN)" -H 'Content-Type: application/json' \
 		-d '{"count":$(N),"script":"$(SCRIPT)","mode":"$(MODE)"}'
 
 reset:
-	curl -s -X POST http://$(HOST)/api/v1/admin/reset -H "X-Admin-Token: $(ADMIN_TOKEN)"
+	curl -s -X POST http://$(ADMIN_HOST)/api/v1/admin/reset -H "X-Admin-Token: $(ADMIN_TOKEN)"
+
+# restart the process (systemd brings it back; a `make run` server just exits)
+restart:
+	curl -s -X POST http://$(ADMIN_HOST)/api/v1/admin/restart \
+		-H "X-Admin-Token: $(ADMIN_TOKEN)" -H 'Content-Type: application/json' -d '{}'
+
+# switch the room to $(MISSION) and restart into it: make switch MISSION=siege
+switch:
+	curl -s -X POST http://$(ADMIN_HOST)/api/v1/admin/restart \
+		-H "X-Admin-Token: $(ADMIN_TOKEN)" -H 'Content-Type: application/json' \
+		-d '{"mission":"$(MISSION)"}'
 
 clean:
 	rm -rf server/state web/dist

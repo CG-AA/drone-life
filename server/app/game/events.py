@@ -19,6 +19,7 @@ EVENT_KINDS: frozenset[str] = frozenset({
     "script_exit",
     "reset",
     "reset_mine",
+    "restarting",
     "score",
     "milestone",
     "mission_error",

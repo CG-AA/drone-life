@@ -2,7 +2,7 @@
  * deliberately not localStorage, since instructor machines are often shared. */
 
 import { request } from "../shared/http";
-import type { BotsResult, Health, Roster } from "../shared/protocol";
+import type { AdminInfo, BanList, BotsResult, Health, RestartResult, Roster } from "../shared/protocol";
 
 export { ApiFailure } from "../shared/http";
 
@@ -44,3 +44,19 @@ export const banStudent = (studentId: string) =>
 export const resetWorld = () => admin<{ ok: boolean; epoch: number }>("POST", "/reset");
 export const spawnBots = (count: number, mode: string, script: string) =>
   admin<BotsResult>("POST", "/bots", { count, mode, script });
+
+export const fetchInfo = () => admin<AdminInfo>("GET", "/info");
+/** mission null: restart into whatever boots today; keepScore: SESSION_PLAN Box B */
+export const restartServer = (mission: string | null, keepScore: boolean) =>
+  admin<RestartResult>("POST", "/restart", { mission, keep_score: keepScore });
+export const clearOverride = () =>
+  admin<{ cleared: boolean; mission_env: string }>("POST", "/mission/clear-override");
+
+export const fetchBans = () => admin<BanList>("GET", "/bans");
+export const addBan = (key: { name?: string; ip?: string }) =>
+  admin<{ kicked: string[] }>("POST", "/bans", key);
+export const removeBan = (key: { name?: string; ip?: string }) =>
+  admin<{ removed: boolean }>("POST", "/unban", key);
+export const clearBans = () => admin<{ unbanned: number }>("POST", "/bans/clear");
+/** ip "" lifts every lockout (the three-wrong-codes kind — not bans) */
+export const unlock = (ip = "") => admin<{ unlocked: number }>("POST", "/unlock", { ip });

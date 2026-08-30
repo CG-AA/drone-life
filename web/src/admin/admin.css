@@ -29,6 +29,12 @@
   font-variant-numeric: tabular-nums;
 }
 #health-line.danger { color: var(--danger); font-weight: 700; }
+#room-line {
+  margin-top: -10px;
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
 
 #banner {
   display: none;
@@ -40,6 +46,7 @@
   font-size: 0.8125rem;
 }
 #banner.show { display: block; }
+#banner.info { background: var(--bg-raised); color: var(--text); border-color: var(--border); }
 
 #controls {
   display: flex;
@@ -47,9 +54,10 @@
   gap: 12px;
   flex-wrap: wrap;
 }
-#bots-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-#bots-form label { font-size: 0.8125rem; color: var(--text-muted); }
-#bots-form input, #bots-form select {
+#bots-form, #mission-form, #ban-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#bots-form label, #mission-form label { font-size: 0.8125rem; color: var(--text-muted); }
+#mission-form label.check { display: inline-flex; align-items: center; gap: 4px; }
+#bots-form input, #bots-form select, #mission-form select, #ban-form input {
   padding: 0.4rem 0.5rem;
   font-size: 0.8125rem;
   font-family: inherit;
@@ -60,15 +68,38 @@
 }
 #bots-count { width: 4.5rem; }
 #bots-script { width: 9rem; }
+#ban-input { width: 12rem; }
+#ban-form .spacer { margin-left: auto; }
+
+/* the process row: switch (a dropdown + press-twice button) and a plain restart */
+#server-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
 
 /* the confirm input takes the button's place, so it inherits its position */
-#reset-world-btn, #controls .typed-confirm { margin-left: auto; }
+#reset-world-btn, #controls .typed-confirm, #restart-btn { margin-left: auto; }
 button.danger { background: var(--danger); color: var(--danger-bg); }
 button.danger.confirm { background: var(--warn); }
 
-#roster-wrap { overflow-x: auto; }
-#roster { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-#roster th {
+#roster-wrap, #bans-wrap { overflow-x: auto; }
+#bans-wrap h2 {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+#bans-wrap #ban-form { margin-top: 10px; }
+#roster, #bans { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+#roster th, #bans th {
   text-align: left;
   padding: 8px 10px;
   font-size: 0.75rem;
@@ -77,11 +108,16 @@ button.danger.confirm { background: var(--warn); }
   color: var(--text-faint);
   border-bottom: 1px solid var(--border);
 }
-#roster td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
-#roster td.empty { color: var(--text-faint); font-style: italic; }
+#roster td, #bans td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+#roster td.empty, #bans td.empty { color: var(--text-faint); font-style: italic; }
 #roster td.id { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.78rem; }
-#roster .actions { text-align: right; white-space: nowrap; }
-#roster .actions button { font-size: 0.75rem; padding: 0.3rem 0.7rem; margin-left: 6px; }
+#bans td.kind { color: var(--text-faint); font-size: 0.78rem; white-space: nowrap; }
+#roster .actions, #bans .actions { text-align: right; white-space: nowrap; }
+#roster .actions button, #bans .actions button {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.7rem;
+  margin-left: 6px;
+}
 
 .link-dot::before { content: "●"; margin-right: 5px; color: var(--danger); }
 .link-dot.up::before { color: var(--ok); }

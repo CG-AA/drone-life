@@ -13,7 +13,7 @@ import pytest
 from app import preflight
 from app.preflight import FAIL, PASS, WARN, Check
 
-from .conftest import make_settings
+from .conftest import find_port_base, make_settings
 
 
 def fake_podman(rc: int = 0, stderr: str = ""):
@@ -157,6 +157,38 @@ def test_an_unknown_mission_fails_before_the_server_refuses_to_boot(tmp_path):
     assert preflight.check_mission(make_settings(tmp_path)).status == PASS
 
 
+def test_the_override_file_decides_the_mission_and_a_typo_in_it_fails(tmp_path):
+    """The console's switch writes <STATE_DIR>/mission; the boot follows it
+    over MISSION=, so preflight must say so — and catch a bad one."""
+    s = make_settings(tmp_path, mission="freefly")
+    s.abs_state_dir.mkdir(parents=True)
+    (s.abs_state_dir / "mission").write_text("siege\n")
+    check = preflight.check_mission(s)
+    assert check.status == PASS
+    assert check.detail.startswith("siege") and "MISSION=freefly" in check.detail
+    (s.abs_state_dir / "mission").write_text("seige\n")
+    check = preflight.check_mission(s)
+    assert check.status == FAIL and "seige" in check.detail and "delete the file" in check.detail
+
+
+def test_admin_port_free_busy_or_off(tmp_path, monkeypatch):
+    monkeypatch.setattr(preflight, "server_running", lambda url: False)
+    port = find_port_base(1)
+    s = make_settings(tmp_path, admin_port=port)
+    check = preflight.check_admin_port(s)
+    assert check.status == PASS and f"ssh -L {port}:127.0.0.1:{port}" in check.detail
+    squatter = socket.socket()
+    squatter.bind(("127.0.0.1", port))
+    try:
+        check = preflight.check_admin_port(s)
+        assert check.status == FAIL and str(port) in check.detail and "8121+N" in check.detail
+    finally:
+        squatter.close()
+    assert preflight.check_admin_port(make_settings(tmp_path, admin_port=0)).status == WARN
+    monkeypatch.setattr(preflight, "server_running", lambda url: True)
+    assert preflight.check_admin_port(s).status == WARN
+
+
 def test_runtime_dir_uid_mismatch_fails(tmp_path, settings):
     """The bug that made every submit 503 'image not built': the unit's
     hardcoded uid did not match the service user's."""
@@ -273,9 +305,12 @@ def test_health_url_follows_the_room_port(monkeypatch):
 
 
 GOOD_ROOMS = {
-    "main": "PORT=8000\nMAVLINK_BASE_PORT=5760\nMAX_STUDENTS=64\nSTATE_DIR=state/main\n",
-    "r1": "PORT=8001\nMAVLINK_BASE_PORT=5860\nMAX_STUDENTS=20\nSTATE_DIR=state/r1\n",
-    "r2": "PORT=8002\nMAVLINK_BASE_PORT=5960\nMAX_STUDENTS=20\nSTATE_DIR=state/r2\n",
+    "main": "PORT=8000\nMAVLINK_BASE_PORT=5760\nMAX_STUDENTS=64\nSTATE_DIR=state/main\n"
+            "ADMIN_PORT=8121\n",
+    "r1": "PORT=8001\nMAVLINK_BASE_PORT=5860\nMAX_STUDENTS=20\nSTATE_DIR=state/r1\n"
+          "ADMIN_PORT=8122\n",
+    "r2": "PORT=8002\nMAVLINK_BASE_PORT=5960\nMAX_STUDENTS=20\nSTATE_DIR=state/r2\n"
+          "ADMIN_PORT=8123\n",
 }
 
 
@@ -298,6 +333,11 @@ def test_room_plan_accepts_the_documented_layout():
     ("PORT=8003\nMAVLINK_BASE_PORT=6060\nSTATE_DIR=state/r1\n",
      "STATE_DIR state/r1 is shared by r1, r3"),
     ("PORT=8003\nMAVLINK_BASE_PORT=6060\nROOM_CODE=other\n", "r3: its own ROOM_CODE differs"),
+    # the console listener: a room file that says nothing gets 8121, main's
+    ("PORT=8003\nMAVLINK_BASE_PORT=6060\n", "ADMIN_PORT 8121 is used by main, r3"),
+    ("PORT=8003\nMAVLINK_BASE_PORT=6060\nADMIN_PORT=8122\n", "ADMIN_PORT 8122 is used by r1, r3"),
+    ("PORT=8003\nMAVLINK_BASE_PORT=6060\nADMIN_PORT=8001\n",
+     "ADMIN_PORT 8001 of r3 is also the PORT of r1"),
 ])
 def test_room_plan_names_the_rooms_that_collide(body, needle):
     rooms = {k: parse(v) for k, v in GOOD_ROOMS.items()}

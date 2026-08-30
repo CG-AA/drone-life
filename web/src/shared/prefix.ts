@@ -9,10 +9,12 @@
  * Computed on demand, not at import: tests stub `location` without a
  * pathname, and the answer cannot change while a page is open anyway. */
 
-/** `/r1/submit` → `/r1`, `/r1/` → `/r1`, `/submit` → ``, `/` → ``. */
+/** `/r1/submit` → `/r1`, `/r1/` → `/r1`, `/submit` → ``, `/` → ``. The
+ * `.html` forms are the Vite dev server's (`/admin.html`), where the page has
+ * no room and its own filename must not become one. */
 export function derivePrefix(pathname: string | undefined): string {
   if (!pathname) return "";
-  return pathname.replace(/\/(submit|admin)\/?$/, "").replace(/\/+$/, "");
+  return pathname.replace(/\/(submit|admin)(\.html)?\/?$/, "").replace(/\/+$/, "");
 }
 
 export function prefix(): string {

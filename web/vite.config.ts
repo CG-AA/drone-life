@@ -3,8 +3,11 @@ import { defineConfig } from "vite";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 
-// dev proxy target: DL_SERVER=http://host:port make dev-web (default local)
+// dev proxy target: DL_SERVER=http://host:port make dev-web (default local).
+// The console answers only on the server's ADMIN_PORT (loopback, 8121):
+// DL_ADMIN=http://127.0.0.1:8121 by default — more specific, so listed first.
 const target = process.env.DL_SERVER ?? "http://127.0.0.1:8000";
+const admin = process.env.DL_ADMIN ?? "http://127.0.0.1:8121";
 
 export default defineConfig({
   // relative asset URLs: one build serves `/` and every `/rN/` room behind the
@@ -24,6 +27,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      "/api/v1/admin": admin,
       "/api": target,
       "/ws": { target: target.replace(/^http/, "ws"), ws: true },
     },

@@ -198,7 +198,13 @@ canvas { touch-action: none; }
   font-size: 0.75em;
   margin-bottom: 4px;
 }
-#board-rows { list-style: none; margin: 0; padding: 0; }
+/* as many rows as the room has scorers: past the bottom of the screen the
+   list wraps into more columns, growing leftwards from the right edge */
+#board-rows {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-flow: column wrap; column-gap: 22px;
+  max-height: calc(100vh - clamp(12px, 2vmin, 28px) * 2 - clamp(2.6rem, 5vmin, 4rem) - 4em);
+}
 #board-rows li {
   display: flex; justify-content: space-between; gap: 14px;
   line-height: 1.5; white-space: nowrap;

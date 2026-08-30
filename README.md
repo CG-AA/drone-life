@@ -96,8 +96,25 @@ cd server && uv sync && cd ..
 cd web && npm ci && npm run build && cd ..
 ```
 
+<<<<<<< HEAD
 ### 3. Configure and Launch
 Set your variables and start the server:
+=======
+In a second terminal: `cd drone-life && make bots N=5 ADMIN_TOKEN=change-me` —
+five demo drones patrol on the viewer.
+
+- `http://localhost:8000/` — the projector view; room code `classroom`
+- `http://localhost:8000/submit` — what students see: editor, Run, live log
+- `http://127.0.0.1:8121/admin` — instructor console; token `change-me`. The
+  console lives on its own loopback port (`ADMIN_PORT`) and is 404 on :8000
+
+Those placeholder secrets only boot because `make dev-server` passes
+`ALLOW_DEFAULT_SECRETS=1`; any other launch refuses to start until you set
+real ones (`ROOM_CODE`, `ADMIN_TOKEN`).
+
+Now the path a student's script really takes — a rootless podman container:
+
+>>>>>>> 3397612fed372d52672ed0d3f680387f8ff1654b
 ```bash
 make image
 export ROOM_CODE="classroom101"

@@ -17,6 +17,8 @@ it.each([
   [undefined, ""],
   ["/r12/submit", "/r12"],
   ["/lab/r3/", "/lab/r3"],
+  ["/admin.html", ""], // make dev-web serves the console as a file
+  ["/r2/submit.html", "/r2"],
 ])("derives the room prefix from %j", (pathname, want) => {
   expect(derivePrefix(pathname)).toBe(want);
 });
