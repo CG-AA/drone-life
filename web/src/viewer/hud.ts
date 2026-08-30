@@ -171,14 +171,14 @@ export function splashFor(ev: EventData, simT: number): Splash | null {
   return null;
 }
 
-/** The board's rows: top `limit` pilots by points, best first (the server
+/** The board's rows: every pilot with points, best first (the server
  * already sorts, but never trust the wire for what the wall shows). Empty
- * when nobody has scored — the panel hides rather than listing zeros. */
-export function boardModel(scores: ScoreRow[] | undefined, limit = 8): ScoreRow[] {
+ * when nobody has scored — the panel hides rather than listing zeros. The
+ * list is as long as the room: the panel wraps into columns (viewer.css). */
+export function boardModel(scores: ScoreRow[] | undefined): ScoreRow[] {
   return (scores ?? [])
     .filter((r) => r.points !== 0)
-    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
-    .slice(0, limit);
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
 }
 
 export class Hud {
