@@ -8,9 +8,9 @@ floor is two lines.
 This document is the contract. The generic test suite
 (`server/tests/test_mission_contract.py`) enforces most of it mechanically:
 if your mission is registered and `make test` is green, you have honored
-everything marked **[enforced]**.
+everything marked .
 
-## The lifecycle, in the order the engine really calls it
+## The lifecycle
 
 ```
 MISSION=yours → service._bind_mission()
@@ -31,30 +31,30 @@ admin reset:
     reset(world)               # rebuild to post-setup state
 ```
 
-Facts that bite if you don't know them:
+Facts:
 
 - **`entities(world)` also runs on WebSocket connect — possibly before your
   first `tick`.** Read live state from `world`; never stash drone views in
-  `tick` for `entities` to use. **[enforced]**
+  `tick` for `entities` to use.
 - **`tile_map()` identity is forever.** `reset()` clears and rebuilds the
   same `TileMap`; returning a new one silently disconnects the sim and the
-  viewer from your terrain. **[enforced]**
+  viewer from your terrain.
 - **`reset()` must end in the same state `setup()` produces.** Every in-tree
   mission clears its state then calls `self.setup(world)` — do the same.
 - **An empty room must not raise** — and usually should freeze your clocks
-  (see siege's early return). **[enforced: must not raise]**
+  (see siege's early return).
 - Every hook is exception-guarded by the engine: a bug in your mission logs,
   emits a throttled `mission_error` feed event, and the sim keeps flying.
   Exception: a broken `tile_map()` fails the boot loudly, on purpose.
 - `on_drone_event` kinds are `DRONE_EVENT_KINDS` in `mission.py`
   (`joined … orphan_rtl`). Your handler must tolerate all of them.
-  **[enforced]**
+
 - `on_text` is the one command surface a script has: `dronelife.say(text)`
   sends a STATUSTEXT upstream, the sim strips and truncates it (≤ 50 chars,
   never empty, at most 8 per drone per 50 ms sim tick — so up to 16 per
   mission step), and the engine hands it to you verbatim. Interpret it
   yourself, reply with `send_text`.
-  Ignored by default; must tolerate any string. **[enforced]**
+  Ignored by default; must tolerate any string.
 - `set_speed` is the one physics knob a mission has, and it is per drone:
   the sim keeps it across a crash/respawn but a rejoined (re-spawned) drone
   is stock again, so re-apply what a pilot bought on every `connected`
@@ -85,7 +85,7 @@ feed blank. Put the points in your event's message instead.
 `send_text` wants a **drone id** (`DroneView.id`); `emit_event`/`add_score`
 want a **student id**. Adjacent lines often need both — don't swap them.
 
-## The GAME text grammar (law) **[enforced]**
+## The GAME text grammar (law)
 
 STATUSTEXT is 50 chars and students regex it. Every text starts with
 `GAME: `, fits in 50 chars, announces positions as
@@ -105,14 +105,14 @@ enforces it, and the wire truncates silently.
 ## Events — register your kinds
 
 Every `emit_event` kind must be listed in `server/app/game/events.py`
-**[enforced]** — that registry also pins the viewer HUD's severity table
+ — that registry also pins the viewer HUD's severity table
 (`web/src/viewer/hud.ts`, checked by `hud.test.ts`), so give your new kind a
 severity class there (or an explicit `""` for neutral).
 
 ## Entities — what the viewer draws
 
 Return `Entity(id, kind, n, e, alt, data)` records. Ids must be unique per
-frame **[enforced]**. Kinds in play today, and who renders them
+frame. Kinds in play today, and who renders them
 (`web/src/viewer/entities/`):
 
 | kind | data | renderer |
@@ -205,7 +205,7 @@ student page's strip. Both reach every socket at 10 Hz, so a
 - **`hex.py`** — the lattice: `axial_to_world`, `world_to_axial`, `ring`,
   `disc`, `line`, `cells_along`, `pad_cell`.
 
-## Testing your mission
+## Testing missions
 
 The harness is `server/tests/support/harness.py`:
 
