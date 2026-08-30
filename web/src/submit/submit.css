@@ -38,6 +38,7 @@
   white-space: nowrap;
 }
 #score-pill { color: var(--gold, #e8c25a); font-weight: 700; }
+#me-pill { color: var(--accent); font-weight: 700; }
 .tb-link { font-size: 0.85rem; color: var(--accent); text-decoration: none; white-space: nowrap; }
 .tb-link:hover { text-decoration: underline; }
 #template-select {
