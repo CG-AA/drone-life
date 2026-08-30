@@ -4,25 +4,7 @@ A multiplayer co-op drone programming game for educational workshops. Students w
 
 The platform uses pymavlink communication protocols against ArduPilot GUIDED-mode conventions over network loopback. Code written in the browser sandbox directly transfers to real autonomous drone hardware.
 
----
-
-## Architecture Flow
-
-```mermaid
-graph LR
-    Browser["Students' Browsers"] ──> Submit["Submit Page"]
-    Submit ──> Sandbox["Podman Sandbox (0.5 CPU, 256MB RAM)"]
-    Sandbox ──> MAVLink["MAVLink / TCP"]
-    MAVLink ──> Sim["20 Hz Kinematic Sim Engine"]
-    Sim ──> Engine["Game Engine & Missions"]
-    Engine ──> FastAPI["FastAPI Backend"]
-    FastAPI ──> WS["WebSocket Feed"]
-    WS ──> Projector["Projector Scoreboard & Viewer"]
-```
-
----
-
-## Integrated Development Environment (IDE)
+## Web IDE Features:
 
 The student interface requires zero local installation and provides:
 * Web Code Editor: Built-in editor featuring syntax highlighting and API autocompletion.
@@ -71,11 +53,21 @@ Change the game mode using the `MISSION=<name>` environment variable. Students c
 
 ## How to Self-Host
 
-You can host a workshop on a single Ubuntu 24.04 machine. Students only need a web browser and Wi-Fi.
+You can host a workshop on a single Ubuntu 24.04 machine. Students only need a web browser and internet connection.
 
 ## How It Works
 
-[Student Browser] ──> [FastAPI Server] ──> [Podman Container] ──> [MAVLink/TCP] ──> [20Hz Sim Engine] ──> [WebSocket] ──> [Projector Viewer]
+```mermaid
+graph LR
+    Browser["Students' Browsers"] ──> Submit["Submit Page"]
+    Submit ──> Sandbox["Podman Sandbox (0.5 CPU, 256MB RAM)"]
+    Sandbox ──> MAVLink["MAVLink / TCP"]
+    MAVLink ──> Sim["20 Hz Kinematic Sim Engine"]
+    Sim ──> Engine["Game Engine & Missions"]
+    Engine ──> FastAPI["FastAPI Backend"]
+    FastAPI ──> WS["WebSocket Feed"]
+    WS ──> Projector["Projector Scoreboard & Viewer"]
+```
 
 1. Write & Run: Students write and execute Python code in the browser IDE.
 2. Sandbox Execution: The backend runs scripts safely inside isolated Podman sandbox containers.
