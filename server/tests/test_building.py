@@ -341,3 +341,40 @@ def test_place_hint_silent_over_keepout():
     d = view(alt=20.0)  # over the keep-out cell: no altitude would work
     run_place_hints(world, hints, [d], STUCK_S + 0.2)
     assert world.texts == []
+
+
+def test_tick_ferry_flavours_texts_by_material_and_returns_pickups():
+    from app.game.building import FerryTexts, tick_ferry
+
+    world = FakeWorld()
+    carry = CarrySlots()
+    steel = TileSource("quarry", 0.0, 0.0, material="steel")
+    clay = TileSource("pit", 30.0, 0.0, material="clay")
+    texts = {"steel": FerryTexts("steel", "GAME: steel lost", "GAME: got steel", "GAME: full"),
+             "clay": FerryTexts("clay", "GAME: clay lost", "GAME: got clay", "GAME: full")}
+    world.views = [view("d0", n=0.0, e=0.0, alt=2.0), view("d1", n=30.0, e=0.0, alt=2.0)]
+    got = []
+    for _ in range(25):
+        world.now += 0.1
+        got += tick_ferry(world, world.views, carry, [steel, clay], 0.1, texts["steel"],
+                          texts_by_material=texts)
+    assert sorted((d.id, s.material) for d, s in got) == [("d0", "steel"), ("d1", "clay")]
+    assert ("d1", "GAME: got clay") in world.texts and ("d0", "GAME: got steel") in world.texts
+    world.views = [view("d1", n=30.0, e=0.0, alt=2.0, crashed=True)]
+    tick_ferry(world, world.views, carry, [steel, clay], 0.1, texts["steel"],
+               texts_by_material=texts)
+    assert ("*", "GAME: clay lost") in world.texts
+
+
+def test_dwell_tracker_takes_per_drone_reach_and_dwell():
+    tracker = DwellTracker(radius=2.0, max_alt=3.0, dwell_s=1.0,
+                           radius_of=lambda d: 5.0 if d.id == "far" else 2.0,
+                           dwell_of=lambda d: 0.5 if d.id == "far" else 1.0)
+    near = view("near", n=1.5, e=0.0, alt=2.0)
+    far = view("far", n=4.0, e=0.0, alt=2.0)
+    winners = []
+    for _ in range(10):
+        w = tracker.update([near, far], 0.0, 0.0, 0.1)
+        winners.append(w.id if w else None)
+    assert winners[4] == "far", "5 m reach, 0.5 s dwell: first"
+    assert winners[9] == "near", "2 m reach, 1.0 s dwell: second"

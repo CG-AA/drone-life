@@ -1,7 +1,8 @@
 # Workshop session plan — freefly → delivery → siege
 
 The minute-by-minute run of a ~4 hour session for a mixed room (students +
-working engineers), up to 20 pilots. Freefly proves everyone can fly, delivery
+working engineers), up to 64 pilots (rehearsed at 64; the siege scales, the
+small missions are better split into rooms — `ROOMS.md`). Freefly proves everyone can fly, delivery
 teaches the GAME-message loop, and **siege is the main event**, played in
 rounds. Companion docs: operational commands in `DEPLOY.md` (runbook),
 student-facing rules in `STUDENT_GUIDE.md`, the printed one-pager in
@@ -56,11 +57,11 @@ under one minute; the rest is students pressing Run again.
 | 1:15 | lull check | if the feed stalls: `make bots N=2 SCRIPT=bot_courier` as pace-setters; kick them from the console once humans overtake | bots demonstrate the loop | copy what the bots do |
 | 1:20 | delivery II (15′) | call out names from the feed ("Alice delivered!"); tease the optimizations (nearest crate, `wait=False`) | milestones | optimize |
 | 1:35 | break (15′) | write the delivery total on the whiteboard; run **Box A** with `MISSION=siege` during the break | restart banner → keep + quarry | break |
-| 1:50 | siege intro (15′) | rules on screen: creeps → Keep, zap / squish / towers; "45 s grace — get a tower up"; assign nothing yet | keep, gates, quarry | read the siege block of the cheat sheet |
+| 1:50 | siege intro (15′) | rules on screen: creeps → Keep, zap / squish / towers, and the three words — `say("wallet")`, `say("shop")`, `say("quest")`; "45 s grace — get a tower up"; assign nothing yet | keep, gates, quarry, clay pit, gate S sealed | read the siege block of the cheat sheet |
 | 2:05 | siege round 1 — learn (30′) | let it be chaos; narrate the first tower, first zap, first chewed wall; end round: `make reset`, record score + wave on the whiteboard | waves, towers, keep hp | fight however they like |
-| 2:35 | siege round 2 — coordinate (35′) | before Run: assign roles out loud — quarry ferries, tower builders, zappers; mid-round, point at the gate that's leaking | fewer leaks, higher waves | play a role |
-| 3:10 | siege round 3 — the record (35′) | "beat round 2." Engineers: hand out the §6 challenges; everyone else defends | record attempt | defend / automate |
-| 3:45 | wrap (15′) | scores ladder on the whiteboard; the pymavlink reveal (STUDENT_GUIDE table); "this exact code flies a real drone" | final feed | — |
+| 2:35 | siege round 2 — coordinate (35′) | before Run: assign the roles the game now scores — ferries (steel and clay), builders (towers, a ring, a beacon, the bell), repair, a scout per gate, zappers; mid-round, point at the leaking gate and at the PILOTS board's tally column; a lull: `bot_repair` / `bot_scout` | fewer leaks, higher waves, coins spent | play a role, spend your coins |
+| 3:10 | siege round 3 — the record (35′) | "beat round 2." Engineers: hand out the §6 challenges (quests, gate S, the chokepoint); everyone else defends | record attempt, room quests on the wall | defend / automate |
+| 3:45 | wrap (15′) | scores ladder on the whiteboard and `rounds.jsonl`'s three lines; hand out `examples/answers/` now, not before; the pymavlink reveal (STUDENT_GUIDE table); "this exact code flies a real drone" | final feed | — |
 
 ## 5. Transition procedures
 
@@ -109,6 +110,24 @@ worked answer in the repo — don't reveal that until the wrap.
 4. **Event-driven flying.** Replace blocking `goto` with
    `goto(..., wait=False)` + a `position()` / `events()` polling loop — a
    drone that re-targets mid-flight when a fresher callout arrives.
+5. **Quests** (`docs/QUESTS.md`, `drone.say("quest")`) — three families,
+   three kinds of code, every instance different per pilot: **route** (parse
+   a multi-line spec, sequence gotos, brute-force the best order), **predict**
+   (port the hex grid + the flood field's tie-break and model a creep's
+   march), **compute** (geometry over what the game announced, answered as
+   an altitude). Worked answers: `examples/answers/quest_*.py` — after the wrap.
+   The per-wave **room quest** is for the whole room: nobody solving it buffs
+   the next wave, so a solver is doing everyone a favour.
+6. **The sealed gate.** Gate S opens only while three drones hold a
+   triangle over it (6–12 m apart, 5 s): a lane of raiders whose bounty
+   pays the team and the pot, never the trio. Three scripts that agree on
+   three points — the first co-op puzzle that needs pilots to talk.
+7. **Chokepoint, worked.** `examples/answers/bot_chokepoint.py` builds the
+   tower at the game's suggestion and then serpentine 2-high stubs across
+   the lane inside its range — the path gets longer under the gun, never
+   blocked (a blocked lane is chewed). What it can see and cannot see is in
+   its docstring; `tower up at N .. E ..` now tells every script where
+   towers stand.
 
 ## 7. Pace-setter bots
 
@@ -120,6 +139,12 @@ worked answer in the repo — don't reveal that until the wrap.
   the game's own `build a tower at …` suggestion and stacks three, so the
   room sees a tower rise and start shooting. (`bot_builder` is rampart's:
   it waits for `wall gap` lines siege never sends and hovers forever.)
+  Two more house bots demo the roles: `SCRIPT=bot_repair` ferries steel to
+  the newest `steel chewed at` hole (naive: newest, not nearest — a student
+  beats it with a sorted list), and `SCRIPT=bot_scout` parks 12 m over the
+  wave's gate, becomes its spotter and prints what comes through (an
+  `events()`-driven loop with no blocking goto — the §6.4 pattern). The
+  house bots demo every role and stay beatable on purpose.
 - Never leave bots in during a "record" round — the record should be human.
 
 ## 8. Contingencies
@@ -165,12 +190,72 @@ if a slow one starves, lower `CRATE_MAX` won't help — lower
 Siege (all in `server/app/game/missions/siege.py`): `GRACE_S` (45 — raise to
 60 for a first-timer room, or when the intro runs long), `BUILD_S` (20,
 between waves), `SPAWN_GAP` (1.5 s/creep), wave size
-`min(20, 4 + 2·(wave−1) + pilots//4)` (roster-scaled: 20 pilots meet the
-cap at wave 6, one rehearsal drone still sees 4), base speed
+`min(cap, 4 + 2·(wave−1) + pilots//4)` with `cap = WAVE_MAX 20 +
+WAVE_MAX_PER_PILOT 0.5 × pilots` (roster-scaled both ways: 20 pilots meet a
+cap of 30 at wave 12, 64 pilots one of 52 at wave 17, one rehearsal drone
+still sees 4 and caps at 20 — the flat cap of 20 was what made the 64-seat
+playtest a shooting gallery), base speed
 `min(2.5, 1.5 + 0.1·(wave−1))` × the kind's multiplier. Scoring: bounty per
 kind (grunt/runner 2, sapper 3, brute 5, champion 20), `WAVE_BONUS` 10 for
 a clean wave / `WAVE_BONUS_LEAKY` 5, `TOWER_POINTS` 15, `KEEP_HIT_POINTS`
 −1 per leak, `KEEP_FALL_POINTS` −25 (the falling hit charges only that).
+
+Economy: every kill adds `COINS_PER_KILL_EACH` (1) × seated pilots to the
+team pot; each wave clear splits the pot evenly into per-pilot wallets
+(remainder carries), so a pilot's income is about the wave's kill count
+whatever the room size. The quarry is finite: `QUARRY_STOCK_BASE` 6 +
+`QUARRY_STOCK_PER_PILOT` 1 × seats + `QUARRY_STOCK_PER_WAVE` 1 × wave, set
+(not added) at every wave start and at reset — 20 pilots at wave 1 see 27
+steel, nine towers' worth; a lone rehearsal drone 8 (7 during grace — a
+seat taken during grace tops the stock up). Wallets are what the
+upgrade shop spends: `SHOP` prices zap 20/40/80 (+1 m reach, −0.25 s dwell
+per tier), speed 30/60 (+25 % caps per tier), tower 40/80 (+4 m range,
+−0.5 s reload per tier on the builder's towers, floored at
+`TOWER_COOLDOWN_MIN` 1 s), colour/outline 10 (cosmetic, repeatable). Tiers
+are personal and last the round; at ~15 coins a wave a pilot buys one tier
+by wave 2 and reaches the top rungs only in a long round.
+
+Gate S (`BONUS_GATE_CELL` (8, −14) = N −63 E 5, a row north of the 64-seat
+pads): `FORM_RADIUS` 12, `FORM_MIN`/`FORM_MAX` 6/12 m, `FORM_MIN_ANGLE`
+30°, `FORM_HOLD_S` 5; `BONUS_LANE_SIZE` 6 raiders (`KINDS["raider"]`: 2 hp,
+1.2×, +6) per opening, `BONUS_PER_WAVE` 1; raider kills pay the team total
+and `RAIDER_POOL_EACH` 1 coin per seat, no name on the board. Raider leaks
+still hit the Keep — that is the puzzle's risk.
+
+Roles: a chewed cell is a ghost and a `repair at … hover N` callout to
+carriers within `REPAIR_CALL_RADIUS` 40 m every `TARGET_EVERY`, for
+`REPAIR_TTL_S` 90; a tile back on it pays `REPAIR_POINTS` 1. A drone
+within `SPOT_RADIUS` 10 m of a gate for `SPOT_DWELL` 2 s is its spotter:
+it hears every spawn through that gate (`gate E: 3 grunt 1 sapper`) and
+the room hears the spotter every `SPOT_FEED_EVERY` 10 s. The PILOTS board
+carries each pilot's tally (`z` kills, `t` towers, `f` ferried, `b`
+placed, `r` repaired, `s` spots) beside their points — the "who did what"
+behind the score. Ferrying alone scores nothing (a pickup-crash loop
+would farm it); the feed notes every 5 pickups / placements.
+
+Buildings: the clay pit (`PIT_CELL`, infinite) feeds walls chewed at
+`CHEW_FACTOR` 3× (steel 1×; the flow field prices both the same, so a clay
+wall reroutes like steel and only *loses* faster). Ring tower (6 steel
+around a watchtower): `RING_RANGE` 28, `RING_COOLDOWN` 1.5, `RING_POINTS`
+25; the builder's tower tier adds range only. Beacon (clay-steel-clay
+singles): `BEACON_RADIUS` 25, `BEACON_MAX` 2, `LURE_BONUS_EACH` 1 coin per
+seat per lured kill; arrivals chew the steel in `CHEW_S`. Bell (6-clay ring
++ 3 clay): `BELL_DWELL_S` 3 at `BELL_ALT_ABOVE` 3 m over the top, `FREEZE_S`
+15, one shot. Costs in ferry time (both piles are ~67 m from the Keep,
+~30 s a tile): a watchtower ≈ 1.5 min solo, the ring +3 min solo (1 min
+with three ferries), a bell ≈ 3 min solo.
+
+Quests (`server/app/game/quests.py`): personal from `QUEST_FROM_WAVE` 2,
+opt-in, `QUEST_FIRST_S` 5 after enrolling then `QUEST_GAP_S` 20 between
+quests, at most `ISSUE_PER_TICK` 4 issued per tick; tiers follow the gate
+bands (waves ≤ 4 / ≤ 7 / 8+). Route: `ROUTE_STOPS` 3/4/5, touch 2.5 m,
+limit `ceil(length / 6) + 4 × stops` in 30–90 s. Predict: `PREDICT_T`
+8/12/15 s, within 6 m, still 2 s. Compute: 45 s, ±1 m for 2 s, answers in
+3–55 m. Room quest from `ROOM_QUEST_FROM_WAVE` 3 (issued at a wave start
+when none is open; it keeps its own clock across wave clears),
+`ROOM_QUEST_S` 60; a miss buffs the next wave `BUFF_HP` +1 / `BUFF_SPEED`
+×1.2, alternating. Payouts:
+`QUEST_POINTS` 5 personal, pot += `QUEST_POOL_EACH` 1 (room: 3) × seats.
 
 The roster (`KINDS` / `SHARES`): grunts 1 hp from wave 1; runners (1.5×
 speed) from 3; brutes (3 hp, 0.65× speed, chew 2×) from 5; sappers (2 hp,
@@ -180,6 +265,38 @@ from 8 (`_gates_for`). Between waves the game announces a tower site four
 cells before the Keep beside the last lane (`BUILD_SITE_STEPS`, 8 ≈ 40 m out —
 past where gate-camping zappers already emptied it); towers reach 16 m and
 fire every 2 s; a drone zaps one creep per 1.5 s (`ZAP_DWELL`), never a clump.
+
+**Balance from numbers.** Every reset that ends a played round appends one
+line to `server/state/<room>/rounds.jsonl` (`ts`, `room`, `seed`, `seats`,
+`names`, then the round: `best_wave`, `kills`/`zapped`/`squished`/`shot`,
+`leaks`, `towers`, `ring_towers`, `bells`, `first_tower_s`,
+`quests_solved`/`missed`, `coins_spent`, `pool`, `wallets`, `score`,
+`duration_s`, and the per-pilot tally). `make balance ROUNDS=3
+BOTS="6:bot_siege 2:bot_tower 1:bot_repair 1:bot_scout" SECONDS=300` runs
+that many headless bot-only rounds on seeds 3, 4, 5 … (real time — the
+bots sleep on the wall clock) into `server/state/balance/rounds.jsonl` and
+prints them as a table, so a knob change is compared against the same
+waves. Columns to knobs: `first_tower_s` ↔ `GRACE_S`/quarry stock;
+`leaks` ↔ `WAVE_MAX`/tower stats; `coins_spent` ↔ `SHOP`/`COINS_PER_KILL_EACH`;
+`quests_missed` ↔ the quest knobs. Tune only against a run that had the
+content the class will see.
+
+Measured with the enrichment stack (2026-08-29, `make balance ROUNDS=2
+SECONDS=240`, three bot mixes in parallel on the lab box, seeds 3 and 4):
+8 seats (6 zappers + 2 tower bots) reached wave 4 in 240 s with 28–34
+kills, 0 leaks, 2 towers, the first at 79–119 s; 19 seats (14 zappers, 3
+tower bots, a repair and a scout bot) wave 4, 43 kills, 0 leaks, 3 towers,
+first at 52 s, the scout relaying 3–4 reports; 11 seats with the three
+worked-answer bots enrolled: 5 and 4 quests solved, 0 missed. Income is
+room-size-invariant as designed: 192 / 8, 570 / 19 and 319 / 11 coins in
+wallets after three clears ≈ 8–10 coins per pilot per wave, so the first
+zap tier (20) comes after wave 2–3, not wave 2. One zapper bot takes ~75 %
+of the kills (all bots chase the same callout and the first to arrive
+wins): the blob, as intended. Four-minute rounds never reach the cap;
+`SECONDS=600` does (wave 8+), which is where `WAVE_MAX_PER_PILOT` should be
+judged with a human room. Bots never buy, ring or ring the bell, so shop
+prices, ring/beacon/bell value and `PLACE`/`REPAIR` points are still
+human-only calls — the class is the measurement.
 
 Measured before the kinds landed (8 × `bot_siege` + 2 × `bot_builder`,
 ~3.5 min): grace and the wave machine ran exactly on the documented clocks
@@ -198,6 +315,10 @@ before the day and watch the round summary on reset.
   stops being "the main event" and becomes the finale; consider `GRACE_S=60`.
 
 ## Day −1 checklist (cannot be verified off the lab server)
+
+`sudo -v && bash docs/deploy/pre-workshop.sh` runs the mechanical half of
+this list (deploy → build → image → restart → preflight → smoke) and prints
+the rest; the boxes below are the whole list.
 
 - [ ] `set -a && . /etc/drone-life.env && set +a && make preflight` (the env
       file is not read by `make` on its own) / podman path: `make image`,

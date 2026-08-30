@@ -15,6 +15,7 @@ const TROOP_LOOK: Record<string, TroopLook> = {
   brute: { fill: 0x9c1f2e, edge: 0x3d0a12, tick: 0xffb0b0, r: 1.9, sides: 6 },
   sapper: { fill: 0xa25cff, edge: 0x4a1f8a, tick: 0xe6d0ff, r: 1.15, sides: 4 },
   champion: { fill: 0xd91f5a, edge: 0x5a0a24, tick: 0xffd0e0, r: 2.6, sides: 8 },
+  raider: { fill: 0xffd166, edge: 0x7a5a10, tick: 0xfff0c0, r: 1.3, sides: 5 },
 };
 
 function polyAround(cx: number, cy: number, r: number, sides: number, rot = 0): number[] {
@@ -33,10 +34,11 @@ export const troop: KindRenderer = {
   },
   draw(vis, ent, pose, drawAlt, s, timeMs) {
     const chewing = Boolean(ent.data.chewing);
+    const frozen = Boolean(ent.data.frozen);
     const look = TROOP_LOOK[String(ent.data.kind ?? "grunt")] ?? TROOP_LOOK.grunt;
     const dir = (Number(ent.data.dir ?? 0) * Math.PI) / 180; // server sends degrees
-    const jitter = chewing && !REDUCED_MOTION ? Math.sin(timeMs / 30) * s * 0.25 : 0;
-    const bob = chewing || REDUCED_MOTION ? 0 : Math.abs(Math.sin(timeMs / 120)) * s * 0.35;
+    const jitter = chewing && !frozen && !REDUCED_MOTION ? Math.sin(timeMs / 30) * s * 0.25 : 0;
+    const bob = chewing || frozen || REDUCED_MOTION ? 0 : Math.abs(Math.sin(timeMs / 120)) * s * 0.35;
     // a pixel floor per kind: ~11 px grunts, ~17 px brutes, ~23 px champion at any
     // zoom — a projector from the back row is the target, not a laptop
     const r = Math.max(9 * look.r, s * look.r);
@@ -46,6 +48,9 @@ export const troop: KindRenderer = {
     } else {
       vis.g.poly(polyAround(jitter, -bob, r, look.sides, -Math.PI / 2))
         .fill({ color: look.fill }).stroke({ width: 1.5, color: look.edge });
+    }
+    if (frozen) { // the bell's gift: an icy halo, and no motion (above)
+      vis.g.circle(jitter, -bob, r * 1.25).stroke({ width: 2, color: 0xbfe9ff, alpha: 0.9 });
     }
     if (look.sides === 8) { // the champion wears a crown
       const c = polyAround(jitter, -bob - r * 0.95, r * 0.7, 3, -Math.PI / 2);
@@ -107,10 +112,16 @@ export const tower: KindRenderer = {
   draw(vis, ent, pose, _drawAlt, s, timeMs) {
     const glow = pulse(timeMs, 250, 0.55, 0.25);
     const r = Math.max(4, s * 1.3);
+    const ring = Boolean(ent.data.ring); // six steel around it: a gold dome, a wider reach
+    const dome = ring ? 0xffd166 : 0x9fd8ff;
     // glow dome capping the steel stack (the stack itself is terrain)
-    vis.g.circle(0, -r * 0.3, r * 1.8).fill({ color: 0x7cc7ff, alpha: glow * 0.2 });
-    vis.g.ellipse(0, 0, r * 1.2, r * 0.6).fill({ color: 0x274a63 });
-    vis.g.circle(0, -r * 0.5, r * 0.8).fill({ color: 0x9fd8ff, alpha: 0.6 + glow * 0.4 });
+    vis.g.circle(0, -r * 0.3, r * 1.8).fill({ color: ring ? 0xffd166 : 0x7cc7ff, alpha: glow * 0.2 });
+    vis.g.ellipse(0, 0, r * 1.2, r * 0.6).fill({ color: ring ? 0x5a4a1a : 0x274a63 });
+    vis.g.circle(0, -r * 0.5, r * 0.8).fill({ color: dome, alpha: 0.6 + glow * 0.4 });
+    const tier = Math.max(0, Math.floor(Number(ent.data.tier ?? 0))); // builder's tier
+    for (let i = 0; i < tier; i++) {  // pips on the dome, one per tier
+      vis.g.circle((i - (tier - 1) / 2) * r * 0.5, -r * 1.3, r * 0.18).fill({ color: 0xffd166 });
+    }
     const range = Number(ent.data.range ?? 0); // faint ring on the ground
     if (range > 0) {
       const ring: number[] = [];
@@ -150,15 +161,26 @@ export const gate: KindRenderer = {
   },
   draw(vis, ent, pose, _drawAlt, s, timeMs) {
     const active = Boolean(ent.data.active);
+    const sealed = Boolean(ent.data.sealed);
+    const hold = Math.max(0, Math.min(1, Number(ent.data.hold ?? 0)));
     // a dark archway on the lattice: two posts and a lintel, hex footprint
     const base = hexPoly(2.4, s);
     vis.g.poly(base).fill({ color: 0x1c1a26, alpha: 0.9 })
-      .stroke({ width: 2, color: active ? 0xff5c5c : 0x5a4a5a, alpha: 0.95 });
+      .stroke({ width: 2, color: active ? 0xff5c5c : sealed ? 0xffd166 : 0x5a4a5a, alpha: 0.95 });
     const h = 2.2 * ALT_LIFT * s;
     const w = Math.max(4, s * 1.3);
     vis.g.rect(-w - 2, -h, 3, h).fill({ color: 0x4a3a4a });
     vis.g.rect(w - 1, -h, 3, h).fill({ color: 0x4a3a4a });
     vis.g.rect(-w - 2, -h - 3, w * 2 + 4, 3).fill({ color: 0x6a5a6a });
+    if (sealed) { // a portcullis, and the formation's hold as a filling arc
+      for (let k = -1; k <= 1; k++) {
+        vis.g.rect(k * w * 0.5 - 1, -h, 2, h).fill({ color: 0xffd166, alpha: 0.7 });
+      }
+      if (hold > 0) {
+        vis.g.arc(0, -h * 0.5, w * 1.6, -Math.PI / 2, -Math.PI / 2 + hold * Math.PI * 2)
+          .stroke({ width: 3, color: 0xffd166, alpha: 0.9 });
+      }
+    }
     if (active) { // creeps are coming through: a pulsing red ring on the ground
       const glow = pulse(timeMs, 220, 0.5, 0.35);
       const ring: number[] = [];
@@ -220,5 +242,92 @@ export const zapArc: KindRenderer = {
     vis.g.poly(pts, false).stroke({ width: 4, color: COLORS.gold, alpha: 0.35 * (1 - k) });
     vis.g.poly(pts, false).stroke({ width: 1.5, color: 0xfff2b0, alpha: 0.95 * (1 - k) });
     vis.g.circle(dx, dy, Math.max(2.5, s * 0.7)).fill({ color: 0xfff2b0, alpha: 0.9 * (1 - k) });
+  },
+};
+
+/** A room route quest's stop: a numbered flag on the ground, dimmed once any
+ * drone has touched it. */
+export const questMark: KindRenderer = {
+  animated: true,
+  init(vis, ent) {
+    vis.addLabel(String(ent.data.label ?? "?"), 0xffb86b, 12, -4);
+  },
+  draw(vis, ent, _pose, _drawAlt, s, timeMs) {
+    const done = Boolean(ent.data.done);
+    const r = Math.max(4, s * 1.4);
+    const alpha = done ? 0.35 : pulse(timeMs, 400, 0.6, 0.4);
+    vis.g.circle(0, 0, r * 1.6).stroke({ width: 2, color: 0xffb86b, alpha });
+    vis.g.moveTo(0, 0).lineTo(0, -r * 2.2).stroke({ width: 2, color: 0xffb86b, alpha });
+    vis.g.poly([0, -r * 2.2, r * 1.2, -r * 1.8, 0, -r * 1.4])
+      .fill({ color: 0xffb86b, alpha: done ? 0.3 : 0.9 });
+    if (vis.label) vis.label.text = String(ent.data.label ?? "?");
+  },
+};
+
+/** A beacon: a pulsing lamp on its steel cell and the faint circle of its
+ * lure; the lamp dims as creeps eat it. */
+export const beacon: KindRenderer = {
+  animated: true,
+  init(vis) {
+    vis.addLabel("BEACON", 0xffb86b, 10, -34); // above the lamp: its own tiles hide the ground
+  },
+  draw(vis, ent, pose, _drawAlt, s, timeMs) {
+    const chewRaw = Number(ent.data.chew ?? 0);
+    const chew = Number.isFinite(chewRaw) ? Math.max(0, Math.min(1, chewRaw)) : 0;
+    const r = Math.max(4, s * 1.2);
+    const glow = pulse(timeMs, 500, 0.7, 0.3) * (1 - chew * 0.7);
+    vis.g.circle(0, -r * 0.8, r * 1.6).fill({ color: 0xffb86b, alpha: glow * 0.25 });
+    vis.g.moveTo(0, 0).lineTo(0, -r * 1.6).stroke({ width: 2, color: 0x7a4a12 });
+    vis.g.circle(0, -r * 1.7, r * 0.55).fill({ color: 0xffd166, alpha: 0.5 + glow * 0.5 });
+    const radius = Number(ent.data.radius ?? 0);
+    if (radius > 0) {
+      const ringPts: number[] = [];
+      for (let k = 0; k < 30; k++) {
+        const a = (Math.PI / 15) * k;
+        const p = projectGround(pose.n + radius * Math.cos(a), pose.e + radius * Math.sin(a), s);
+        ringPts.push(p.x, p.y);
+      }
+      vis.decal.poly(ringPts).stroke({ width: 1.5, color: 0xffb86b, alpha: 0.18 });
+    }
+    if (vis.label) vis.label.text = chew > 0 ? `BEACON ${Math.round((1 - chew) * 100)}%` : "BEACON";
+  },
+};
+
+/** The bell on its clay stack: a dome with a clapper; the rim brightens as a
+ * drone's dwell charges it. */
+export const bell: KindRenderer = {
+  animated: true,
+  init(vis, ent) {
+    vis.addLabel(`BELL · hover ${Number(ent.data.hover ?? 8)} m`, 0xbfe9ff, 10, 10);
+  },
+  draw(vis, ent, _pose, _drawAlt, s, timeMs) {
+    const chargeRaw = Number(ent.data.charge ?? 0);
+    const charge = Number.isFinite(chargeRaw) ? Math.max(0, Math.min(1, chargeRaw)) : 0;
+    const r = Math.max(5, s * 1.4);
+    vis.g.circle(0, -r * 0.6, r * (1.6 + charge)).fill({ color: 0xbfe9ff, alpha: 0.08 + charge * 0.25 });
+    vis.g.ellipse(0, 0, r * 1.1, r * 0.5).fill({ color: 0x3a3a4a });
+    vis.g.poly([-r, 0, -r * 0.7, -r * 1.4, 0, -r * 1.9, r * 0.7, -r * 1.4, r, 0])
+      .fill({ color: 0xc9a227 }).stroke({ width: 1.5, color: 0x5a4a1a });
+    vis.g.circle(0, -r * 0.2, r * 0.22).fill({ color: 0x3a3a4a });
+    if (charge > 0 && !REDUCED_MOTION) {
+      const wob = Math.sin(timeMs / 60) * r * 0.15 * charge;
+      vis.g.moveTo(wob, -r * 0.2).lineTo(wob, r * 0.1).stroke({ width: 2, color: 0x5a4a1a });
+    }
+  },
+};
+
+/** The ring: an expanding circle from where the bell stood. */
+export const bellRing: KindRenderer = {
+  animated: true,
+  draw(vis, _ent, pose, _drawAlt, s, timeMs) {
+    const age = Math.min(1, (timeMs - vis.bornMs) / 1200);
+    const pts: number[] = [];
+    const radius = 4 + age * 60;
+    for (let k = 0; k < 30; k++) {
+      const a = (Math.PI / 15) * k;
+      const p = projectGround(pose.n + radius * Math.cos(a), pose.e + radius * Math.sin(a), s);
+      pts.push(p.x, p.y);
+    }
+    vis.decal.poly(pts).stroke({ width: 3, color: 0xbfe9ff, alpha: 0.8 * (1 - age) });
   },
 };

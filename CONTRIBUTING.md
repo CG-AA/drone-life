@@ -19,7 +19,7 @@ directly.
 
 | seam | where | what it isolates |
 |---|---|---|
-| `DroneBackend` / `DroneView` | `app/sim/backend.py` | everything above the sim sees snapshots and an async spawn/remove/send_text interface; a future ArduPilot-SITL backend implements the same ABC out-of-process |
+| `DroneBackend` / `DroneView` | `app/sim/backend.py` | everything above the sim sees snapshots and an async spawn/remove/send_text interface, plus one deliberate physics knob, `set_speed(drone_id, scale)` (siege's speed upgrade — a backend that cannot honour it may ignore it); a future ArduPilot-SITL backend implements the same ABC out-of-process |
 | `Terrain` (structural Protocol) | `app/sim/terrain.py` | the sim asks only `height_at(n, e)`; a mission's `TileMap` satisfies it without importing sim behavior |
 | `WorldAPI` / `Mission` | `app/game/mission.py` | missions see the world only through WorldAPI and describe themselves only as `Entity` records — physics, networking, rendering never change for content |
 | `Hub` | `app/api/ws.py` | fan-out only: latest-wins world slot per socket, bounded FIFO for events/logs, one sender task per socket; the driver loop never awaits a send |

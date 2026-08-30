@@ -22,6 +22,7 @@ from app.game.missions.siege import (
     ZAP_ARC_S,
     ZAP_DWELL,
     SiegeMission,
+    _wave_cap,
     _wave_size,
 )
 from app.game.units import GroundUnit
@@ -71,7 +72,7 @@ def test_setup_entities_and_announcements():
     kinds = {e.kind for e in m.entities(world)}
     assert {"keep", "tile_source", "gate"} <= kinds
     gates = [e for e in m.entities(world) if e.kind == "gate"]
-    assert [g.data["label"] for g in gates] == ["N", "E", "W"]
+    assert [g.data["label"] for g in gates] == ["N", "E", "W", "S"]
     assert not any(g.data["active"] for g in gates), "quiet before the first wave"
     keep = next(e for e in m.entities(world) if e.kind == "keep")
     assert keep.data == {"hp": KEEP_HP, "max": KEEP_HP}
@@ -94,7 +95,9 @@ def test_hud_state_tracks_the_wave_machine():
     world, m = make()
     hud = {k: v for k, v in m.hud().items() if k not in ("stats", "last_round")}
     assert hud == {"wave": 0, "state": "grace", "timer_s": 45, "keep_hp": KEEP_HP,
-                   "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0}
+                   "keep_max": KEEP_HP, "creeps_alive": 0, "pending": 0, "towers": 0,
+                   "pool": 0, "quests": {"solved": 0, "missed": 0, "room": None},
+                   "frozen_s": 0, "gate_s": "sealed"}
     world.views = [view("d0", n=-90.0, e=-76.0)]
     world.run(m, 10.0)
     assert m.hud()["timer_s"] == 35 and m.hud()["state"] == "grace"
@@ -103,8 +106,9 @@ def test_hud_state_tracks_the_wave_machine():
     assert h["wave"] == 1 and h["state"] == "active" and h["timer_s"] == 0
     assert h["creeps_alive"] + h["pending"] == 4
     assert all(isinstance(v, int) for k, v in h.items()
-               if k not in ("state", "stats", "last_round")), "integers only"
+               if k not in ("state", "stats", "last_round", "quests", "gate_s")), "integers only"
     assert h["stats"]["best_wave"] == 1
+    assert "pilots" not in h["stats"], "per-pilot data rides drone rows, not mission_state"
 
 
 def test_empty_room_freezes_the_clock():
@@ -170,7 +174,8 @@ def test_leaky_wave_pays_the_reduced_bonus():
     assert any("wave 3 clear, 2 leaked +5" in t for t in texts(world))
     ev = next(ev for ev in world.events if ev["kind"] == "wave_clear")
     assert ev["msg"] == "wave 3 beaten! 6 kills, 2 leaked, +5"
-    assert ev["data"] == {"points": 5, "kills": 6, "leaks": 2, "tower_kills": 0}
+    assert ev["data"] == {"points": 5, "kills": 6, "leaks": 2, "tower_kills": 0,
+                          "share": 0, "pool": 0}
     assert_grammar(world)
 
 
@@ -402,8 +407,10 @@ def test_wave_composition_follows_the_bands():
 def test_wave_size_scales_with_pilots_and_clamps():
     assert _wave_size(1, 1) == 4 and _wave_size(1, 3) == 4
     assert _wave_size(1, 8) == 6 and _wave_size(1, 20) == 9
-    assert _wave_size(7, 1) == 16 and _wave_size(9, 20) == WAVE_MAX
-    assert _wave_size(40, 40) == WAVE_MAX
+    assert _wave_size(7, 1) == 16 and _wave_size(9, 20) == 25, "20 pilots: cap 30, not yet"
+    assert _wave_size(12, 20) == 30 == _wave_cap(20), "…met at wave 12"
+    assert _wave_size(40, 1) == WAVE_MAX, "a lone drone keeps the small-room cap"
+    assert _wave_cap(64) == 52 and _wave_size(20, 64) == 52, "a full class meets a real siege"
 
 
 def test_a_full_room_gets_a_bigger_first_wave():
@@ -493,7 +500,7 @@ def test_tower_builds_fires_and_beam_expires():
     build_tower(world, m, cell)
     assert cell in m.towers
     assert world.score == before + TOWER_POINTS
-    assert any("tower up! +15" in t for t in texts(world))
+    assert any(t.startswith("GAME: tower up at N") and t.endswith("! +15") for t in texts(world))
     placed = [t for t in texts(world) if "placed! tile at" in t]
     assert len(placed) == 2, "the tower-completing tile gets the tower text"
 
@@ -571,7 +578,7 @@ def test_creep_chews_through_a_full_ring():
         m.tm.place(wall, "steel")
     add_creep(m, (0, 4), speed=1.5)
     world.run(m, 25.0)
-    assert any("wall chewed at" in t for t in texts(world))
+    assert any("steel chewed at" in t for t in texts(world))
     assert m.keep_hp == KEEP_HP - 1, "enclosure delays, never stops"
     assert_grammar(world)
 
@@ -731,7 +738,8 @@ def test_a_newcomer_is_briefed_not_backfilled():
     mine = [t for target, t in world.texts if target == "d1"]
     assert mine[0].startswith("GAME: keep at N 0 E 0")
     assert mine[1].startswith("GAME: quarry at")
-    assert mine[2].startswith("GAME: wave 1 at N") and "creeps" in mine[2]
+    assert mine[2].startswith("GAME: clay pit at N 50 E -44")
+    assert mine[3].startswith("GAME: wave 1 at N") and "creeps" in mine[3]
     assert not [t for target, t in world.texts if target == "d0"], "nobody else hears it"
     m.state, m.timer = "build", 12.4
     world.texts.clear()
@@ -759,8 +767,11 @@ def test_a_brief_is_not_followed_by_the_same_lines_again():
     keeps = [t for target, t in world.texts if target in ("d1", "*") and "keep at" in t]
     assert len(keeps) == 1, "the brief already said it"
     world.run(m, 3.0)
+    from app.game.missions.siege import _HINTS
+    hints = [t for target, t in world.texts if target == "*" and t in _HINTS]
+    assert len(hints) == 1, "…and the room's periodic hint still comes, a moment later"
     keeps = [t for target, t in world.texts if target in ("d1", "*") and "keep at" in t]
-    assert len(keeps) == 2, "…and the room's announce still comes, a moment later"
+    assert len(keeps) == 1, "the landmarks are the brief's job, not the periodic announce's"
 
 
 def test_the_suggested_site_is_a_ghost_on_the_wall_until_built():
@@ -798,8 +809,8 @@ def test_wave_clear_credits_the_towers_share():
     m.state, m.wave, m.pending = "active", 2, 0
     world.run(m, 0.3)
     ev = next(ev for ev in world.events if ev["kind"] == "wave_clear")
-    assert ev["msg"] == "wave 2 beaten! 1 kills (1 by towers), 0 leaked, +10"
-    assert ev["data"]["tower_kills"] == 1
+    assert ev["msg"] == "wave 2 beaten! 1 kills (1 by towers), 0 leaked, +10, 1 coin each"
+    assert ev["data"]["tower_kills"] == 1 and ev["data"]["share"] == 1
 
 
 def test_hands_full_at_the_quarry_hints():

@@ -39,6 +39,9 @@ def world_message(service: DroneLifeService) -> dict:
             "mode": view.mode, "armed": view.armed, "on_ground": view.on_ground,
             "crashed": view.crashed, "connected": view.connected,
             "carrying": carrying.get(view.id),
+            # per-pilot mission state (siege: wallet, upgrades) — the second
+            # mission-derived field on a drone row, next to `carrying`
+            "pilot": service.engine.pilot(view.student_id),
         })
     pads = [
         {"slot": s.slot, "n": _f(World.pad_position(s.slot)[0]),
@@ -50,7 +53,10 @@ def world_message(service: DroneLifeService) -> dict:
                      for sid, pts in service.engine.scores.items()
                      if sid in students and pts),
                     key=lambda r: (-r[0], r[1]))
-    scores = [{"student_id": sid, "name": name, "points": pts} for pts, name, sid in ranked]
+    # the board shows the top 8: only they carry the what-did-you-do column
+    scores = [{"student_id": sid, "name": name, "points": pts,
+               "detail": str(service.engine.pilot(sid).get("detail", "")) if i < 8 else ""}
+              for i, (pts, name, sid) in enumerate(ranked)]
     return {"epoch": service.world.epoch, "t": round(service.world.t, 2),
             "score": service.engine.score, "scores": scores, "drones": drones,
             "entities": entities, "pads": pads, "mission_state": service.engine.hud()}

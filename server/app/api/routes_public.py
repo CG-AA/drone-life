@@ -29,6 +29,8 @@ TEMPLATES = {
     "bot_courier": "bot_courier.py",
     "bot_siege": "bot_siege.py",
     "bot_tower": "bot_tower.py",
+    "bot_repair": "bot_repair.py",
+    "bot_scout": "bot_scout.py",
     "bot_builder": "bot_builder.py",
     "bot_patrol": "bot_patrol.py",
 }

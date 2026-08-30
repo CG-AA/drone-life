@@ -11,8 +11,9 @@ import os
 
 import pytest
 
+from app.headless import NullHub, find_port_base
 from app.service import DroneLifeService
-from tests.conftest import find_port_base, make_settings
+from tests.conftest import make_settings
 
 pytestmark = pytest.mark.load
 
@@ -20,18 +21,12 @@ BOTS = int(os.environ.get("LOAD_BOTS", "10"))
 SLOTS = BOTS + 2
 
 
-class CountingHub:
+class CountingHub(NullHub):
     def __init__(self) -> None:
         self.worlds = 0
 
     def broadcast_world(self, data: dict) -> None:
         self.worlds += 1
-
-    def broadcast_tiles(self, data: dict) -> None:
-        pass  # tile missions broadcast these; without it the driver would raise
-
-    def send_run_state(self, student_id: str, payload: dict) -> None:
-        pass
 
 
 async def test_a_full_class_of_bots_for_a_minute(tmp_path):

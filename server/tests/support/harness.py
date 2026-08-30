@@ -19,11 +19,12 @@ from app.game.mission import Mission, MissionConfig
 from app.sim.backend import DroneView
 
 
-def view(drone_id="d0", n=0.0, e=0.0, alt=1.0, armed=True, crashed=False) -> DroneView:
+def view(drone_id="d0", n=0.0, e=0.0, alt=1.0, armed=True, crashed=False,
+         vn=0.0, ve=0.0, connected=True) -> DroneView:
     return DroneView(
         id=drone_id, student_id=f"s-{drone_id}", name=drone_id.upper(), sysid=1,
-        n=n, e=e, alt=alt, vn=0, ve=0, valt=0, yaw=0, mode="GUIDED",
-        armed=armed, on_ground=False, crashed=crashed, connected=True,
+        n=n, e=e, alt=alt, vn=vn, ve=ve, valt=0, yaw=0, mode="GUIDED",
+        armed=armed, on_ground=False, crashed=crashed, connected=connected,
     )
 
 
@@ -65,6 +66,7 @@ class FakeWorld:
         self.texts: list[tuple[str, str]] = []  # (target, text); "*" = broadcast
         self.scores: list[tuple[int, str, str | None]] = []
         self.score = 0
+        self.speeds: dict[str, float] = {}  # drone id -> last set_speed scale
 
     def drones(self):
         return self.views
@@ -96,6 +98,9 @@ class FakeWorld:
         check_text(text)
         self.texts.append(("*", text))
 
+    def set_speed(self, drone_id, scale):
+        self.speeds[drone_id] = scale
+
     # --------------------------------------------- engine-shaped drivers
 
     def start(self, mission: Mission) -> None:
@@ -109,6 +114,11 @@ class FakeWorld:
     def drone_event(self, mission: Mission, drone: DroneView, kind: str) -> None:
         """Within a driver step, events are delivered before tick()."""
         mission.on_drone_event(self, drone, kind)
+
+    def text(self, mission: Mission, drone: DroneView, text: str) -> None:
+        """What the engine hands on_text after a `dronelife.say(text)`: the
+        gateway strips and truncates, so the mission never sees more."""
+        mission.on_text(self, drone, text.strip()[:50])
 
     def run(self, mission, seconds, dt=0.1):
         for _ in range(int(seconds / dt)):

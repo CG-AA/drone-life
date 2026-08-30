@@ -9,7 +9,7 @@ import { Container, Graphics, Text } from "pixi.js";
 import type { DroneState } from "../shared/protocol";
 import { COLORS, FONT_UI } from "../shared/theme";
 import { project } from "./iso";
-import { slotColor } from "./colors";
+import { parseHex, slotColor } from "./colors";
 import type { Scene } from "./scene";
 
 const TRAIL_LEN = 120;
@@ -67,6 +67,12 @@ class DroneVis {
     const dim = !d.connected && !d.crashed;
     this.root.alpha = dim ? 0.55 : 1;
 
+    const pilot = d.pilot ?? {};
+    // bought looks: fill and outline are the pilot's own; the name tag keeps
+    // the slot colour, whose AA contrast on the floor is guaranteed
+    const fill = parseHex(pilot.colour) ?? this.color;
+    const outline = parseHex(pilot.outline);
+    const tiers = tierCount(pilot);
     const body = this.body;
     body.clear();
     if (d.crashed) {
@@ -80,10 +86,19 @@ class DroneVis {
       const he = Math.sin(yaw);
       const tip = project(n + hn * 2.2, e + he * 2.2, alt, s);
       body.circle(0, 0, r)
-        .fill({ color: d.armed ? this.color : COLORS.disarmed })
-        .stroke({ width: 1.5, color: COLORS.ink, alpha: 0.9 });
+        .fill({ color: d.armed ? fill : COLORS.disarmed })
+        .stroke(outline === null
+          ? { width: 1.5, color: COLORS.ink, alpha: 0.9 }
+          : { width: 2.5, color: outline, alpha: 1 });
       body.moveTo(0, 0).lineTo(tip.x - p.x, tip.y - p.y)
         .stroke({ width: 2.5, color: COLORS.ink, alpha: 0.85 });
+      // upgrade badge: one chevron per bought tier, above the hull — a shape,
+      // not a colour, so it reads on a washed-out projector
+      for (let i = 0; i < tiers; i++) {
+        const y = -r - 3 - i * 4;
+        body.moveTo(-3, y).lineTo(0, y - 3).lineTo(3, y)
+          .stroke({ width: 1.5, color: COLORS.gold, alpha: 0.95 });
+      }
       if (d.carrying) {
         body.rect(-r * 0.45, r * 0.7, r * 0.9, r * 0.7)
           .fill({ color: COLORS.warn }).stroke({ width: 1, color: 0x7a4a12 });
@@ -125,6 +140,12 @@ class DroneVis {
     this.points.length = 0;
     this.trail.clear();
   }
+}
+
+/** Bought tiers, capped so a maxed pilot wears five chevrons, not seven. */
+export function tierCount(pilot: Record<string, unknown>): number {
+  const n = (v: unknown): number => (typeof v === "number" && v > 0 ? Math.floor(v) : 0);
+  return Math.min(5, n(pilot.zap) + n(pilot.speed) + n(pilot.tower));
 }
 
 export class DroneRenderer {

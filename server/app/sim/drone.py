@@ -16,6 +16,7 @@ from .terrain import FLAT, Terrain
 
 SEV_INFO = 6  # MAV_SEVERITY_INFO
 SEV_WARNING = 4  # MAV_SEVERITY_WARNING
+INBOX_MAX = 8  # texts a script may queue between mission ticks; the rest drop
 
 
 class Flight(Enum):
@@ -67,8 +68,14 @@ class DroneSim:
     last_bounds_warn: float = -1e9
     ground_d: float = 0.0  # d of the surface under the drone (-terrain height)
 
+    # a mission-granted multiplier on the horizontal and climb caps (siege's
+    # speed upgrade); descent stays stock. Round state: World.reset clears it,
+    # a self-service reset_to_pad keeps it — the pilot paid for it
+    speed_scale: float = 1.0
+
     outbox: list[tuple[int, str]] = field(default_factory=list)  # (severity, text)
     events: list[str] = field(default_factory=list)  # lifecycle events for the engine
+    inbox: list[str] = field(default_factory=list)  # what the script said (STATUSTEXT upstream)
 
     def __post_init__(self) -> None:
         self.n = self.spawn_n
@@ -96,6 +103,13 @@ class DroneSim:
 
     def say(self, text: str, severity: int = SEV_INFO) -> None:
         self.outbox.append((severity, text[:50]))
+
+    def hear(self, text: str) -> None:
+        """A line the script sent upstream, for the mission's on_text hook.
+        Bounded: a script shouting in a loop cannot grow the queue."""
+        text = text.replace("\x00", "").strip()[:50]
+        if text and len(self.inbox) < INBOX_MAX:
+            self.inbox.append(text)
 
     def _hold_here(self) -> None:
         self.tn, self.te, self.td = self.n, self.e, self.d
@@ -276,10 +290,11 @@ class DroneSim:
                 self.say("velocity setpoint timed out: holding", SEV_WARNING)
             else:
                 vn, ve, vd = self.vel_sp
+                vmax = P.V_XY_MAX * self.speed_scale
                 mag = math.hypot(vn, ve)
-                if mag > P.V_XY_MAX:
-                    vn, ve = vn / mag * P.V_XY_MAX, ve / mag * P.V_XY_MAX
-                vd = min(max(vd, -P.V_UP_MAX), P.V_DOWN_MAX)
+                if mag > vmax:
+                    vn, ve = vn / mag * vmax, ve / mag * vmax
+                vd = min(max(vd, -P.V_UP_MAX * self.speed_scale), P.V_DOWN_MAX)
                 return vn, ve, vd
 
         if self.flight == Flight.LAND:
@@ -290,7 +305,7 @@ class DroneSim:
         # everything else approaches (tn, te, td) on the braking parabola
         hn, he = self._horiz_toward(self.tn, self.te)
         dz = self.td - self.d
-        cap = P.V_UP_MAX if dz < 0 else P.V_DOWN_MAX
+        cap = P.V_UP_MAX * self.speed_scale if dz < 0 else P.V_DOWN_MAX
         vd = math.copysign(_brake_speed(abs(dz), P.A_Z_MAX, cap), dz) if abs(dz) > 1e-3 else 0.0
         if self.flight in (Flight.TAKEOFF, Flight.RTL_CLIMB) and self.alt < P.FINAL_ALT and dz > 0:
             vd = min(vd, P.V_DOWN_FINAL)
@@ -301,7 +316,7 @@ class DroneSim:
         dist = math.hypot(dn, de)
         if dist < 1e-3:
             return 0.0, 0.0
-        speed = _brake_speed(dist, P.A_XY_MAX, P.V_XY_MAX)
+        speed = _brake_speed(dist, P.A_XY_MAX, P.V_XY_MAX * self.speed_scale)
         return dn / dist * speed, de / dist * speed
 
     def _step_crashed(self, t: float, dt: float) -> None:

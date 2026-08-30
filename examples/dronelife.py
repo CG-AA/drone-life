@@ -14,6 +14,7 @@ The arena spans -100..100 on both axes; max altitude is 60 m.
 
 GAME messages ("crate 3 at N 40 E -12", "creep at N 10 E 55") arrive through
 drone.events(); position_in(msg) pulls the (north, east) pair out of one.
+drone.say("wallet") talks back to the game (siege: coins and the shop).
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ class Drone:
         self._say(f"connected to drone (sysid {self.conn.target_system})")
 
         self._pos = (0.0, 0.0, 0.0)  # (north, east, altitude)
+        self._have_pos = False  # the first LOCAL_POSITION_NED has arrived
         self._armed = False
         self._mode = 0
         self._game_events: queue.Queue[str] = queue.Queue()
@@ -50,15 +52,27 @@ class Drone:
         # Sends happen on the caller's thread; that combination is fine.
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
+        # position() right after connect() must be YOUR pad, not (0, 0, 0):
+        # the stream is 10 Hz, so this is a blink
+        deadline = time.time() + 3.0
+        while not self._have_pos and time.time() < deadline:
+            time.sleep(0.02)
 
     # ------------------------------------------------------------ flying
 
     def takeoff(self, alt: float) -> None:
         """Set GUIDED mode, arm, and climb to `alt` meters."""
         self.set_mode(GUIDED)
-        # MAV_CMD_COMPONENT_ARM_DISARM, param1=1 -> arm
-        self._cmd(mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1)
-        self._wait(lambda: self._armed, 5, "arming (is the drone crashed or mid-air?)")
+        # MAV_CMD_COMPONENT_ARM_DISARM, param1=1 -> arm. A crashed drone
+        # respawns on its pad after 5 s and refuses to arm until then, so
+        # keep asking for a while rather than giving up at exactly that moment
+        deadline = time.time() + 12.0
+        while not self._armed and time.time() < deadline:
+            self._cmd(mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1)
+            self._wait_quiet(lambda: self._armed, 1.0)
+        if not self._armed:
+            raise TimeoutError("gave up waiting for: arming (is the drone mid-air? "
+                               "press reset drone, then Run again)")
         self._say("armed")
         # MAV_CMD_NAV_TAKEOFF, param7 = target altitude
         self._cmd(mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, p7=alt)
@@ -120,10 +134,19 @@ class Drone:
         self._cmd(mavutil.mavlink.MAV_CMD_DO_SET_MODE,
                   mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, p2=mode)
 
+    def say(self, text: str) -> None:
+        """Tell the game something — "wallet", "shop", "buy zap" (the siege
+        cheat sheet lists what it understands). The reply comes back as a
+        GAME event. Underneath: a STATUSTEXT, the same message the game uses
+        to talk to you, sent upstream; 50 characters max, like every one."""
+        self.conn.mav.statustext_send(
+            mavutil.mavlink.MAV_SEVERITY_INFO, text[:50].encode("ascii", "replace"))
+
     # ------------------------------------------------------------ sensing
 
     def position(self) -> tuple[float, float, float]:
-        """(north, east, altitude) in meters, updated 10x per second."""
+        """(north, east, altitude) in meters, updated 10x per second. Valid
+        from connect() on — before takeoff it is your pad."""
         return self._pos
 
     @property
@@ -164,6 +187,15 @@ class Drone:
             self.conn.target_system, self.conn.target_component,
             command, 0, p1, p2, 0, 0, 0, 0, p7)
 
+    def _wait_quiet(self, pred, timeout: float) -> bool:
+        """Poll `pred` for up to `timeout` seconds; True if it came true."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if pred():
+                return True
+            time.sleep(0.05)
+        return False
+
     def _wait(self, pred, timeout: float, what: str, hint=None) -> None:
         """Poll `pred` until true or `timeout` seconds pass. `hint` (a string
         or a function returning one) is appended to the error so the log
@@ -188,6 +220,7 @@ class Drone:
             t = msg.get_type()
             if t == "LOCAL_POSITION_NED":
                 self._pos = (msg.x, msg.y, -msg.z)
+                self._have_pos = True
             elif t == "HEARTBEAT":
                 self._armed = bool(
                     msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)

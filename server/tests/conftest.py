@@ -3,35 +3,21 @@ import os
 os.environ["MAVLINK20"] = "1"  # must be set before mavutil is imported anywhere
 
 import asyncio
-import random
-import socket
 from contextlib import asynccontextmanager
 
 import pytest
 from pymavlink import mavutil
 
 from app.config import Settings
+from app.headless import find_port_base
 from app.main import create_app
 from app.service import DroneLifeService
 
+__all__ = ["Pilot", "find_port_base", "make_settings", "running_app"]
 
-def find_port_base(count: int = 8) -> int:
-    """A base with `count` consecutive free TCP ports on loopback."""
-    for _ in range(60):
-        base = random.randint(20000, 55000)
-        socks = []
-        try:
-            for i in range(count):
-                s = socket.socket()
-                s.bind(("127.0.0.1", base + i))
-                socks.append(s)
-            return base
-        except OSError:
-            continue
-        finally:
-            for s in socks:
-                s.close()
-    raise RuntimeError("no free port range found")
+
+# find_port_base lives in app.headless (shared with the balance tool); the
+# name stays importable from here for the tests that always used it
 
 
 def make_settings(tmp_path, **overrides) -> Settings:

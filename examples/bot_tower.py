@@ -36,7 +36,7 @@ def scan() -> None:
             carrying = True
         elif "placed!" in ev:
             carrying, stacked = False, stacked + 1
-        elif "tower up" in ev:
+        elif "tower up" in ev and position_in(ev) == site:  # everyone hears every tower
             carrying, site, stacked = False, None, 0  # done here: wait for the next site
         elif "steel lost" in ev or "can't build" in ev:
             carrying = False
@@ -51,13 +51,15 @@ while True:
     if not drone.armed:  # crashed and respawned on the pad: back up we go
         drone.takeoff(8)
     if not carrying and quarry:
-        drone.goto(quarry[0], quarry[1], 2)  # hover low: the pickup dwell
+        drone.goto(quarry[0], quarry[1], 9)  # cross the map above the walls (8 m)…
+        drone.goto(quarry[0], quarry[1], 2)  # …then hover low: the pickup dwell
         deadline = time.time() + 8
         while not carrying and time.time() < deadline:
             scan()
             time.sleep(0.2)
     elif carrying and site:
         alt = hover_alt or 4 + 2 * stacked  # mid-window over the growing stack
+        drone.goto(site[0], site[1], max(alt, 9))  # over the walls first
         drone.goto(site[0], site[1], alt)
         deadline = time.time() + 8
         while carrying and time.time() < deadline:

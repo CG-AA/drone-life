@@ -32,7 +32,10 @@ in `server/app/game/missions/siege.py` unless noted.
   wave) or a multiplier on the wave bonus — never in personal points that
   make the rest of the room decorative. The per-pilot board stays for
   bragging; the round score is what the class beats. *(proposed)*
-- **Roles.** Give each role a callout stream, a stat, and a house bot:
+- **Roles.** *(shipped 2026-08-29: repair + scout callouts, per-pilot
+  tally on the board, `bot_repair` / `bot_scout`; ferry vs build are
+  separate stats — a true depot hand-off is a balance-session question)*
+  Give each role a callout stream, a stat, and a house bot:
   ferry (quarry → site, `tile_carried`), builder (walls/towers at ghosts),
   zapper (lane assignment), repair (rebuild chewed cells — the ghost for a
   chewed wall already exists), scout/spotter (an event-driven pilot that
@@ -41,7 +44,9 @@ in `server/app/game/missions/siege.py` unless noted.
   repair happen — and they must stay beatable: a deliberately naive bot per
   role (`examples/bot_*.py`, SESSION_PLAN §7), not an optimal one; "beat
   the house bot" is the ladder, so the house bot has to be catchable.
-- **Buildings.** The 4-high stack is legal and currently means nothing:
+- **Buildings.** *(shipped 2026-08-29: clay pit, ring tower, beacon, bell —
+  see the siege block of the cheat sheet and §9 of SESSION_PLAN)* The
+  original notes, for the record: the 4-high stack is legal and currently means nothing:
   4 steel = long-range tower (or a different weapon); clay in siege as cheap
   chew-fodder vs steel that only sappers eat fast; a repairable gate at a
   lane; a beacon/lure tile that pulls creeps into a kill zone. Each is a
@@ -50,9 +55,20 @@ in `server/app/game/missions/siege.py` unless noted.
   make stock finite per wave (a real ferry economy), pay bounty into a team
   pool that buys unlocks, and let squishing (currently free, any hp) cost
   the tile. Zapping vs building vs ferrying should each be a viable round.
-- **Upgrades.** Team-bought, not personal: tower range/cooldown tiers,
-  Keep armour, a wave-skip "call the next wave early for +bonus" (the classic
-  TD risk knob), a one-time wall repair. Spend from the team pool above.
+- **Upgrades.** *(decided 2026-08-29, shipped: say() channel, pot →
+  wallets, finite quarry, the shop)* The pot is the team's, the spending is
+  personal: every wave clear splits the pot into wallets and
+  `drone.say("buy zap|speed|tower|colour|outline")` buys tiers that last
+  the round. No team-bought upgrades; Keep armour / wave-skip / one-time
+  repair are dropped.
+- **Quests.** *(shipped 2026-08-29)* The advanced-play programming
+  challenge: opt-in per pilot (`say quest`), three families (route /
+  predict / compute) drawn per pilot from the live world, one room quest a
+  wave whose miss buffs the next wave. `docs/QUESTS.md`; worked answers in
+  `examples/answers/`. Balance the knobs with the rest in the balance session.
+- **Puzzles.** *(shipped 2026-08-29: the sealed gate S formation puzzle
+  and the chokepoint worked answer; the interceptor ladder and sapper alarm
+  were dropped in favour of quests)*
 - **Puzzles for the "this is boring" crowd.** In-game, co-op, rewarding
   without carrying: a sealed gate that opens only when 3 drones hold a
   formation over it (rewards the *lane*, not the trio); a chokepoint
@@ -67,6 +83,8 @@ in `server/app/game/missions/siege.py` unless noted.
   easiest coding win of the day. Do not engineer it away server-side — keep
   starter flaws that a student can see on the projector and fix themselves,
   and list them as "easy practices" on the cheat sheet. *(decided)*
+- **Instrumentation.** *(shipped 2026-08-29: `rounds.jsonl` at every reset,
+  `make balance`, and the one projector change — pickup rows fold)*
 - **Instrumentation before balance.** `SiegeStats` per round → append a
   JSONL line at reset (pilots, waves, kills by verb, leaks, towers, steel
   ferried, time-to-first-tower); `make balance` runs N headless bot-only
@@ -75,6 +93,11 @@ in `server/app/game/missions/siege.py` unless noted.
 - **Projector at scale.** Hide pad-row labels past ~20 seats, throttle
   per-kind feed rows at 60 pilots, keep the PILOTS board as the readable
   surface. *(proposed)*
+- **Balance.** *(2026-08-29: the wave cap scales with the room —
+  `WAVE_MAX 20 + 0.5/pilot`; room quests and their penalty need one
+  enrolled pilot; numbers from `make balance` in SESSION_PLAN §9. Still
+  open, needs a human room: shop prices, ring/beacon/bell value, whether
+  60 s room quests are the right length.)*
 - **Balance session — last.** Scale `WAVE_MAX` with pilots (60 pilots met
   the cap on wave 1), then tune bounties/tower stats/quarry stock against
   the JSONL, with the reward rule as the constraint. Not before the content

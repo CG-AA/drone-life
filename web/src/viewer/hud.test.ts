@@ -4,7 +4,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { EVENT_CLASS, boardModel, splashFor, stripModel } from "./hud";
+import { EVENT_CLASS, boardModel, foldedText, foldsInto, roomQuestText, splashFor, stripModel }
+  from "./hud";
 
 const CLIENT_ONLY = new Set(["stale"]);
 
@@ -48,11 +49,14 @@ it("words each siege phase for the wall", () => {
   expect(grace.keepPct).toBe(100);
   expect(grace.keepLow).toBe(false);
   expect(grace.towers).toBe("0 TOWERS");
+  expect(grace.pot).toBe("");  // an older server: no pot to show
   const active = stripModel({ ...base, wave: 3, state: "active", timer_s: 0,
-                              creeps_alive: 2, pending: 5, towers: 1 })!;
+                              creeps_alive: 2, pending: 5, towers: 1, pool: 45 })!;
   expect(active.wave).toBe("WAVE 3");
   expect(active.phase).toBe("7 CREEPS LEFT");
   expect(active.towers).toBe("1 TOWER");
+  expect(active.pot).toBe("POT 45");
+  expect(active.quest).toBe("");
   const build = stripModel({ ...base, wave: 3, state: "build", timer_s: 12, keep_hp: 2 })!;
   expect(build.phase).toBe("WAVE 4 IN 12s");
   expect(build.keepLow).toBe(true);
@@ -98,4 +102,24 @@ it("boards the top pilots best first, hides zeros, breaks ties by name", () => {
   expect(boardModel(undefined)).toEqual([]);
   expect(boardModel(Array.from({ length: 12 }, (_, i) =>
     ({ student_id: `s${i}`, name: `p${i}`, points: 100 - i }))).length).toBe(8);
+});
+
+it("words the room quest for the wall", () => {
+  expect(roomQuestText(undefined)).toBe("");
+  expect(roomQuestText({ solved: 2, missed: 0, room: null })).toBe("");
+  expect(roomQuestText({ room: { id: 6, family: "route", left_s: 32.4, solved: false } }))
+    .toBe("ROOM QUEST 6 · ROUTE · 32s");
+  expect(roomQuestText({ room: { id: 6, family: "compute", left_s: 0, solved: true } }))
+    .toBe("ROOM QUEST 6 · COMPUTE · SOLVED");
+});
+
+it("folds a burst of pickups into one row, and nothing else", () => {
+  expect(foldsInto(null, "pickup", 1000)).toBe(false);
+  expect(foldsInto({ kind: "pickup", atMs: 1000 }, "pickup", 2500)).toBe(true);
+  expect(foldsInto({ kind: "pickup", atMs: 1000 }, "pickup", 3500)).toBe(false);
+  expect(foldsInto({ kind: "pickup", atMs: 1000 }, "ferried", 1500)).toBe(false);
+  expect(foldsInto({ kind: "quest_solved", atMs: 1000 }, "quest_solved", 1500)).toBe(false);
+  expect(foldsInto({ kind: "tower_up", atMs: 1000 }, "tower_up", 1500)).toBe(false);
+  expect(foldedText("pickup", 6)).toBe("pickups ×6");
+  expect(foldedText("built", 2)).toBe("tiles placed ×2");
 });

@@ -59,3 +59,10 @@ class DroneBackend(ABC):
 
     @abstractmethod
     def send_text(self, drone_id: str, text: str, severity: int) -> None: ...
+
+    @abstractmethod
+    def set_speed(self, drone_id: str, scale: float) -> None:
+        """Scale the drone's horizontal and climb speed caps (1.0 = stock).
+        The one mission-driven physics knob: siege's speed upgrade. A
+        backend that cannot honour it may ignore it — the sim is the
+        source of truth for what the drone then does."""
